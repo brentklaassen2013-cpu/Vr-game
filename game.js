@@ -9,7 +9,7 @@ const ui = {
   rank: document.getElementById('rankText'), score: document.getElementById('scoreText'), mode: document.getElementById('modeText'), shift: document.getElementById('shiftText')
 };
 
-const DEFAULT_META = {level:1,xp:0,coins:250,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:1,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'CLASSIC',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',settings:{moveSpeed:2.2,snapTurn:30,haptics:true,music:true}};
+const DEFAULT_META = {level:1,xp:0,coins:250,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:1,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'CLASSIC',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',settings:{moveSpeed:2.2,snapTurn:30,haptics:true,music:true}};
 function loadMeta(){
   try{
     const raw=localStorage.getItem('crazyOfficeNightShiftMeta');
@@ -26,7 +26,7 @@ const G = {
   level: 1, xp: 0, coins: 0, promotionEvery: 3, nextPromotion: 3, difficulty: 1, wave: 0, shiftTime: 0, lastIncident: '', incidentT: 0,
   bat: { durability: 100, max: 100, broken: false, respawnT: 0, crack: 0 },
   upgrade: { power: 1, defense: 1, improvised: 1, durability: 1, recovery: 0 },
-  props: [], npcs: [], hazards: [], fx: [], lobbyMeshes: [], arenaMeshes: [], xr: null, right: null, left: null, batMesh: null, batTip: null, handState: new Map(),
+  props: [], npcs: [], hazards: [], fx: [], lobbyMeshes: [], arenaMeshes: [], xr: null, right: null, left: null, batMesh: null, batTip: null, handState: new Map(), handVisuals: {left:null,right:null}, playerBodyRoot:null,
   desktop: false, lastT: performance.now(), directorT: 0, spawnT: 0, bossSpawned: false, boss: null, ended: false, endTimer: null, attackGrace: 0, damageFlashT: 0, musicT: 0, lastMusicBand: '', lastRank: 'D',
   objective: null, meta: loadMeta(), risers: [], joystick:new B.Vector2(0,0), turnAxis:0, turnLatch:false, stationInfo:null
 };
@@ -57,6 +57,69 @@ function salaryTier(){ const c=G.meta.coins||0; return c>=3000?'EXECUTIVE':c>=15
 function batColor(){ return selectedBatDef().color; }
 
 
+function controllerNode(ctrl){ return ctrl?.grip || ctrl?.pointer || null; }
+function disposeMeshSafe(m){ try{m?.dispose?.(false,true);}catch{} }
+function clearPlayerVisuals(){
+  disposeMeshSafe(G.handVisuals.left); disposeMeshSafe(G.handVisuals.right); G.handVisuals.left=null; G.handVisuals.right=null;
+  disposeMeshSafe(G.playerBodyRoot); G.playerBodyRoot=null;
+}
+function buildHandVisual(scene, hand, ctrl){
+  const node=controllerNode(ctrl); if(!node) return null;
+  const old=G.handVisuals[hand]; if(old) disposeMeshSafe(old);
+  const skin=selectedSkinDef();
+  const root=new B.TransformNode(`playerHand_${hand}`,scene); root.parent=node;
+  root.position=new B.Vector3(hand==='left'?-0.025:0.025,-0.04,0.06);
+  root.rotationQuaternion=B.Quaternion.Identity();
+  if(skin.id==='POTATO'){
+    const palm=B.MeshBuilder.CreateSphere(`potatoPalm_${hand}`,{diameter:.12,segments:12},scene); palm.parent=root; palm.scaling=new B.Vector3(1.18,.95,1.3); palm.material=mat(scene,`potatoHandMat_${hand}`,'#b9833d',.95);
+    for(let i=0;i<4;i++){
+      const finger=B.MeshBuilder.CreateCapsule(`potatoFinger_${hand}_${i}`,{radius:.018,height:.08,subdivisions:4},scene); finger.parent=root; finger.position=new B.Vector3((i-1.5)*.018,.01,.06+i*.005); finger.rotation.z=(hand==='left'?-1:1)*(.15+i*.03); finger.rotation.x=Math.PI/2.4; finger.material=palm.material;
+    }
+    const thumb=B.MeshBuilder.CreateCapsule(`potatoThumb_${hand}`,{radius:.02,height:.07,subdivisions:4},scene); thumb.parent=root; thumb.position=new B.Vector3(hand==='left'?-0.055:0.055,-.005,.02); thumb.rotation.x=Math.PI/2.1; thumb.rotation.z=(hand==='left'?-1:1)*0.85; thumb.material=palm.material;
+  }else{
+    const palm=box(scene,`glove_${hand}`,new B.Vector3(0,0,0),new B.Vector3(.085,.065,.12), skin.shirt, root);
+    const cuff=box(scene,`cuff_${hand}`,new B.Vector3(0,-.045,-.025),new B.Vector3(.1,.03,.08), skin.accent, root);
+    palm.material.roughness=.92; cuff.material.roughness=.88;
+  }
+  G.handVisuals[hand]=root; return root;
+}
+function rebuildPlayerBody(scene){
+  disposeMeshSafe(G.playerBodyRoot); G.playerBodyRoot=null;
+  const cam=scene.activeCamera; if(!cam||!G.desktop) return;
+  const skin=selectedSkinDef();
+  const root=new B.TransformNode('playerBodyRoot',scene); root.parent=cam; root.position=new B.Vector3(0,-1.0,0.12);
+  if(skin.id==='POTATO'){
+    const torso=B.MeshBuilder.CreateSphere('potatoTorso',{diameter:.55,segments:14},scene); torso.parent=root; torso.scaling=new B.Vector3(1.0,1.15,.95); torso.position.y=.18; torso.material=mat(scene,'potatoBodyMat','#b9833d',.98);
+    const cheekL=B.MeshBuilder.CreateSphere('potatoCheekL',{diameter:.28,segments:12},scene); cheekL.parent=root; cheekL.position=new B.Vector3(-.13,-.05,-.09); cheekL.scaling=new B.Vector3(1,.95,1.15); cheekL.material=torso.material;
+    const cheekR=cheekL.clone('potatoCheekR'); cheekR.parent=root; cheekR.position.x=.13;
+    const tie=box(scene,'potatoTie',new B.Vector3(0,.05,.24),new B.Vector3(.055,.22,.04), '#5a2d0c', root);
+    const legL=box(scene,'potLegL',new B.Vector3(-.11,-.34,0),new B.Vector3(.09,.28,.09),'#2a1c15',root);
+    const legR=box(scene,'potLegR',new B.Vector3(.11,-.34,0),new B.Vector3(.09,.28,.09),'#2a1c15',root);
+    legL.material=legR.material=mat(scene,'potLegMat','#2a1c15',.9);
+  }else{
+    const torso=box(scene,'playerTorso',new B.Vector3(0,.14,0),new B.Vector3(.3,.5,.22),skin.shirt,root);
+    const tie=box(scene,'playerTie',new B.Vector3(0,.04,.14),new B.Vector3(.06,.24,.03),skin.accent,root);
+    const hips=box(scene,'playerHips',new B.Vector3(0,-.16,0),new B.Vector3(.28,.12,.18),'#1c1f25',root);
+    hips.material.roughness=.9;
+  }
+  G.playerBodyRoot=root;
+}
+function refreshPlayerCosmetics(){
+  clearPlayerVisuals();
+  if(scene){
+    if(G.left) buildHandVisual(scene,'left',G.left);
+    if(G.right) buildHandVisual(scene,'right',G.right);
+    rebuildPlayerBody(scene);
+  }
+}
+function npcPalette(role,type='worker'){
+  if(type==='boss') return {shirt:'#7a2032',accent:'#ffd166',skin:'#d7a17e'};
+  if(role==='thrower') return {shirt:'#48617b',accent:'#79c7ff',skin:'#d0a37f'};
+  if(role==='flanker') return {shirt:'#375d49',accent:'#76efb2',skin:'#c99570'};
+  return {shirt:'#5f4b8b',accent:'#ff9aa2',skin:'#d8ab88'};
+}
+
+
 const CATALOG={
   bats:[
     {id:'STANDARD',name:'Standard',color:'#6e4128',power:1,dur:1},
@@ -71,7 +134,8 @@ const CATALOG={
     {id:'MIDNIGHT',name:'Midnight',shirt:'#25324a',accent:'#79c7ff'},
     {id:'HAZARD',name:'Hazard',shirt:'#f2bd30',accent:'#1c1b1b'},
     {id:'MINT',name:'Mint',shirt:'#7fe0c1',accent:'#14372f'},
-    {id:'NEON',name:'Neon',shirt:'#e75aff',accent:'#54f7ff'}
+    {id:'NEON',name:'Neon',shirt:'#e75aff',accent:'#54f7ff'},
+    {id:'POTATO',name:'Potato Boss',shirt:'#b9833d',accent:'#5a2d0c',hand:'#b9833d'}
   ],
   maps:[
     {id:'FLOOR 13',name:'Floor 13'},
@@ -90,7 +154,7 @@ function cycleOwned(kind){
   const sel=kind==='bat'?'selectedBat':kind==='skin'?'selectedSkin':'selectedMap';
   const owned=new Set(G.meta[field]||[]); const options=cat.filter(x=>owned.has(x.id)); if(!options.length)return;
   let i=options.findIndex(x=>x.id===G.meta[sel]); G.meta[sel]=options[(i+1+options.length)%options.length].id; saveMeta();
-  toast(`${kind.toUpperCase()} • ${G.meta[sel]}`,1000); rebuildHubLabels?.();
+  toast(`${kind.toUpperCase()} • ${G.meta[sel]}`,1000); rebuildHubLabels?.(); refreshPlayerCosmetics?.();
 }
 function openCrate(){
   const free=(G.meta.freeCrates||0)>0; const cost=125;
@@ -192,7 +256,7 @@ function buildHub(scene){
 function startShift(scene,mode='SHIFT'){
   if(G.endTimer){clearTimeout(G.endTimer);G.endTimer=null;}
   clearList(G.lobbyMeshes); G.state='shift'; G.mode=mode; G.hp=100; G.maxHp=100; G.score=0; G.chaos=0; G.combo=0; G.kills=0; G.blocks=0; G.perfectBlocks=0; G.propHits=0; G.bestCombo=0; G.wave=1; G.shiftTime=0; G.difficulty=1; G.spawnT=0; G.directorT=0; G.incidentT=0; G.bossSpawned=false; G.boss=null; G.lastRank='D'; G.attackGrace=1.1; G.musicT=0; G.lastMusicBand=''; G.nextPromotion=3; G.upgrade={power:1,defense:1,improvised:1,durability:1,recovery:0}; const ct=careerTier(); G.maxHp=100+ct*3; G.hp=G.maxHp; G.upgrade.improvised+=ct*.025; const bd=selectedBatDef(); G.upgrade.power*=bd.power; G.bat={durability:(100+ct*4)*bd.dur,max:(100+ct*4)*bd.dur,broken:false,respawnT:0,crack:0}; chooseObjective();
-  buildArena(scene); if(mode==='RIOT')G.chaos=22; spawnWave(scene,mode==='RIOT'?5:3); spawnBat(scene); toast(`${mode} SHIFT START`,1600); tone(90,.35,'sawtooth',.04,180); updateHUD();
+  buildArena(scene); if(mode==='RIOT')G.chaos=22; spawnWave(scene,mode==='RIOT'?5:3); spawnBat(scene); refreshPlayerCosmetics(); toast(`${mode} SHIFT START`,1600); tone(90,.35,'sawtooth',.04,180); updateHUD();
 }
 
 function buildArena(scene){
@@ -253,15 +317,23 @@ function spawnBat(scene){
 
 class NPC{
   constructor(scene,pos,type='worker'){
-    this.scene=scene; this.type=type; this.role=type==='boss'?'boss':(Math.random()<.32?'thrower':Math.random()<.5?'flanker':'pressure');
-    const roleStats=this.role==='thrower'?{hp:.88,speed:.92,damage:.86}:this.role==='flanker'?{hp:.94,speed:1.18,damage:.9}:{hp:1.12,speed:1.0,damage:1.08};
-    this.hp=(type==='boss'?500:(88+Math.random()*24)*roleStats.hp); this.maxHp=this.hp; this.speed=type==='boss'?1.18:(1.0+Math.random()*.45)*roleStats.speed; this.damage=type==='boss'?20:(8+Math.random()*5)*roleStats.damage; this.state='seek'; this.t=0; this.attackT=Math.random(); this.windup=0; this.pendingAttack=''; this.hesitate=Math.random()*.5; this.prop=null; this.dead=false; this.lastBatHit=0; this.phase=1;
+    this.scene=scene; this.type=type; this.role=type==='boss'?'boss':(Math.random()<.14?'thrower':Math.random()<.52?'flanker':'pressure');
+    const roleStats=this.role==='thrower'?{hp:.9,speed:.9,damage:.62}:this.role==='flanker'?{hp:.94,speed:1.18,damage:.9}:{hp:1.12,speed:1.0,damage:1.08};
+    this.hp=(type==='boss'?500:(88+Math.random()*24)*roleStats.hp); this.maxHp=this.hp; this.speed=type==='boss'?1.18:(1.0+Math.random()*.45)*roleStats.speed; this.damage=type==='boss'?20:(8+Math.random()*5)*roleStats.damage; this.state='seek'; this.t=0; this.attackT=Math.random(); this.windup=0; this.pendingAttack=''; this.hesitate=Math.random()*.5; this.prop=null; this.dead=false; this.lastBatHit=0; this.phase=1; this.throwWindup=0;
     this.root=new B.TransformNode('npc',scene); this.root.position.copyFrom(pos);
-    const sk=selectedSkinDef(); const body=box(scene,'npcBody',new B.Vector3(0,1.05,0),new B.Vector3(.48,1.05,.32),type==='boss'?'#8f223f':sk.shirt,this.root);
-    const head=B.MeshBuilder.CreateSphere('npcHead',{diameter:.45},scene); head.position=new B.Vector3(0,1.78,0); head.material=mat(scene,'skin','#d69c7d'); head.parent=this.root;
-    const tie=box(scene,'npcTie',new B.Vector3(0,1.18,-.34),new B.Vector3(.12,.42,.04),type==='boss'?'#ffcf44':sk.accent,this.root);
-    this.hitMeshes=[body,head,tie]; this.hitMeshes.forEach(m=>m.metadata={npc:this});
-    this.nameLabel=label(scene,type==='boss'?(G.mode==='SURVIVAL'?'COMPLIANCE DIRECTOR':G.mode==='RIOT'?'EXECUTIVE VP':'THE REGIONAL MANAGER'):this.role.toUpperCase(),new B.Vector3(0,2.25,0),.3,type==='boss'?'#ff6680':'#ffffff'); this.nameLabel.parent=this.root; this.nameLabel.position=new B.Vector3(0,2.25,0);
+    const pal=npcPalette(this.role,type); const body=box(scene,'npcBody',new B.Vector3(0,1.05,0),new B.Vector3(.44,1.0,.28),pal.shirt,this.root);
+    const hips=box(scene,'npcHips',new B.Vector3(0,.52,0),new B.Vector3(.42,.18,.24), type==='boss'?'#351219':'#20242c', this.root);
+    const head=B.MeshBuilder.CreateSphere('npcHead',{diameter:.42},scene); head.position=new B.Vector3(0,1.76,0); head.material=mat(scene,'skin',pal.skin,.95); head.parent=this.root;
+    const tie=box(scene,'npcTie',new B.Vector3(0,1.1,-.24),new B.Vector3(.08,.34,.03),pal.accent,this.root);
+    const armL=box(scene,'npcArmL',new B.Vector3(-.36,1.12,0),new B.Vector3(.14,.56,.14),pal.shirt,this.root); armL.rotation.z=.22;
+    const armR=box(scene,'npcArmR',new B.Vector3(.36,1.12,0),new B.Vector3(.14,.56,.14),pal.shirt,this.root); armR.rotation.z=-.22;
+    const legL=box(scene,'npcLegL',new B.Vector3(-.13,.12,0),new B.Vector3(.13,.48,.13),'#252933',this.root);
+    const legR=box(scene,'npcLegR',new B.Vector3(.13,.12,0),new B.Vector3(.13,.48,.13),'#252933',this.root);
+    if(this.role==='thrower'){ const glasses=box(scene,'npcGlasses',new B.Vector3(0,1.78,.18),new B.Vector3(.33,.1,.03),'#111319',this.root); this.hitMeshes=[body,hips,head,tie,armL,armR,legL,legR,glasses]; }
+    else { this.hitMeshes=[body,hips,head,tie,armL,armR,legL,legR]; }
+    this.hitMeshes.forEach(m=>m.metadata={npc:this});
+    this.nameLabel=label(scene,type==='boss'?(G.mode==='SURVIVAL'?'COMPLIANCE DIRECTOR':G.mode==='RIOT'?'EXECUTIVE VP':'THE REGIONAL MANAGER'):(this.role==='thrower'?'THROWER':this.role==='flanker'?'FLANKER':'PRESSURE'),new B.Vector3(0,2.32,0),.32,type==='boss'?'#ff6680':'#ffffff'); this.nameLabel.parent=this.root; this.nameLabel.position=new B.Vector3(0,2.32,0);
+    const hbMat=new B.StandardMaterial('hpBgMat',scene); hbMat.diffuseColor=new B.Color3(.06,.06,.07); hbMat.emissiveColor=new B.Color3(.06,.06,.07); hbMat.disableLighting=true; const hfMat=new B.StandardMaterial('hpFillMat',scene); hfMat.diffuseColor=type==='boss'?new B.Color3(1,.18,.3):new B.Color3(.18,.95,.34); hfMat.emissiveColor=hfMat.diffuseColor.scale(.8); hfMat.disableLighting=true; this.hpBarBg=B.MeshBuilder.CreatePlane('npcHpBg',{width:.95,height:.12},scene); this.hpBarBg.parent=this.root; this.hpBarBg.position=new B.Vector3(0,2.12,-.015); this.hpBarBg.billboardMode=B.Mesh.BILLBOARDMODE_Y; this.hpBarBg.material=hbMat; this.hpBarFill=B.MeshBuilder.CreatePlane('npcHpFill',{width:.89,height:.075},scene); this.hpBarFill.parent=this.root; this.hpBarFill.position=new B.Vector3(0,2.12,-.03); this.hpBarFill.billboardMode=B.Mesh.BILLBOARDMODE_Y; this.hpBarFill.material=hfMat;
   }
   dispose(){ if(this.prop)this.dropProp(); try{this.root.dispose(false,true)}catch{} }
   dropProp(){ if(!this.prop)return; const p=this.prop; const world=p.mesh.getAbsolutePosition().clone(); p.mesh.setParent(null); p.mesh.position.copyFrom(world); p.npcOwner=null; p.vel=new B.Vector3((Math.random()-.5)*2,1,(Math.random()-.5)*2); this.prop=null; }
@@ -269,20 +341,20 @@ class NPC{
     let best=null,bd=3.2; for(const p of G.props){ if(p.heldBy||p.npcOwner||p.broken||p.mass>9)continue; const d=B.Vector3.Distance(p.mesh.getAbsolutePosition(),this.root.position); if(d<bd){best=p;bd=d;} }
     if(best){ this.prop=best; best.npcOwner=this; best.mesh.parent=this.root; best.mesh.position=new B.Vector3(.52,1.05,-.12); best.grounded=false; tone(190,.05,'square',.02); }
   }
-  throwProp(playerPos){ if(!this.prop)return; const p=this.prop; p.mesh.setParent(null); p.mesh.position=this.root.position.add(new B.Vector3(0,1.2,0)); let d=playerPos.subtract(p.mesh.position).normalize(); p.vel=d.scale(6.5+Math.min(3,G.wave*.25)).add(new B.Vector3(0,1.2,0)); p.npcOwner=null; p.thrownByNPCUntil=performance.now()+2200; this.prop=null; impactSound(p.material,.7); }
+  throwProp(playerPos){ if(!this.prop)return; const p=this.prop; p.mesh.setParent(null); p.mesh.position=this.root.position.add(new B.Vector3(0,1.2,0)); let d=playerPos.subtract(p.mesh.position).normalize(); p.vel=d.scale(4.2+Math.min(1.1,G.wave*.12)).add(new B.Vector3(0,.82,0)); p.npcOwner=null; p.thrownByNPCUntil=performance.now()+2200; this.prop=null; impactSound(p.material,.7); }
   hit(dmg,dir,kind='bat'){
-    if(this.dead)return; this.hp-=dmg; this.root.position.addInPlace(dir.scale(.04)); addScore(kind==='prop'?70:55,kind==='prop'?'IMPROVISED':'HIT'); if(kind==='prop')G.propHits++;
+    if(this.dead)return; this.hp-=dmg; if(this.hpBarFill){const f=Math.max(0,this.hp/this.maxHp);this.hpBarFill.scaling.x=f;this.hpBarFill.position.x=-(.89*(1-f))/2;} this.root.position.addInPlace(dir.scale(.04)); addScore(kind==='prop'?70:55,kind==='prop'?'IMPROVISED':'HIT'); if(kind==='prop')G.propHits++;
     if(this.prop && Math.random()<.35)this.dropProp(); this.attackT=Math.max(this.attackT,.12); if(this.type==='boss'){const next=this.hp<this.maxHp*.32?3:this.hp<this.maxHp*.67?2:1;if(next!==this.phase){this.phase=next;announce(`BOSS PHASE ${next}`,'boss');tone(62-next*4,.3,'sawtooth',.05,55);}} if(this.hp<=0)this.die(dir);
   }
   die(dir){ this.dead=true; G.kills++; addScore(this.type==='boss'?1600:320,this.type==='boss'?'BOSS DOWN':'KO'); tone(this.type==='boss'?70:110,.18,'sawtooth',.05,-50); this.dropProp(); for(const m of this.hitMeshes)m.material.albedoColor.scaleInPlace(.55); this.root.rotation.z=(Math.random()<.5?-1:1)*1.25; setTimeout(()=>{this.dispose(); G.npcs=G.npcs.filter(n=>n!==this);},1200); if(this.type!=='boss'&&G.upgrade.recovery>0)G.hp=Math.min(G.maxHp,G.hp+G.upgrade.recovery); if(G.mode==='SURVIVAL'&&this.type!=='boss'&&G.kills%5===0)G.hp=Math.min(G.maxHp,G.hp+8); if(G.kills>=G.nextPromotion){ promote(); G.nextPromotion+=G.promotionEvery; } if(this.type==='boss'){ toast('PERFORMANCE REVIEW PASSED',2400); setTimeout(()=>endShift('PROMOTED'),1800); } }
   update(dt,playerPos){
-    if(this.dead)return; this.t+=dt; this.attackT=Math.max(0,this.attackT-dt); if(this.windup>0){this.windup-=dt; if(this.windup<=0){npcAttack(this,this.pendingAttack==='prop'?this.damage*.82:this.damage,this.pendingAttack==='prop'?'IMPROVISED HIT':'PAPERWORK PUNCH');this.pendingAttack='';this.attackT=this.type==='boss'?.72:1.15+Math.random()*.55;} return;}
+    if(this.dead)return; this.t+=dt; this.attackT=Math.max(0,this.attackT-dt); if(this.throwWindup>0){this.throwWindup-=dt;if(this.throwWindup<=0&&this.prop){this.throwProp(playerPos);this.attackT=2.35+Math.random()*.55;}return;} if(this.windup>0){this.windup-=dt; if(this.windup<=0){npcAttack(this,this.pendingAttack==='prop'?this.damage*.82:this.damage,this.pendingAttack==='prop'?'IMPROVISED HIT':'PAPERWORK PUNCH');this.pendingAttack='';this.attackT=this.type==='boss'?.72:1.15+Math.random()*.55;} return;}
     const to=playerPos.subtract(this.root.position), dist=Math.sqrt(to.x*to.x+to.z*to.z), dir=new B.Vector3(to.x,0,to.z); if(dir.lengthSquared()>0.001)dir.normalize(); this.root.rotation.y=Math.atan2(dir.x,dir.z);
     if(this.type==='boss'){
       const rate=this.phase===3?.48:this.phase===2?.32:.2; if(Math.random()<dt*rate && G.hazards.length<4)spawnHazard(this.scene,playerPos,this.phase);
     }
-    if(!this.prop && this.role==='thrower' && dist<5.8 && Math.random()<dt*.85) this.claimProp();
-    if(this.prop){ if(dist>2.35){this.root.position.addInPlace(dir.scale(this.speed*dt*.75));} else if(this.attackT<=0){ if(this.role==='thrower' || dist>1.45){this.throwProp(playerPos); this.attackT=1.65;} else {this.windup=.34;this.pendingAttack='prop';announce('INCOMING SWING','danger');} } return; }
+    if(!this.prop && this.role==='thrower' && dist<5.4 && Math.random()<dt*.42) this.claimProp();
+    if(this.prop){ if(dist>2.35){this.root.position.addInPlace(dir.scale(this.speed*dt*.75));} else if(this.attackT<=0){ if(this.role==='thrower' || dist>1.45){this.throwWindup=.72; this.attackT=.72; announce('INCOMING THROW','danger');} else {this.windup=.34;this.pendingAttack='prop';announce('INCOMING SWING','danger');} } return; }
     if(this.role==='flanker' && dist>1.4){ const side=new B.Vector3(-dir.z,0,dir.x).scale(Math.sin(this.t*1.6)*.8); this.root.position.addInPlace(dir.add(side).normalize().scale(this.speed*dt)); }
     else if(dist>1.15) this.root.position.addInPlace(dir.scale(this.speed*dt));
     else if(this.attackT<=0){ if(G.chaos>75 && Math.random()<.14){this.attackT=.55;return;} this.windup=this.type==='boss'?.42:.3; this.pendingAttack='fist'; if(this.type==='boss')announce('MANAGER ATTACK','danger'); }
@@ -347,7 +419,7 @@ function updateHazards(dt,pp){ if(G.hazards.length>6){for(const h of G.hazards.s
 function updateProps(dt,pp){
   for(const p of G.props){ if(p.heldBy||p.npcOwner)continue; if(p.vel.lengthSquared()<.003){p.vel.scaleInPlace(.85);continue;} p.grounded=false; p.vel.y-=9.81*dt; p.mesh.position.addInPlace(p.vel.scale(dt)); p.vel.scaleInPlace(.994); if(p.mesh.position.y<.12){p.mesh.position.y=.12;p.vel.y=Math.abs(p.vel.y)*.18;p.vel.x*=.72;p.vel.z*=.72; if(Math.abs(p.vel.y)<.5)p.vel.y=0;} if(Math.abs(p.mesh.position.x)>8.5||Math.abs(p.mesh.position.z)>8.5){p.mesh.position.x=Math.max(-7,Math.min(7,p.mesh.position.x));p.mesh.position.z=Math.max(-7,Math.min(7,p.mesh.position.z));p.vel.scaleInPlace(.35);}
     const speed=p.vel.length(); if(speed>2.8){ for(const n of G.npcs){ if(n.dead)continue; const d=B.Vector3.Distance(p.mesh.position,n.root.position.add(new B.Vector3(0,1,0))); if(d<.8 && performance.now()-p.lastHit>450){p.lastHit=performance.now(); n.hit(p.damage*Math.min(1.8,speed/5)*G.upgrade.improvised,p.vel.normalize(),'prop'); impactSound(p.material,Math.min(1,speed/8)); p.integrity-=Math.max(1,speed*.9); if(p.integrity<=0&&!p.broken){p.broken=true;addScore(120,'PROPERTY DAMAGE');tone(150,.08,'square',.025,-70);p.mesh.scaling.scaleInPlace(.72);p.damage*=.62;} p.vel.scaleInPlace(.35);} }
-      if(B.Vector3.Distance(p.mesh.position,pp)<.65 && (p.thrownByNPCUntil||0)>performance.now() && performance.now()-p.lastHit>450){p.lastHit=performance.now();damagePlayer(p.damage*.6,'THROWN OBJECT');p.vel.scaleInPlace(.3);} }
+      if(B.Vector3.Distance(p.mesh.position,pp)<.65 && (p.thrownByNPCUntil||0)>performance.now() && performance.now()-p.lastHit>450){p.lastHit=performance.now();damagePlayer(Math.max(2,Math.min(8,p.damage*.22)),'THROWN OBJECT');p.thrownByNPCUntil=0;p.vel.scaleInPlace(.22);} }
   }
 }
 
@@ -360,7 +432,7 @@ async function setupXR(scene){
   if(G.xr)return G.xr; ui.status.textContent='Preparing WebXR…'; const xr=await scene.createDefaultXRExperienceAsync({floorMeshes:[]}); G.xr=xr;
   xr.input.onControllerAddedObservable.add(ctrl=>{
     ctrl.onMotionControllerInitObservable.add(mc=>{
-      const handed=ctrl.inputSource.handedness||'none'; G.handState.set(handed,{ctrl,grabbing:null,prevPos:null,prevBat:null}); if(handed==='right'){G.right=ctrl;attachBatToController(ctrl);} if(handed==='left')G.left=ctrl;
+      const handed=ctrl.inputSource.handedness||'none'; G.handState.set(handed,{ctrl,grabbing:null,prevPos:null,prevBat:null}); if(handed==='right'){G.right=ctrl;attachBatToController(ctrl);} if(handed==='left')G.left=ctrl; buildHandVisual(scene,handed,ctrl); refreshPlayerCosmetics();
       const grip=mc.getComponent('xr-standard-squeeze'); if(grip){ grip.onButtonStateChangedObservable.add(()=>{ if(grip.changes.pressed){ if(grip.pressed)tryGrab(scene,handed,ctrl); else releaseGrab(handed,ctrl); } }); }
       const trig=mc.getComponent('xr-standard-trigger'); if(trig){ trig.onButtonStateChangedObservable.add(()=>{if(trig.changes.pressed&&trig.pressed)triggerInteract(scene,ctrl);}); }
       const stick=mc.getComponent('xr-standard-thumbstick'); if(stick){stick.onAxisValueChangedObservable.add(v=>{if(handed==='left'){G.joystick.x=v.x||0;G.joystick.y=v.y||0;}else if(handed==='right'){G.turnAxis=v.x||0;}});}
@@ -370,13 +442,14 @@ async function setupXR(scene){
     const handed=ctrl.inputSource?.handedness||'none';
     releaseGrab(handed,ctrl);
     G.handState.delete(handed);
+    if(G.handVisuals[handed]){disposeMeshSafe(G.handVisuals[handed]); G.handVisuals[handed]=null;}
     if(handed==='right')G.right=null;
-    if(handed==='left'){G.left=null;G.joystick.set(0,0);} if(handed==='right')G.turnAxis=0;
+    if(handed==='left'){G.left=null;G.joystick.set(0,0);} if(handed==='right')G.turnAxis=0; refreshPlayerCosmetics();
   });
   xr.baseExperience.sessionManager.onXRSessionInit.add(()=>{ui.boot.style.display='none';ui.hud.style.display='flex';});
   xr.baseExperience.sessionManager.onXRSessionEnded.add(()=>{
     for(const [hand,st] of [...G.handState]) releaseGrab(hand,st.ctrl);
-    G.handState.clear(); G.right=null; G.left=null;
+    G.handState.clear(); G.right=null; G.left=null; clearPlayerVisuals();
     ui.boot.style.display='flex';
   });
   return xr;
@@ -395,10 +468,10 @@ const scene=makeScene();
 window.scene=scene;
 
 ui.enter.onclick=async()=>{ try{await audio.resume(); const xr=await setupXR(scene); await xr.baseExperience.enterXRAsync('immersive-vr','local-floor');}catch(e){console.error(e);ui.status.textContent='WebXR could not start here. Use HTTPS in a compatible headset browser.';} };
-ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style.display='flex';startShift(scene,'SHIFT');};
+ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style.display='flex';startShift(scene,'SHIFT'); refreshPlayerCosmetics();};
 
 window.addEventListener('keydown',e=>{ if(!G.desktop)return; if(e.code==='KeyR')buildHub(scene); if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SHIFT'); if(e.code==='Digit2'&&G.state==='hub')startShift(scene,'SURVIVAL'); if(e.code==='Digit3'&&G.state==='hub')startShift(scene,'RIOT'); });
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 1.3 ready • joystick movement active';
+ui.status.textContent='Reborn 1.6 ready • potato skin + combat fixes';
 updateHUD();
