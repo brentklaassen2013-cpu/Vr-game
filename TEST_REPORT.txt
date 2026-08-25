@@ -1,0 +1,17 @@
+Crazy Office: Night Shift — Reborn 1.1 Final Gauntlet
+
+Automated/static checks performed:
+PASS - src/main.js JavaScript syntax (node --check)
+PASS - index.html local asset references exist
+PASS - three mode arena branches present (SHIFT / SURVIVAL / RIOT)
+PASS - NPC role system present (pressure / flanker / thrower)
+PASS - boss phase + hazard system present
+PASS - prop grab / throw / shield / integrity systems present
+PASS - bat durability / crack / break / replacement systems present
+PASS - persistent career meta + objectives + promotions present
+PASS - final ZIP integrity
+
+Not claimed as tested:
+- Real WebXR headset hand offsets / comfort / haptic feel
+- Multi-headset production networking
+- Professionally recorded voice/audio production

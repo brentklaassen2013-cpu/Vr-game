@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<meta name="theme-color" content="#0d1017" />
+<title>Crazy Office: Night Shift — Reborn 1.1</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdn.babylonjs.com/babylon.js"></script>
+<script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="boot">
+    <div class="brand">CRAZY OFFICE</div>
+    <div class="subtitle">NIGHT SHIFT · REBORN 1.1</div>
+    <div id="bootStatus">Final Gauntlet build loading…</div>
+    <button id="enterVR">ENTER VR</button>
+    <button id="desktopStart">DESKTOP PREVIEW</button>
+    <div class="note">Best experienced in a WebXR headset over HTTPS.<br>Single-player core is fully local; real headset tuning remains required.</div>
+  </div>
+  <div id="hud">
+    <div class="pill"><b id="modeText">ELEVATOR HUB</b><span id="shiftText">Choose a shift</span></div>
+    <div class="meter"><span>HP</span><i><b id="hpBar"></b></i><strong id="hpText">100</strong></div>
+    <div class="meter"><span>BAT</span><i><b id="batBar"></b></i><strong id="batText">100%</strong></div>
+    <div class="meter"><span>CHAOS</span><i><b id="chaosBar"></b></i><strong id="chaosText">0%</strong></div>
+    <div class="pill small"><span>RANK</span><b id="rankText">D</b><span id="scoreText">0</span></div>
+  </div>
+  <div id="toast"></div>
+  <script type="module" src="src/main.js"></script>
+  <script>window.addEventListener('error',e=>{const s=document.getElementById('bootStatus');if(s)s.textContent='LOAD ERROR: '+(e.message||'unknown error');});</script>
+</body>
+</html>
