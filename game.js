@@ -20,17 +20,17 @@ function activateOwnerCode(){
   toast('OWNER MODE ACTIVE • ALL FREE',1500);tone(440,.1,'triangle',.04,280);rebuildHubLabels?.();
 }
 
-const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'2.9',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
+const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'3.0',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
 function loadMeta(){
   try{
     const raw=localStorage.getItem('crazyOfficeNightShiftMeta');
     const parsed=raw?JSON.parse(raw):{};
-    const upgrading=parsed.contentVersion!=='2.9';
+    const upgrading=parsed.contentVersion!=='3.0';
     const merged={...DEFAULT_META,...parsed,settings:{...DEFAULT_META.settings,...(parsed.settings||{})}};
     merged.unlockedBats=Array.from(new Set(merged.unlockedBats||['STANDARD']));
     merged.unlockedSkins=Array.from(new Set(merged.unlockedSkins||['CLASSIC','POTATO']));
     merged.unlockedMaps=Array.from(new Set(merged.unlockedMaps||['FLOOR 13']));
-    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='2.9';
+    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='3.0';
     if(upgrading)try{localStorage.setItem('crazyOfficeNightShiftMeta',JSON.stringify(merged));}catch{}
     return merged;
   }catch(e){console.warn('Meta save could not be read; using defaults.',e);return {...DEFAULT_META,settings:{...DEFAULT_META.settings}};}
@@ -8661,6 +8661,7 @@ function buildEmbeddedObj(scene,name,objText,mtlText,opt={}){
     if(low.includes('glass')){ material.alpha=.35; material.metallic=.1; material.roughness=.08; }
     if(low.includes('light')){ material.emissiveColor=B.Color3.FromHexString(md.color||'#eee4b8').scale(.65); material.roughness=.25; }
     if(low.includes('grey')||low.includes('metal')){ material.metallic=.18; material.roughness=.48; }
+    material.backFaceCulling=false;
     mesh.material=material; mesh.parent=root; mesh.receiveShadows=true;
   }
   if(opt.scale) root.scaling.copyFrom(opt.scale);
@@ -9026,6 +9027,18 @@ function buildHub(scene){
   const rightFront=box(scene,'homeRightFront',new B.Vector3(5.2,2.16,-2.95),new B.Vector3(.16,4.45,2.8),wallCol);G.lobbyMeshes.push(rightFront);
   const rightBack=box(scene,'homeRightBack',new B.Vector3(5.2,2.16,2.95),new B.Vector3(.16,4.45,2.8),wallCol);G.lobbyMeshes.push(rightBack);
   const rightTop=box(scene,'homeRightTop',new B.Vector3(5.2,3.62,0),new B.Vector3(.16,1.52,3.6),wallCol);G.lobbyMeshes.push(rightTop);
+  // Lobby walls are solid, except the cosmetics-room opening.
+  for(const wb of [
+    {p:new B.Vector3(0,2.1,-4.55),s:new B.Vector3(10.6,4.3,.18)},
+    {p:new B.Vector3(0,2.1,4.55),s:new B.Vector3(10.6,4.3,.18)},
+    {p:new B.Vector3(-5.2,2.1,0),s:new B.Vector3(.18,4.3,9.2)},
+    {p:new B.Vector3(5.2,2.1,-3.0),s:new B.Vector3(.18,4.3,2.7)},
+    {p:new B.Vector3(5.2,2.1,3.0),s:new B.Vector3(.18,4.3,2.7)},
+    {p:new B.Vector3(10.3,2.1,0),s:new B.Vector3(.18,4.3,6.0)},
+    {p:new B.Vector3(8.5,2.1,-2.95),s:new B.Vector3(3.8,4.3,.18)},
+    {p:new B.Vector3(8.5,2.1,2.95),s:new B.Vector3(3.8,4.3,.18)}
+  ]){const m=box(scene,'hubWallCollider',wb.p,wb.s,'#000000');m.isVisible=false;addBlocker(m,.02);G.lobbyMeshes.push(m);}
+
   for(const x of [-3.45,0,3.45]){const beam=box(scene,'beam',new B.Vector3(x,4.12,0),new B.Vector3(.16,.18,8.8),trimCol);G.lobbyMeshes.push(beam);}
   for(const z of [-4.4,4.4]){const trim=box(scene,'floorTrim'+z,new B.Vector3(0,.18,z),new B.Vector3(10.6,.16,.08),trimCol);G.lobbyMeshes.push(trim);}
 
@@ -9071,8 +9084,18 @@ function buildHub(scene){
   G.lobbyMeshes.push(label(scene,'COZY LOBBY',new B.Vector3(0,3.02,-4.15),.32,'#ffd9ad'));
 
   function panelButton(name,text,pos,color,meta,scale=.95){
-    const b=box(scene,name,pos,new B.Vector3(1.15*scale,.5*scale,.18),color);b.metadata=meta;b.material.emissiveColor=B.Color3.FromHexString(color).scale(.18);G.lobbyMeshes.push(b);
-    const p=label(scene,text,pos.add(new B.Vector3(0,0,-.13)),.30*scale,'#ffffff');G.lobbyMeshes.push(p);return b;
+    const root=new B.TransformNode(name+'Root',scene);root.position.copyFrom(pos);G.lobbyMeshes.push(root);
+    // wooden/metal backing plate
+    const frame=box(scene,name+'Frame',B.Vector3.Zero(),new B.Vector3(1.42*scale,.72*scale,.18),'#302a27',root);
+    frame.position.z=.03;frame.material.roughness=.48;frame.material.metallic=.18;G.lobbyMeshes.push(frame);
+    // raised colored button surface
+    const b=box(scene,name,new B.Vector3(0,0,-.13),new B.Vector3(1.18*scale,.50*scale,.16),color,root);
+    b.metadata=meta;b.material.emissiveColor=B.Color3.FromHexString(color).scale(.12);b.material.roughness=.42;b.material.metallic=.12;G.lobbyMeshes.push(b);
+    // small highlight strip gives a physical, beveled look
+    const hi=box(scene,name+'Highlight',new B.Vector3(0,.19*scale,-.225),new B.Vector3(.96*scale,.035*scale,.018),'#ffffff',root);
+    hi.material.alpha=.28;hi.isPickable=false;G.lobbyMeshes.push(hi);
+    const p=label(scene,text,new B.Vector3(0,0,-.235).add(pos),.28*scale,'#ffffff');G.lobbyMeshes.push(p);
+    return b;
   }
   function stationTitle(text,pos,color='#3c2618'){ const t=label(scene,text,pos,.30,color); G.lobbyMeshes.push(t); return t; }
 
@@ -9112,15 +9135,19 @@ ${skinAbilityDesc(skin.ability)}`,new B.Vector3(3.45,2.27,-4.05),.26,'#fff7ef'))
   G.lobbyMeshes.push(label(scene,OWNER_MODE?'ALL CONTENT UNLOCKED':`${CRATE_COST} COINS`,new B.Vector3(1.25,1.72,4.08),.23,'#fff3de'));
   G.lobbyMeshes.push(label(scene,`LEVEL ${G.meta.survivalLevel||1} • ${G.meta.coins||0} COINS`,new B.Vector3(0,2.2,4.08),.28,'#fff3de'));
 
-  // subtle blockers for cozy assets / walking space
+  // Accurate hidden colliders so you cannot walk through the furniture.
   for(const block of [
-    {p:new B.Vector3(-2.55,.55,-.4),s:new B.Vector3(2.7,1.2,1.5)},
-    {p:new B.Vector3(-.25,.55,1.15),s:new B.Vector3(1.1,1.2,1.1)},
-    {p:new B.Vector3(2.75,1.0,3.55),s:new B.Vector3(2.5,2.0,1.0)},
-    {p:new B.Vector3(-4.2,1.2,-3.0),s:new B.Vector3(.8,2.5,1.5)},
-    {p:new B.Vector3(7.15,.5,0),s:new B.Vector3(1.5,1.0,1.5)},
-    {p:new B.Vector3(9.55,1.2,0),s:new B.Vector3(.7,2.2,3.4)}
-  ]){ const m=box(scene,'hubBlocker',block.p,block.s,'#000000'); m.isVisible=false; addBlocker(m,.22); G.lobbyMeshes.push(m); }
+    {p:new B.Vector3(-2.55,.82,-.20),s:new B.Vector3(4.15,1.65,1.65)}, // couch
+    {p:new B.Vector3(-.25,.52,1.15),s:new B.Vector3(1.75,1.05,1.75)}, // table
+    {p:new B.Vector3(2.75,1.22,3.48),s:new B.Vector3(3.0,2.45,1.18)}, // fireplace
+    {p:new B.Vector3(-4.2,1.25,-3.0),s:new B.Vector3(.75,2.5,1.45)}, // bookshelf
+    {p:new B.Vector3(-4.15,.62,3.45),s:new B.Vector3(.75,1.25,.75)}, // plant
+    {p:new B.Vector3(4.0,.45,-3.6),s:new B.Vector3(.65,.9,.65)}, // plant
+    {p:new B.Vector3(4.35,.32,2.35),s:new B.Vector3(.55,.65,.55)}, // trash
+    {p:new B.Vector3(2.95,.65,-1.55),s:new B.Vector3(.55,1.3,.55)}, // floor lamp
+    {p:new B.Vector3(7.15,.5,0),s:new B.Vector3(1.5,1.0,1.5)}, // cosmetics pedestal
+    {p:new B.Vector3(9.55,1.2,0),s:new B.Vector3(.75,2.3,3.4)} // cosmetics shelves
+  ]){ const m=box(scene,'hubBlocker',block.p,block.s,'#000000'); m.isVisible=false; addBlocker(m,.12); G.lobbyMeshes.push(m); }
 
 
   // 2.9 lobby polish: animated fire, gentle light flicker, floating dust motes
@@ -9170,13 +9197,13 @@ ${skinAbilityDesc(skin.ability)}`,new B.Vector3(3.45,2.27,-4.05),.26,'#fff7ef'))
   G.lobbyMeshes.push({dispose:()=>{try{entryGlow.dispose()}catch{}}});
 
   startLobbyAudio();
-  rebuildHubLabels=()=>buildHub(scene);updateHUD();hubCameraSpawn(scene);
+  rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);
 }
 
 function findSafePlayerSpawn(){const spots=[[0,-5.8],[-5.8,-5.8],[5.8,-5.8],[-5.8,5.8],[5.8,5.8],[0,0]];for(const [x,z] of spots)if(!isBlockedXZ(x,z,.42))return new B.Vector3(x,1.65,z);return new B.Vector3(0,1.65,-6);}
 function placePlayerSafe(scene){const q=findSafePlayerSpawn();const cam=G.xr?.baseExperience?.camera||scene.activeCamera;if(cam){cam.position.x=q.x;cam.position.z=q.z;if(G.desktop)cam.position.y=q.y;}}
 function startShift(scene,mode='LEVELS'){
-  stopLobbyAudio();
+  stopLobbyAudio();if(G.desktop)ui.hud.style.display='flex';
   if(G.endTimer){clearTimeout(G.endTimer);G.endTimer=null;}clearList(G.lobbyMeshes);G.blockers=[];G.state='shift';G.mode=mode;G.ended=false;G.waveTransition=false;G.waveToken++;G.hp=100;G.maxHp=100;G.score=0;G.chaos=0;G.combo=0;G.kills=0;G.blocks=0;G.perfectBlocks=0;G.propHits=0;G.bestCombo=0;G.wave=1;G.shiftTime=0;G.difficulty=1;G.spawnT=0;G.directorT=0;G.incidentT=0;G.bossSpawned=false;G.boss=null;G.lastRank='D';G.attackGrace=1.4;G.musicT=0;G.lastMusicBand='';G.nextPromotion=4;G.upgrade={power:1,defense:1,improvised:1,durability:999,recovery:0};
   const lvl=G.meta.survivalLevel||1;if(mode==='LEVELS')G.difficulty=1+Math.max(0,lvl-1)*.12;G.maxHp=100;if(skinAbility()==='Thick Skin')G.maxHp+=14;G.hp=G.maxHp;G.upgrade.power*=selectedBatDef().power;G.bat={durability:9999,max:9999,broken:false,respawnT:0,crack:0};chooseObjective();chooseWaveModifier();buildArena(scene);placePlayerSafe(scene);spawnWave(scene,waveEnemyCount());spawnBat(scene);refreshPlayerCosmetics();toast(mode==='SURVIVAL'?'SURVIVAL • WAVE 1':`LEVEL ${lvl} • WAVE 1`,1500);tone(90,.3,'sawtooth',.04,150);updateHUD();
 }
@@ -9560,7 +9587,7 @@ function endShift(reason){if(G.ended||G.state!=='shift')return;G.ended=true;G.wa
 function updateJoystickMovement(scene,dt){
   if(!G.xr||G.desktop)return; const cam=G.xr.baseExperience?.camera; if(!cam)return;
   const dead=.16, x=Math.abs(G.joystick.x)>dead?G.joystick.x:0, y=Math.abs(G.joystick.y)>dead?G.joystick.y:0;
-  if(x||y){const f=cam.getDirection(B.Axis.Z);f.y=0;if(f.lengthSquared()>.001)f.normalize();const r=cam.getDirection(B.Axis.X);r.y=0;if(r.lengthSquared()>.001)r.normalize();const speed=(G.meta.settings?.moveSpeed||2.2)*skinMoveMul();const d=f.scale(-y*speed*dt).add(r.scale(x*speed*dt));if(G.state==='shift'){const ox=cam.position.x,oz=cam.position.z,nx=ox+d.x,nz=oz+d.z;if(!isBlockedXZ(nx,nz,.28)){cam.position.x=nx;cam.position.z=nz;}else{if(!isBlockedXZ(nx,oz,.28))cam.position.x=nx;if(!isBlockedXZ(cam.position.x,nz,.28))cam.position.z=nz;}}else cam.position.addInPlace(d);}
+  if(x||y){const f=cam.getDirection(B.Axis.Z);f.y=0;if(f.lengthSquared()>.001)f.normalize();const r=cam.getDirection(B.Axis.X);r.y=0;if(r.lengthSquared()>.001)r.normalize();const speed=(G.meta.settings?.moveSpeed||2.2)*skinMoveMul();const d=f.scale(-y*speed*dt).add(r.scale(x*speed*dt));{const ox=cam.position.x,oz=cam.position.z,nx=ox+d.x,nz=oz+d.z;if(!isBlockedXZ(nx,nz,.30)){cam.position.x=nx;cam.position.z=nz;}else{if(!isBlockedXZ(nx,oz,.30))cam.position.x=nx;if(!isBlockedXZ(cam.position.x,nz,.30))cam.position.z=nz;}}}
   const turn=Math.abs(G.turnAxis)>.12?G.turnAxis:0;if(turn){const deg=(G.meta.settings?.smoothTurnSpeed||110)*turn*dt;const a=deg*Math.PI/180;cam.rotationQuaternion=cam.rotationQuaternion||B.Quaternion.Identity();cam.rotationQuaternion=B.Quaternion.RotationAxis(B.Axis.Y,a).multiply(cam.rotationQuaternion);}
 }
 function updateRisers(dt){for(const r of G.risers){if(!r.root||r.root.isDisposed?.())continue;r.t-=dt;if(r.t>0)continue;const d=r.targetY-r.root.position.y;r.root.position.y+=d*Math.min(1,dt*7);}}
@@ -9655,6 +9682,6 @@ ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style
 window.addEventListener('keydown',e=>{ if(!G.desktop)return; if(e.code==='KeyR')buildHub(scene); if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SURVIVAL');if((e.code==='Digit2'||e.code==='Enter')&&G.state==='hub')startShift(scene,'LEVELS'); });
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 2.9 ready • cozy lobby sound + polish';
+ui.status.textContent='Reborn 3.0 ready • solid furniture + realistic lobby controls';
 window.__CRAZY_OFFICE_READY=true; window.dispatchEvent(new Event('crazy-office-ready'));
 updateHUD();
