@@ -20,17 +20,17 @@ function activateOwnerCode(){
   toast('OWNER MODE ACTIVE • ALL FREE',1500);tone(440,.1,'triangle',.04,280);rebuildHubLabels?.();
 }
 
-const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'3.0',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
+const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'3.2',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
 function loadMeta(){
   try{
     const raw=localStorage.getItem('crazyOfficeNightShiftMeta');
     const parsed=raw?JSON.parse(raw):{};
-    const upgrading=parsed.contentVersion!=='3.0';
+    const upgrading=parsed.contentVersion!=='3.2';
     const merged={...DEFAULT_META,...parsed,settings:{...DEFAULT_META.settings,...(parsed.settings||{})}};
     merged.unlockedBats=Array.from(new Set(merged.unlockedBats||['STANDARD']));
     merged.unlockedSkins=Array.from(new Set(merged.unlockedSkins||['CLASSIC','POTATO']));
     merged.unlockedMaps=Array.from(new Set(merged.unlockedMaps||['FLOOR 13']));
-    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='3.0';
+    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='3.2';
     if(upgrading)try{localStorage.setItem('crazyOfficeNightShiftMeta',JSON.stringify(merged));}catch{}
     return merged;
   }catch(e){console.warn('Meta save could not be read; using defaults.',e);return {...DEFAULT_META,settings:{...DEFAULT_META.settings}};}
@@ -44,7 +44,7 @@ const G = {
   upgrade: { power: 1, defense: 1, improvised: 1, durability: 1, recovery: 0 },
   props: [], npcs: [], hazards: [], fx: [], lobbyMeshes: [], arenaMeshes: [], blockers: [], xr: null, right: null, left: null, batMesh: null, batTip: null, handState: new Map(), handVisuals: {left:null,right:null}, playerBodyRoot:null, vrHudRoot:null, vrHudTex:null,
   desktop: false, lastT: performance.now(), directorT: 0, spawnT: 0, bossSpawned: false, boss: null, ended: false, endTimer: null, attackGrace: 0, damageFlashT: 0, perfT:0, perfFrames:0, perfScale:1, musicT: 0, lastMusicBand: '', lastRank: 'D',
-  objective: null, meta: loadMeta(), risers: [], joystick:new B.Vector2(0,0), turnAxis:0, turnLatch:false, stationInfo:null, waveTransition:false, waveToken:0, waveMod:null, waveStartT:0, threat:0, comboBank:0
+  objective: null, meta: loadMeta(), risers: [], joystick:new B.Vector2(0,0), turnAxis:0, turnLatch:false, stationInfo:null, waveTransition:false, waveToken:0, waveMod:null, waveStartT:0, threat:0, comboBank:0, hubButtons:[], hoveredHubButtons:new Set()
 };
 
 const LOBBY_ASSETS = {
@@ -8612,6 +8612,18 @@ illum 2
 };
 
 
+
+function fixedPanelText(scene,text,parent,size=.28,color='#ffffff',y=0,z=-.24){
+  const lines=String(text).split('\n').slice(0,3), maxLen=Math.max(5,...lines.map(s=>s.length));
+  const scale=Math.max(.75,size/.28), width=Math.max(.75,Math.min(2.6,maxLen*.095))*scale, height=(.34+.19*(lines.length-1))*scale;
+  const p=B.MeshBuilder.CreatePlane('panelText',{width,height},scene);p.parent=parent;p.position=new B.Vector3(0,y,z);p.isPickable=false;
+  const tex=new B.DynamicTexture('panelTextTex',{width:768,height:256},scene,true);tex.hasAlpha=true;
+  const c=tex.getContext();c.clearRect(0,0,768,256);c.textAlign='center';c.textBaseline='middle';c.font=`900 ${Math.round(68*Math.min(1,scale))}px Arial`;c.fillStyle=color;
+  lines.forEach((s,i)=>c.fillText(s,384,128+(i-(lines.length-1)/2)*66));tex.update();
+  const m=new B.StandardMaterial('panelTextMat',scene);m.diffuseTexture=tex;m.emissiveTexture=tex;m.opacityTexture=tex;m.disableLighting=true;m.backFaceCulling=false;p.material=m;
+  G.lobbyMeshes.push(p);return p;
+}
+
 function mtlRgbToHex(parts){
   const nums=parts.map(v=>Math.max(0,Math.min(255,Math.round(parseFloat(v)*255))));
   return '#'+nums.map(v=>v.toString(16).padStart(2,'0')).join('');
@@ -8676,6 +8688,17 @@ function lobbyAsset(scene,objName,mtlName,opt={}){
   if(root) G.lobbyMeshes.push(root);
   return root;
 }
+
+function addModelCollider(scene,root,name,pad=.01,minHeight=.10){
+  if(!root)return null;
+  try{
+    root.computeWorldMatrix?.(true);for(const m of root.getChildMeshes?.()||[])m.computeWorldMatrix(true);
+    const hv=root.getHierarchyBoundingVectors(true),mn=hv.min,mx=hv.max,center=mn.add(mx).scale(.5);
+    const size=new B.Vector3(Math.max(.08,mx.x-mn.x+pad*2),Math.max(minHeight,mx.y-mn.y+pad*2),Math.max(.08,mx.z-mn.z+pad*2));
+    const c=box(scene,name||'modelCollider',center,size,'#000000');c.isVisible=false;c.isPickable=false;addBlocker(c,0);G.lobbyMeshes.push(c);return c;
+  }catch(e){console.warn('Model collider failed',name,e);return null;}
+}
+
 function hubCameraSpawn(scene){
   const cam=G.xr?.baseExperience?.camera||scene.activeCamera; if(!cam) return;
   cam.position.x=0; cam.position.z=-2.65; if(G.desktop) cam.position.y=1.68;
@@ -9015,189 +9038,177 @@ function makeScene(){
 function buildHub(scene){
   stopLobbyAudio();
   if(G.endTimer){clearTimeout(G.endTimer);G.endTimer=null;}
-  G.state='hub';G.ended=false;G.blockers=[];clearList(G.arenaMeshes);clearList(G.lobbyMeshes);G.props.splice(0).forEach(disposeProp);for(const n of G.npcs)n.dispose();G.npcs=[];for(const h of G.hazards){try{h.mesh.dispose()}catch{}}G.hazards=[];G.boss=null;if(G.batMesh){try{G.batMesh.dispose(false,true)}catch{}G.batMesh=null;G.batTip=null;}
+  G.state='hub';G.ended=false;G.blockers=[];G.hubButtons=[];G.hoveredHubButtons=new Set();clearList(G.arenaMeshes);clearList(G.lobbyMeshes);G.props.splice(0).forEach(disposeProp);
+  for(const n of G.npcs)n.dispose();G.npcs=[];for(const h of G.hazards){try{h.mesh.dispose()}catch{}}G.hazards=[];G.boss=null;
+  if(G.batMesh){try{G.batMesh.dispose(false,true)}catch{}G.batMesh=null;G.batTip=null;}
+
   const hemi=scene.getLightByName?.('hemi');if(hemi)hemi.intensity=.72;
-  const key=scene.getLightByName?.('key');if(key)key.intensity=1.05;
-  const wallCol='#dbc8af', trimCol='#6b4b34', ceilCol='#846248';
-  const floor=box(scene,'homeFloor',new B.Vector3(0,-.08,0),new B.Vector3(10.6,.16,9.2),'#7a5638');floor.material=patternMaterial(scene,'homeFloorMat','#7a5638','#d8c9a8','wood');G.lobbyMeshes.push(floor);
-  const ceil=box(scene,'homeCeil',new B.Vector3(0,4.35,0),new B.Vector3(10.6,.12,9.2),ceilCol);G.lobbyMeshes.push(ceil);
-  const front=box(scene,'homeFront',new B.Vector3(0,2.16,-4.55),new B.Vector3(10.6,4.45,.16),wallCol);G.lobbyMeshes.push(front);
-  const back=box(scene,'homeBack',new B.Vector3(0,2.16,4.55),new B.Vector3(10.6,4.45,.16),wallCol);G.lobbyMeshes.push(back);
-  const left=box(scene,'homeLeft',new B.Vector3(-5.2,2.16,0),new B.Vector3(.16,4.45,9.2),wallCol);G.lobbyMeshes.push(left);
-  const rightFront=box(scene,'homeRightFront',new B.Vector3(5.2,2.16,-2.95),new B.Vector3(.16,4.45,2.8),wallCol);G.lobbyMeshes.push(rightFront);
-  const rightBack=box(scene,'homeRightBack',new B.Vector3(5.2,2.16,2.95),new B.Vector3(.16,4.45,2.8),wallCol);G.lobbyMeshes.push(rightBack);
-  const rightTop=box(scene,'homeRightTop',new B.Vector3(5.2,3.62,0),new B.Vector3(.16,1.52,3.6),wallCol);G.lobbyMeshes.push(rightTop);
-  // Lobby walls are solid, except the cosmetics-room opening.
+  const key=scene.getLightByName?.('key');if(key)key.intensity=1.0;
+  const wallCol='#ddcab2',trimCol='#654731',ceilCol='#806046';
+
+  const floor=box(scene,'homeFloor',new B.Vector3(0,-.08,0),new B.Vector3(10.6,.16,9.2),'#765438');
+  floor.material=patternMaterial(scene,'homeFloorMat','#765438','#c8b38f','wood');G.lobbyMeshes.push(floor);
+  G.lobbyMeshes.push(box(scene,'homeCeil',new B.Vector3(0,4.35,0),new B.Vector3(10.6,.12,9.2),ceilCol));
+  G.lobbyMeshes.push(box(scene,'homeFront',new B.Vector3(0,2.16,-4.55),new B.Vector3(10.6,4.45,.16),wallCol));
+  G.lobbyMeshes.push(box(scene,'homeLeft',new B.Vector3(-5.2,2.16,0),new B.Vector3(.16,4.45,9.2),wallCol));
+
+  // Back wall with true window opening.
+  G.lobbyMeshes.push(box(scene,'backLeft',new B.Vector3(-3.85,2.16,4.55),new B.Vector3(2.7,4.45,.16),wallCol));
+  G.lobbyMeshes.push(box(scene,'backWindowLow',new B.Vector3(-1.15,.52,4.55),new B.Vector3(2.7,1.04,.16),wallCol));
+  G.lobbyMeshes.push(box(scene,'backWindowTop',new B.Vector3(-1.15,3.55,4.55),new B.Vector3(2.7,1.65,.16),wallCol));
+  G.lobbyMeshes.push(box(scene,'backRight',new B.Vector3(2.6,2.16,4.55),new B.Vector3(4.8,4.45,.16),wallCol));
+
+  // Cosmetics-room opening in right wall.
+  G.lobbyMeshes.push(box(scene,'homeRightFront',new B.Vector3(5.2,2.16,-3.15),new B.Vector3(.16,4.45,2.35),wallCol));
+  G.lobbyMeshes.push(box(scene,'homeRightBack',new B.Vector3(5.2,2.16,3.15),new B.Vector3(.16,4.45,2.35),wallCol));
+  G.lobbyMeshes.push(box(scene,'homeRightTop',new B.Vector3(5.2,3.72,0),new B.Vector3(.16,1.25,4.0),wallCol));
+
   for(const wb of [
-    {p:new B.Vector3(0,2.1,-4.55),s:new B.Vector3(10.6,4.3,.18)},
-    {p:new B.Vector3(0,2.1,4.55),s:new B.Vector3(10.6,4.3,.18)},
-    {p:new B.Vector3(-5.2,2.1,0),s:new B.Vector3(.18,4.3,9.2)},
-    {p:new B.Vector3(5.2,2.1,-3.0),s:new B.Vector3(.18,4.3,2.7)},
-    {p:new B.Vector3(5.2,2.1,3.0),s:new B.Vector3(.18,4.3,2.7)},
-    {p:new B.Vector3(10.3,2.1,0),s:new B.Vector3(.18,4.3,6.0)},
-    {p:new B.Vector3(8.5,2.1,-2.95),s:new B.Vector3(3.8,4.3,.18)},
-    {p:new B.Vector3(8.5,2.1,2.95),s:new B.Vector3(3.8,4.3,.18)}
-  ]){const m=box(scene,'hubWallCollider',wb.p,wb.s,'#000000');m.isVisible=false;addBlocker(m,.02);G.lobbyMeshes.push(m);}
+    [0,2.1,-4.55,10.55,4.3,.18],[-5.2,2.1,0,.18,4.3,9.1],
+    [-3.85,2.1,4.55,2.65,4.3,.18],[-1.15,.50,4.55,2.65,1.0,.18],[-1.15,3.60,4.55,2.65,1.50,.18],[2.6,2.1,4.55,4.75,4.3,.18],
+    [5.2,2.1,-3.15,.18,4.3,2.3],[5.2,2.1,3.15,.18,4.3,2.3]
+  ]){const m=box(scene,'hubWallCollider',new B.Vector3(wb[0],wb[1],wb[2]),new B.Vector3(wb[3],wb[4],wb[5]),'#000');m.isVisible=false;m.isPickable=false;addBlocker(m,0);G.lobbyMeshes.push(m);}
 
-  for(const x of [-3.45,0,3.45]){const beam=box(scene,'beam',new B.Vector3(x,4.12,0),new B.Vector3(.16,.18,8.8),trimCol);G.lobbyMeshes.push(beam);}
-  for(const z of [-4.4,4.4]){const trim=box(scene,'floorTrim'+z,new B.Vector3(0,.18,z),new B.Vector3(10.6,.16,.08),trimCol);G.lobbyMeshes.push(trim);}
+  for(const x of [-3.45,0,3.45])G.lobbyMeshes.push(box(scene,'beam',new B.Vector3(x,4.12,0),new B.Vector3(.14,.18,8.8),trimCol));
 
-  const cosmeticsFloor=box(scene,'cosFloor',new B.Vector3(8.5,-.08,0),new B.Vector3(3.8,.16,6.0),'#4a3a44');cosmeticsFloor.material=patternMaterial(scene,'cosFloorMat','#4a3a44','#b68db8','tile');G.lobbyMeshes.push(cosmeticsFloor);
-  const cosmeticsCeil=box(scene,'cosCeil',new B.Vector3(8.5,4.35,0),new B.Vector3(3.8,.12,6.0),'#58415b');G.lobbyMeshes.push(cosmeticsCeil);
-  const cosFar=box(scene,'cosFar',new B.Vector3(10.3,2.16,0),new B.Vector3(.16,4.45,6.0),wallCol);G.lobbyMeshes.push(cosFar);
-  const cosFront=box(scene,'cosFront',new B.Vector3(8.5,2.16,-2.95),new B.Vector3(3.8,4.45,.16),wallCol);G.lobbyMeshes.push(cosFront);
-  const cosBack=box(scene,'cosBack',new B.Vector3(8.5,2.16,2.95),new B.Vector3(3.8,4.45,.16),wallCol);G.lobbyMeshes.push(cosBack);
-  const archTrim=box(scene,'cosDoorTrim',new B.Vector3(5.05,2.4,0),new B.Vector3(.22,4.1,3.6),trimCol);archTrim.visibility=.18;G.lobbyMeshes.push(archTrim);
-  const cosSign=label(scene,'COSMETICS ROOM',new B.Vector3(7.0,3.35,0),.42,'#f2e3ff');G.lobbyMeshes.push(cosSign);
+  // Cosmetics room shell.
+  const cf=box(scene,'cosFloor',new B.Vector3(8.45,-.08,0),new B.Vector3(3.7,.16,6.0),'#433847');cf.material=patternMaterial(scene,'cosFloorMat','#433847','#a783ae','tile');G.lobbyMeshes.push(cf);
+  G.lobbyMeshes.push(box(scene,'cosCeil',new B.Vector3(8.45,4.35,0),new B.Vector3(3.7,.12,6.0),'#544458'));
+  G.lobbyMeshes.push(box(scene,'cosFar',new B.Vector3(10.25,2.16,0),new B.Vector3(.16,4.45,6.0),wallCol));
+  G.lobbyMeshes.push(box(scene,'cosFront',new B.Vector3(8.45,2.16,-2.95),new B.Vector3(3.7,4.45,.16),wallCol));
+  G.lobbyMeshes.push(box(scene,'cosBack',new B.Vector3(8.45,2.16,2.95),new B.Vector3(3.7,4.45,.16),wallCol));
+  for(const wb of [[10.25,2.1,0,.18,4.3,5.95],[8.45,2.1,-2.95,3.65,4.3,.18],[8.45,2.1,2.95,3.65,4.3,.18]]){
+    const m=box(scene,'cosWallCollider',new B.Vector3(wb[0],wb[1],wb[2]),new B.Vector3(wb[3],wb[4],wb[5]),'#000');m.isVisible=false;addBlocker(m,0);G.lobbyMeshes.push(m);
+  }
+  G.lobbyMeshes.push(box(scene,'cosDoorHeader',new B.Vector3(5.12,3.52,0),new B.Vector3(.18,.65,3.95),trimCol));
+  G.lobbyMeshes.push(label(scene,'COSMETICS ROOM',new B.Vector3(5.0,3.18,0),.34,'#f3e3ff'));
 
-  const fireLight=new B.PointLight('fireLight',new B.Vector3(2.7,1.45,3.35),scene);fireLight.diffuse=B.Color3.FromHexString('#ffb76b');fireLight.intensity=.65;fireLight.range=7;G.lobbyMeshes.push({dispose:()=>{try{fireLight.dispose()}catch{}}});
-  const cosLight=new B.PointLight('cosLight',new B.Vector3(8.5,2.4,0),scene);cosLight.diffuse=B.Color3.FromHexString('#b589ff');cosLight.intensity=.46;cosLight.range=6;G.lobbyMeshes.push({dispose:()=>{try{cosLight.dispose()}catch{}}});
+  // Properly seated window and curtains.
+  lobbyAsset(scene,'Window_Large2.obj','Window_Large2.mtl',{name:'windowLarge2',position:new B.Vector3(-1.15,1.17,4.49),scale:new B.Vector3(1.40,1.40,1.40),pickable:false});
+  lobbyAsset(scene,'Curtains_Double.obj','Curtains_Double.mtl',{name:'curtains',position:new B.Vector3(-1.15,.98,4.35),scale:new B.Vector3(.62,.62,.62),pickable:false});
+  const sky=box(scene,'windowSky',new B.Vector3(-1.15,2.08,4.64),new B.Vector3(2.48,2.34,.035),'#17314e');sky.material.emissiveColor=B.Color3.FromHexString('#244b74').scale(.55);G.lobbyMeshes.push(sky);
 
-  const rug=lobbyAsset(scene,'Carpet_Round.obj','Carpet_Round.mtl',{name:'cozyRug',position:new B.Vector3(-.6,.01,.95),scale:new B.Vector3(1.3,1.0,1.3)});
-  const couch=lobbyAsset(scene,'Couch_Large2.obj','Couch_Large2.mtl',{name:'cozyCouch',position:new B.Vector3(-2.55,0,-.4),rotation:new B.Vector3(0,0,0),scale:new B.Vector3(.78,.78,.78)});
-  const table=lobbyAsset(scene,'Table_RoundSmall.obj','Table_RoundSmall.mtl',{name:'cozyTable',position:new B.Vector3(-.25,0,1.15),scale:new B.Vector3(.92,.92,.92)});
-  const fireplace=lobbyAsset(scene,'Fireplace.obj','Fireplace.mtl',{name:'cozyFireplace',position:new B.Vector3(2.75,0,3.55),rotation:new B.Vector3(0,Math.PI,0),scale:new B.Vector3(.95,.95,.95)});
-  const plantA=lobbyAsset(scene,'Houseplant_3.obj','Houseplant_3.mtl',{name:'plantTall',position:new B.Vector3(-4.15,0,3.45),scale:new B.Vector3(1.45,1.45,1.45)});
-  const plantB=lobbyAsset(scene,'Houseplant_2.obj','Houseplant_2.mtl',{name:'plantSmall',position:new B.Vector3(4.0,0,-3.6),scale:new B.Vector3(1.8,1.8,1.8)});
-  const shelf=lobbyAsset(scene,'Bookshelf.obj','Bookshelf.mtl',{name:'bookshelf',position:new B.Vector3(-4.2,0,-3.0),rotation:new B.Vector3(0,Math.PI/2,0),scale:new B.Vector3(.56,.56,.56)});
-  const trash=lobbyAsset(scene,'Trashcan_Cylindric.obj','Trashcan_Cylindric.mtl',{name:'trashcan',position:new B.Vector3(4.35,0,2.35),scale:new B.Vector3(.45,.45,.45)});
-  const window1=lobbyAsset(scene,'Window_Large2.obj','Window_Large2.mtl',{name:'window1',position:new B.Vector3(-1.6,1.15,4.35),rotation:new B.Vector3(0,Math.PI/2,0),scale:new B.Vector3(1.4,1.4,1.4)});
-  const curtain1=lobbyAsset(scene,'Curtains_Double.obj','Curtains_Double.mtl',{name:'curtain1',position:new B.Vector3(-1.6,1.1,4.18),rotation:new B.Vector3(0,Math.PI,0),scale:new B.Vector3(.62,.62,.62)});
-  const chandelier=lobbyAsset(scene,'Light_Chandelier.obj','Light_Chandelier.mtl',{name:'chandelier',position:new B.Vector3(0,4.0,.45),scale:new B.Vector3(1.3,1.3,1.3)});
-  const floorLamp=lobbyAsset(scene,'Light_Floor2.obj','Light_Floor2.mtl',{name:'floorLamp',position:new B.Vector3(2.95,0,-1.55),scale:new B.Vector3(1.55,1.55,1.55)});
+  // Furniture with model-derived hitboxes.
+  const couch=lobbyAsset(scene,'Couch_Large2.obj','Couch_Large2.mtl',{name:'cozyCouch',position:new B.Vector3(-2.45,0,-.05),scale:new B.Vector3(.68,.68,.68),pickable:false});
+  const table=lobbyAsset(scene,'Table_RoundSmall.obj','Table_RoundSmall.mtl',{name:'cozyTable',position:new B.Vector3(-.15,0,.85),scale:new B.Vector3(.78,.78,.78),pickable:false});
+  lobbyAsset(scene,'Carpet_Round.obj','Carpet_Round.mtl',{name:'cozyRug',position:new B.Vector3(-.25,.005,.65),scale:new B.Vector3(1.12,1,1.12),pickable:false});
+  const shelf=lobbyAsset(scene,'Bookshelf.obj','Bookshelf.mtl',{name:'bookshelf',position:new B.Vector3(-4.62,0,1.65),rotation:new B.Vector3(0,Math.PI/2,0),scale:new B.Vector3(.48,.48,.48),pickable:false});
+  const plantTall=lobbyAsset(scene,'Houseplant_3.obj','Houseplant_3.mtl',{name:'plantTall',position:new B.Vector3(-4.25,0,3.55),scale:new B.Vector3(1.25,1.25,1.25),pickable:false});
+  const plantSmall=lobbyAsset(scene,'Houseplant_2.obj','Houseplant_2.mtl',{name:'plantSmall',position:new B.Vector3(4.18,0,3.68),scale:new B.Vector3(1.6,1.6,1.6),pickable:false});
+  const floorLamp=lobbyAsset(scene,'Light_Floor2.obj','Light_Floor2.mtl',{name:'floorLamp',position:new B.Vector3(3.95,0,-2.65),scale:new B.Vector3(1.35,1.35,1.35),pickable:false});
+  const trash=lobbyAsset(scene,'Trashcan_Cylindric.obj','Trashcan_Cylindric.mtl',{name:'trashcan',position:new B.Vector3(4.4,0,-3.75),scale:new B.Vector3(.36,.36,.36),pickable:false});
+  lobbyAsset(scene,'Light_Chandelier.obj','Light_Chandelier.mtl',{name:'chandelier',position:new B.Vector3(0,4.0,.3),scale:new B.Vector3(1.15,1.15,1.15),pickable:false});
+  addModelCollider(scene,couch,'couchCollider',.005);addModelCollider(scene,table,'tableCollider',.003);addModelCollider(scene,shelf,'bookshelfCollider',.004);
+  addModelCollider(scene,plantTall,'plantTallCollider',.002);addModelCollider(scene,plantSmall,'plantSmallCollider',.002);addModelCollider(scene,floorLamp,'floorLampCollider',.002);addModelCollider(scene,trash,'trashCollider',.002);
 
-  // cosmetic room placeholder decor
-  const cosShelf1=lobbyAsset(scene,'Shelf_Small2.obj','Shelf_Small2.mtl',{name:'cosShelf1',position:new B.Vector3(9.55,1.2,-1.2),rotation:new B.Vector3(0,-Math.PI/2,0),scale:new B.Vector3(1.8,1.8,1.8)});
-  const cosShelf2=lobbyAsset(scene,'Shelf_Small2.obj','Shelf_Small2.mtl',{name:'cosShelf2',position:new B.Vector3(9.55,1.2,0.0),rotation:new B.Vector3(0,-Math.PI/2,0),scale:new B.Vector3(1.8,1.8,1.8)});
-  const cosShelf3=lobbyAsset(scene,'Shelf_Small2.obj','Shelf_Small2.mtl',{name:'cosShelf3',position:new B.Vector3(9.55,1.2,1.2),rotation:new B.Vector3(0,-Math.PI/2,0),scale:new B.Vector3(1.8,1.8,1.8)});
-  G.lobbyMeshes.push(label(scene,`SUITS\nSOON`,new B.Vector3(9.05,1.95,-1.2),.26,'#f5e9ff'));
-  G.lobbyMeshes.push(label(scene,`HATS\nSOON`,new B.Vector3(9.05,1.95,0),.26,'#f5e9ff'));
-  G.lobbyMeshes.push(label(scene,`FX\nSOON`,new B.Vector3(9.05,1.95,1.2),.26,'#f5e9ff'));
-  const cosPed=box(scene,'cosPed',new B.Vector3(7.15,.4,0),new B.Vector3(1.2,.8,1.2),'#65426f');G.lobbyMeshes.push(cosPed);
-  const cosOrb=B.MeshBuilder.CreateSphere('cosOrb',{diameter:.52,segments:12},scene);cosOrb.position=new B.Vector3(7.15,1.12,0);cosOrb.material=mat(scene,'cosOrbMat','#d7b6ff',.3);cosOrb.material.emissiveColor=B.Color3.FromHexString('#9a66ff').scale(.45);G.lobbyMeshes.push(cosOrb);
+  // Fireplace rebuilt cleanly: no imported clipping.
+  const fpRoot=new B.TransformNode('fireplaceRebuilt',scene);fpRoot.position=new B.Vector3(2.55,0,4.12);G.lobbyMeshes.push(fpRoot);
+  const stone='#7f6b59',stone2='#5e4c3f',mantel='#6b432b';
+  for(const spec of [
+    ['fpBase',0,.16,0,2.2,.32,.76,stone2],['fpL',-.8,1.02,0,.42,1.75,.62,stone],['fpR',.8,1.02,0,.42,1.75,.62,stone],
+    ['fpTop',0,1.78,0,2.0,.38,.62,stone],['fpMantel',0,2.02,-.02,2.35,.18,.82,mantel],['fpBack',0,.87,.27,1.25,1.28,.10,'#201816'],
+    ['fpHearth',0,.08,-.30,1.62,.16,1.08,stone2]
+  ])G.lobbyMeshes.push(box(scene,spec[0],new B.Vector3(spec[1],spec[2],spec[3]),new B.Vector3(spec[4],spec[5],spec[6]),spec[7],fpRoot));
+  const fpCollider=box(scene,'fireplaceCollider',new B.Vector3(2.55,1.05,4.04),new B.Vector3(2.34,2.10,.76),'#000');fpCollider.isVisible=false;addBlocker(fpCollider,0);G.lobbyMeshes.push(fpCollider);
+  const fireLight=new B.PointLight('fireLight',new B.Vector3(2.55,1.0,3.55),scene);fireLight.diffuse=B.Color3.FromHexString('#ffb266');fireLight.intensity=.60;fireLight.range=6;G.lobbyMeshes.push({dispose:()=>{try{fireLight.dispose()}catch{}}});
+  const flameRoot=new B.TransformNode('fireFlames',scene);flameRoot.position=new B.Vector3(2.55,.55,3.70);G.lobbyMeshes.push(flameRoot);
+  const flames=[];for(let i=0;i<6;i++){const col=['#ff5b1e','#ff9a22','#ffd05a'][i%3],f=B.MeshBuilder.CreateSphere('flame'+i,{diameter:.17+Math.random()*.10,segments:7},scene);f.parent=flameRoot;f.position=new B.Vector3((Math.random()-.5)*.54,(i%3)*.07,0);f.scaling=new B.Vector3(.62,1.5,.62);f.material=mat(scene,'flameMat'+i,col,.3);f.material.emissiveColor=B.Color3.FromHexString(col).scale(.9);G.lobbyMeshes.push(f);flames.push(f);}
 
-  // fire glow inset
-  const fire=box(scene,'fireGlow',new B.Vector3(2.75,.92,3.06),new B.Vector3(.52,.78,.16),'#ff7a29');fire.material.emissiveColor=B.Color3.FromHexString('#ff5a16').scale(.9);G.lobbyMeshes.push(fire);
+  // Cosmetics placeholders only.
+  for(const [z,title] of [[-1.55,'HEAD'],[0,'BODY'],[1.55,'FX']]){
+    const sh=lobbyAsset(scene,'Shelf_Small2.obj','Shelf_Small2.mtl',{name:'cosShelf'+title,position:new B.Vector3(9.7,1.15,z),rotation:new B.Vector3(0,-Math.PI/2,0),scale:new B.Vector3(1.55,1.55,1.55),pickable:false});
+    addModelCollider(scene,sh,'cosShelfCollider'+title,.003);G.lobbyMeshes.push(label(scene,title+'\nCOMING SOON',new B.Vector3(9.15,2.0,z),.24,'#f5eaff'));
+  }
+  const cosPed=box(scene,'cosPed',new B.Vector3(7.15,.38,0),new B.Vector3(1.15,.76,1.15),'#5b4266');G.lobbyMeshes.push(cosPed);
+  const cosPedCol=box(scene,'cosPedCollider',new B.Vector3(7.15,.38,0),new B.Vector3(1.15,.76,1.15),'#000');cosPedCol.isVisible=false;addBlocker(cosPedCol,0);G.lobbyMeshes.push(cosPedCol);
+  const cosOrb=B.MeshBuilder.CreateSphere('cosOrb',{diameter:.48,segments:10},scene);cosOrb.position=new B.Vector3(7.15,1.08,0);cosOrb.material=mat(scene,'cosOrbMat','#c9a3f8',.28);cosOrb.material.emissiveColor=B.Color3.FromHexString('#8e5ee0').scale(.5);G.lobbyMeshes.push(cosOrb);
 
-  // comfy interaction zone
-  G.lobbyMeshes.push(label(scene,'CRAZY OFFICE',new B.Vector3(0,3.5,-4.15),.62,'#fff2dc'));
-  G.lobbyMeshes.push(label(scene,'COZY LOBBY',new B.Vector3(0,3.02,-4.15),.32,'#ffd9ad'));
-
-  function panelButton(name,text,pos,color,meta,scale=.95){
+  // Physical, organized controls.
+  function consolePanel(name,title,pos,width=2.25,height=2.45){
     const root=new B.TransformNode(name+'Root',scene);root.position.copyFrom(pos);G.lobbyMeshes.push(root);
-    // wooden/metal backing plate
-    const frame=box(scene,name+'Frame',B.Vector3.Zero(),new B.Vector3(1.42*scale,.72*scale,.18),'#302a27',root);
-    frame.position.z=.03;frame.material.roughness=.48;frame.material.metallic=.18;G.lobbyMeshes.push(frame);
-    // raised colored button surface
-    const b=box(scene,name,new B.Vector3(0,0,-.13),new B.Vector3(1.18*scale,.50*scale,.16),color,root);
-    b.metadata=meta;b.material.emissiveColor=B.Color3.FromHexString(color).scale(.12);b.material.roughness=.42;b.material.metallic=.12;G.lobbyMeshes.push(b);
-    // small highlight strip gives a physical, beveled look
-    const hi=box(scene,name+'Highlight',new B.Vector3(0,.19*scale,-.225),new B.Vector3(.96*scale,.035*scale,.018),'#ffffff',root);
-    hi.material.alpha=.28;hi.isPickable=false;G.lobbyMeshes.push(hi);
-    const p=label(scene,text,new B.Vector3(0,0,-.235).add(pos),.28*scale,'#ffffff');G.lobbyMeshes.push(p);
+    const back=box(scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.16),'#292522',root);back.material.metallic=.10;back.material.roughness=.52;G.lobbyMeshes.push(back);
+    G.lobbyMeshes.push(box(scene,name+'Trim',new B.Vector3(0,.02,-.09),new B.Vector3(width-.10,height-.10,.035),'#6a523c',root));
+    G.lobbyMeshes.push(box(scene,name+'Face',new B.Vector3(0,-.02,-.13),new B.Vector3(width-.22,height-.35,.035),'#34302d',root));
+    fixedPanelText(scene,title,root,.31,'#ffdcb2',height*.34,-.19);return root;
+  }
+  function physicalButton(name,text,parent,x,y,color,meta,w=.86,h=.42){
+    const root=new B.TransformNode(name+'Root',scene);root.parent=parent;root.position=new B.Vector3(x,y,-.22);G.lobbyMeshes.push(root);
+
+    const shadow=box(scene,name+'Shadow',new B.Vector3(0,-.03,-.02),new B.Vector3(w+.22,h+.20,.06),'#050505',root);
+    shadow.material.alpha=.55;shadow.isPickable=false;G.lobbyMeshes.push(shadow);
+
+    const base=box(scene,name+'Base',B.Vector3.Zero(),new B.Vector3(w+.14,h+.14,.13),'#121212',root);
+    base.material.metallic=.38;base.material.roughness=.32;G.lobbyMeshes.push(base);
+
+    const rim=box(scene,name+'Rim',new B.Vector3(0,0,-.06),new B.Vector3(w+.05,h+.05,.07),'#bfc8d4',root);
+    rim.material.metallic=.55;rim.material.roughness=.18;rim.material.emissiveColor=B.Color3.FromHexString('#4e535b').scale(.06);G.lobbyMeshes.push(rim);
+
+    const b=box(scene,name,new B.Vector3(0,0,-.09),new B.Vector3(w,h,.13),color,root);
+    b.material.metallic=.18;b.material.roughness=.28;b.material.emissiveColor=B.Color3.FromHexString(color).scale(.07);G.lobbyMeshes.push(b);
+
+    const inset=box(scene,name+'Inset',new B.Vector3(0,-.015,-.135),new B.Vector3(w*.90,h*.88,.016),'#0f0f10',root);
+    inset.material.alpha=.16;inset.isPickable=false;G.lobbyMeshes.push(inset);
+
+    const gloss=box(scene,name+'Gloss',new B.Vector3(0,h*.22,-.168),new B.Vector3(w*.74,.035,.012),'#ffffff',root);
+    gloss.material.alpha=.16;gloss.material.emissiveColor=B.Color3.FromHexString('#ffffff').scale(.10);gloss.isPickable=false;G.lobbyMeshes.push(gloss);
+
+    const led=B.MeshBuilder.CreateSphere(name+'Led',{diameter:Math.min(.075,h*.18),segments:8},scene);
+    led.parent=root;led.position=new B.Vector3(-w*.39,h*.24,-.17);
+    led.material=mat(scene,name+'LedMat','#dff7ff',.14);led.material.emissiveColor=B.Color3.FromHexString('#dff7ff').scale(.45);led.isPickable=false;G.lobbyMeshes.push(led);
+
+    const glow=box(scene,name+'HoverGlow',new B.Vector3(0,0,-.175),new B.Vector3(w+.13,h+.13,.022),'#fff1a6',root);
+    glow.material.alpha=.68;glow.material.metallic=.02;glow.material.roughness=.08;glow.material.emissiveColor=B.Color3.FromHexString('#fff2a9').scale(.95);glow.isPickable=false;glow.setEnabled(false);G.lobbyMeshes.push(glow);
+
+    b.metadata={...meta,baseColor:color,hoverGlow:glow,faceMesh:b,rimMesh:rim,glossMesh:gloss};
+    G.hubButtons.push(b);
+
+    fixedPanelText(scene,text,root,.23,'#ffffff',0,-.178);
     return b;
   }
-  function stationTitle(text,pos,color='#3c2618'){ const t=label(scene,text,pos,.30,color); G.lobbyMeshes.push(t); return t; }
-
-  // Mode buttons centered and easy to hit
-  stationTitle('GAME MODES',new B.Vector3(0,2.7,-3.88));
-  panelButton('survivalBtn','SURVIVAL',new B.Vector3(-.92,1.95,-4.1),'#d55f39',{interact:'mode',mode:'SURVIVAL'},1.05);
-  panelButton('levelsBtn','LEVELS',new B.Vector3(.92,1.95,-4.1),'#4c82c7',{interact:'mode',mode:'LEVELS'},1.05);
-
-  const mapDef=CATALOG.maps.find(x=>x.id===G.meta.selectedMap)||CATALOG.maps[0], bat=selectedBatDef(), skin=selectedSkinDef();
-  stationTitle('MAP',new B.Vector3(-3.45,2.8,-4.0));
-  G.lobbyMeshes.push(label(scene,mapDef.name,new B.Vector3(-3.45,2.35,-4.05),.31,'#fff7ef'));
-  panelButton('mapPrev','<',new B.Vector3(-4.25,1.75,-4.05),'#4f6d80',{interact:'station',station:'MAP_PREV'},.9);
-  panelButton('mapNext','>',new B.Vector3(-2.65,1.75,-4.05),'#4f6d80',{interact:'station',station:'MAP_NEXT'},.9);
-
-  stationTitle('BAT',new B.Vector3(0,2.8,-4.0));
-  G.lobbyMeshes.push(label(scene,`${bat.name}
-${batAbilityDesc(bat.ability)}`,new B.Vector3(0,2.27,-4.05),.26,'#fff7ef'));
-  panelButton('batPrev','<',new B.Vector3(-.8,1.75,-4.05),'#704329',{interact:'station',station:'BAT_PREV'},.9);
-  panelButton('batNext','>',new B.Vector3(.8,1.75,-4.05),'#704329',{interact:'station',station:'BAT_NEXT'},.9);
-  const previewRoot=makeBatModel(scene,bat);previewRoot.name='lobbyBatPreview';previewRoot.position=new B.Vector3(0,1.1,-2.95);previewRoot.rotation.z=Math.PI/2;previewRoot.rotation.y=.28;previewRoot.scaling.setAll(.74);G.lobbyMeshes.push(previewRoot);
-
-  stationTitle('SKIN',new B.Vector3(3.45,2.8,-4.0));
-  G.lobbyMeshes.push(label(scene,`${skin.name}
-${skinAbilityDesc(skin.ability)}`,new B.Vector3(3.45,2.27,-4.05),.26,'#fff7ef'));
-  panelButton('skinPrev','<',new B.Vector3(2.65,1.75,-4.05),'#7a4c7e',{interact:'station',station:'SKIN_PREV'},.9);
-  panelButton('skinNext','>',new B.Vector3(4.25,1.75,-4.05),'#7a4c7e',{interact:'station',station:'SKIN_NEXT'},.9);
-
-  stationTitle('COLOR / SETTINGS',new B.Vector3(0,.98,-4.02));
-  panelButton('colorPrev','< COLOR',new B.Vector3(-1.55,.42,-4.05),G.meta.selectedColor||'#b9833d',{interact:'station',station:'COLOR_PREV'},.88);
-  panelButton('colorNext','COLOR >',new B.Vector3(.05,.42,-4.05),G.meta.selectedColor||'#b9833d',{interact:'station',station:'COLOR_NEXT'},.88);
-  panelButton('settingsBtn','SETTINGS',new B.Vector3(2.0,.42,-4.05),'#3e6a50',{interact:'station',station:'SETTINGS'},.88);
-
-  // Owner code placed on the back side of the lobby wall
-  stationTitle('BACK WALL',new B.Vector3(0,3.1,4.1),'#5b3927');
-  panelButton('ownerBtn',OWNER_MODE?'OWNER ON':'OWNER CODE',new B.Vector3(-1.25,1.2,4.03),OWNER_MODE?'#9b7a26':'#57465f',{interact:'station',station:'OWNER_CODE'},1.0);
-  panelButton('crateBtn',OWNER_MODE?'FREE CRATE':'OPEN CRATE',new B.Vector3(1.25,1.2,4.03),'#a66a2c',{interact:'station',station:'OPEN_CRATE'},1.0);
-  G.lobbyMeshes.push(label(scene,OWNER_MODE?'ALL CONTENT UNLOCKED':`${CRATE_COST} COINS`,new B.Vector3(1.25,1.72,4.08),.23,'#fff3de'));
-  G.lobbyMeshes.push(label(scene,`LEVEL ${G.meta.survivalLevel||1} • ${G.meta.coins||0} COINS`,new B.Vector3(0,2.2,4.08),.28,'#fff3de'));
-
-  // Accurate hidden colliders so you cannot walk through the furniture.
-  for(const block of [
-    {p:new B.Vector3(-2.55,.82,-.20),s:new B.Vector3(4.15,1.65,1.65)}, // couch
-    {p:new B.Vector3(-.25,.52,1.15),s:new B.Vector3(1.75,1.05,1.75)}, // table
-    {p:new B.Vector3(2.75,1.22,3.48),s:new B.Vector3(3.0,2.45,1.18)}, // fireplace
-    {p:new B.Vector3(-4.2,1.25,-3.0),s:new B.Vector3(.75,2.5,1.45)}, // bookshelf
-    {p:new B.Vector3(-4.15,.62,3.45),s:new B.Vector3(.75,1.25,.75)}, // plant
-    {p:new B.Vector3(4.0,.45,-3.6),s:new B.Vector3(.65,.9,.65)}, // plant
-    {p:new B.Vector3(4.35,.32,2.35),s:new B.Vector3(.55,.65,.55)}, // trash
-    {p:new B.Vector3(2.95,.65,-1.55),s:new B.Vector3(.55,1.3,.55)}, // floor lamp
-    {p:new B.Vector3(7.15,.5,0),s:new B.Vector3(1.5,1.0,1.5)}, // cosmetics pedestal
-    {p:new B.Vector3(9.55,1.2,0),s:new B.Vector3(.75,2.3,3.4)} // cosmetics shelves
-  ]){ const m=box(scene,'hubBlocker',block.p,block.s,'#000000'); m.isVisible=false; addBlocker(m,.12); G.lobbyMeshes.push(m); }
-
-
-  // 2.9 lobby polish: animated fire, gentle light flicker, floating dust motes
-  const flameRoot=new B.TransformNode('fireFlames',scene); flameRoot.position=new B.Vector3(2.75,.72,3.00); G.lobbyMeshes.push(flameRoot);
-  const flameMats=[
-    mat(scene,'flameOrange','#ff7a1f',.35),
-    mat(scene,'flameGold','#ffc14f',.35),
-    mat(scene,'flameRed','#e94b20',.45)
-  ];
-  flameMats.forEach((m,i)=>m.emissiveColor=B.Color3.FromHexString(['#ff6a16','#ffd35a','#e53b18'][i]).scale(.8));
-  const flames=[];
-  for(let i=0;i<7;i++){
-    const f=B.MeshBuilder.CreateSphere('flame'+i,{diameter:.22+Math.random()*.14,segments:8},scene);
-    f.parent=flameRoot; f.position=new B.Vector3((Math.random()-.5)*.55,Math.random()*.28,(Math.random()-.5)*.12);
-    f.scaling=new B.Vector3(.65,1.45,.65); f.material=flameMats[i%flameMats.length]; flames.push(f);
+  function selectedReadout(parent,text,y=-.50){
+    G.lobbyMeshes.push(box(scene,'readout',new B.Vector3(0,y,-.20),new B.Vector3(1.72,.40,.05),'#101714',parent));
+    fixedPanelText(scene,text,parent,.19,'#8dffb0',y,-.235);
   }
-  const dustMat=mat(scene,'dustMat','#ffe5bd',.95); dustMat.emissiveColor=B.Color3.FromHexString('#ffe5bd').scale(.28);
-  const dust=[];
-  for(let i=0;i<12;i++){
-    const d=B.MeshBuilder.CreateSphere('dust'+i,{diameter:.018+Math.random()*.018,segments:4},scene);
-    d.position=new B.Vector3(-4+Math.random()*8,.4+Math.random()*3.2,-3.4+Math.random()*6.8); d.material=dustMat; dust.push(d); G.lobbyMeshes.push(d);
-  }
-  let hubAnimT=0;
-  const hubObs=scene.onBeforeRenderObservable.add(()=>{
-    if(G.state!=='hub') return;
-    const dt=Math.min(.05,engine.getDeltaTime()/1000); hubAnimT+=dt;
-    flames.forEach((f,i)=>{
-      f.scaling.y=1.15+Math.sin(hubAnimT*7+i*1.7)*.22+Math.random()*.05;
-      f.position.y=.08+(i%3)*.08+Math.sin(hubAnimT*5+i)*.035;
-      f.rotation.y+=dt*(.4+i*.05);
-    });
-    fireLight.intensity=.58+Math.sin(hubAnimT*8)*.08+Math.random()*.05;
-    dust.forEach((d,i)=>{
-      d.position.y+=dt*(.035+(i%4)*.012);
-      d.position.x+=Math.sin(hubAnimT*.6+i)*dt*.012;
-      if(d.position.y>3.7)d.position.y=.35;
-    });
-  });
-  G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(hubObs)}catch{}}});
 
-  // warm pool lights near seating + cosmetic doorway
-  const warmLamp=new B.PointLight('warmLobbyLamp',new B.Vector3(-2.3,2.4,-.25),scene);
-  warmLamp.diffuse=B.Color3.FromHexString('#ffd7a3');warmLamp.intensity=.34;warmLamp.range=5.5;
-  G.lobbyMeshes.push({dispose:()=>{try{warmLamp.dispose()}catch{}}});
-  const entryGlow=new B.PointLight('cosEntryGlow',new B.Vector3(5.5,2.2,0),scene);
-  entryGlow.diffuse=B.Color3.FromHexString('#c9a2ff');entryGlow.intensity=.24;entryGlow.range=4.2;
-  G.lobbyMeshes.push({dispose:()=>{try{entryGlow.dispose()}catch{}}});
+  const mapDef=CATALOG.maps.find(x=>x.id===G.meta.selectedMap)||CATALOG.maps[0],bat=selectedBatDef(),skin=selectedSkinDef();
+  const playPanel=consolePanel('playConsole','PLAY',new B.Vector3(-3.75,2.15,-4.30));
+  physicalButton('survivalBtn','SURVIVAL',playPanel,0,.28,'#d45c38',{interact:'mode',mode:'SURVIVAL'},1.25,.48);
+  physicalButton('levelsBtn','LEVELS',playPanel,0,-.34,'#4d82c4',{interact:'mode',mode:'LEVELS'},1.25,.48);
 
-  startLobbyAudio();
-  rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);
+  const mapPanel=consolePanel('mapConsole','MAP',new B.Vector3(-1.25,2.15,-4.30));
+  physicalButton('mapPrev','<',mapPanel,-.52,.28,'#4e6f82',{interact:'station',station:'MAP_PREV'},.62,.46);
+  physicalButton('mapNext','>',mapPanel,.52,.28,'#4e6f82',{interact:'station',station:'MAP_NEXT'},.62,.46);
+  selectedReadout(mapPanel,'SELECTED\n'+mapDef.name,-.38);
+
+  const batPanel=consolePanel('batConsole','BAT',new B.Vector3(1.25,2.15,-4.30));
+  physicalButton('batPrev','<',batPanel,-.52,.28,'#75472d',{interact:'station',station:'BAT_PREV'},.62,.46);
+  physicalButton('batNext','>',batPanel,.52,.28,'#75472d',{interact:'station',station:'BAT_NEXT'},.62,.46);
+  selectedReadout(batPanel,'SELECTED\n'+bat.name,-.38);
+  const batPreview=makeBatModel(scene,bat);batPreview.name='lobbyBatPreview';batPreview.position=new B.Vector3(1.25,.82,-3.42);batPreview.rotation.z=Math.PI/2;batPreview.scaling.setAll(.62);G.lobbyMeshes.push(batPreview);
+
+  const stylePanel=consolePanel('styleConsole','STYLE',new B.Vector3(3.75,2.15,-4.30));
+  physicalButton('skinPrev','< SKIN',stylePanel,-.50,.32,'#78507d',{interact:'station',station:'SKIN_PREV'},.78,.42);
+  physicalButton('skinNext','SKIN >',stylePanel,.50,.32,'#78507d',{interact:'station',station:'SKIN_NEXT'},.78,.42);
+  physicalButton('colorPrev','< COLOR',stylePanel,-.50,-.24,G.meta.selectedColor||'#b9833d',{interact:'station',station:'COLOR_PREV'},.78,.42);
+  physicalButton('colorNext','COLOR >',stylePanel,.50,-.24,G.meta.selectedColor||'#b9833d',{interact:'station',station:'COLOR_NEXT'},.78,.42);
+  selectedReadout(stylePanel,'SELECTED\n'+skin.name,-.72);
+
+  const utilityPanel=consolePanel('utilityConsole','UTILITY',new B.Vector3(0,2.0,4.28),3.55,2.25);
+  physicalButton('settingsBtn','SETTINGS',utilityPanel,-1.05,.18,'#41684f',{interact:'station',station:'SETTINGS'},.88,.44);
+  physicalButton('crateBtn',OWNER_MODE?'FREE CRATE':'OPEN CRATE',utilityPanel,0,.18,'#a56c31',{interact:'station',station:'OPEN_CRATE'},.88,.44);
+  physicalButton('ownerBtn',OWNER_MODE?'OWNER ON':'OWNER CODE',utilityPanel,1.05,.18,OWNER_MODE?'#927525':'#594a62',{interact:'station',station:'OWNER_CODE'},.88,.44);
+  selectedReadout(utilityPanel,`LEVEL ${G.meta.survivalLevel||1} • ${G.meta.coins||0} COINS`,-.48);
+
+  const cosLight=new B.PointLight('cosLight',new B.Vector3(8.2,2.4,0),scene);cosLight.diffuse=B.Color3.FromHexString('#ba91ff');cosLight.intensity=.38;cosLight.range=5.2;G.lobbyMeshes.push({dispose:()=>{try{cosLight.dispose()}catch{}}});
+  const warmLamp=new B.PointLight('warmLobbyLamp',new B.Vector3(-2.1,2.25,-.1),scene);warmLamp.diffuse=B.Color3.FromHexString('#ffd0a0');warmLamp.intensity=.28;warmLamp.range=5;G.lobbyMeshes.push({dispose:()=>{try{warmLamp.dispose()}catch{}}});
+
+  let hubAnimT=0;const hubObs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;updateHubButtonHover(scene);const dt=Math.min(.05,engine.getDeltaTime()/1000);hubAnimT+=dt;
+    flames.forEach((f,i)=>{f.scaling.y=1.30+Math.sin(hubAnimT*7+i*1.3)*.17;f.position.y=(i%3)*.07+Math.sin(hubAnimT*5+i)*.022;});
+    fireLight.intensity=.56+Math.sin(hubAnimT*7.2)*.05;cosOrb.rotation.y+=dt*.45;
+  });G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(hubObs)}catch{}}});
+
+  startLobbyAudio();rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);
+  if(G.desktop){try{scene.activeCamera.setTarget(new B.Vector3(0,2.0,-4.35));}catch{}}
 }
 
 function findSafePlayerSpawn(){const spots=[[0,-5.8],[-5.8,-5.8],[5.8,-5.8],[-5.8,5.8],[5.8,5.8],[0,0]];for(const [x,z] of spots)if(!isBlockedXZ(x,z,.42))return new B.Vector3(x,1.65,z);return new B.Vector3(0,1.65,-6);}
@@ -9205,7 +9216,7 @@ function placePlayerSafe(scene){const q=findSafePlayerSpawn();const cam=G.xr?.ba
 function startShift(scene,mode='LEVELS'){
   stopLobbyAudio();if(G.desktop)ui.hud.style.display='flex';
   if(G.endTimer){clearTimeout(G.endTimer);G.endTimer=null;}clearList(G.lobbyMeshes);G.blockers=[];G.state='shift';G.mode=mode;G.ended=false;G.waveTransition=false;G.waveToken++;G.hp=100;G.maxHp=100;G.score=0;G.chaos=0;G.combo=0;G.kills=0;G.blocks=0;G.perfectBlocks=0;G.propHits=0;G.bestCombo=0;G.wave=1;G.shiftTime=0;G.difficulty=1;G.spawnT=0;G.directorT=0;G.incidentT=0;G.bossSpawned=false;G.boss=null;G.lastRank='D';G.attackGrace=1.4;G.musicT=0;G.lastMusicBand='';G.nextPromotion=4;G.upgrade={power:1,defense:1,improvised:1,durability:999,recovery:0};
-  const lvl=G.meta.survivalLevel||1;if(mode==='LEVELS')G.difficulty=1+Math.max(0,lvl-1)*.12;G.maxHp=100;if(skinAbility()==='Thick Skin')G.maxHp+=14;G.hp=G.maxHp;G.upgrade.power*=selectedBatDef().power;G.bat={durability:9999,max:9999,broken:false,respawnT:0,crack:0};chooseObjective();chooseWaveModifier();buildArena(scene);placePlayerSafe(scene);spawnWave(scene,waveEnemyCount());spawnBat(scene);refreshPlayerCosmetics();toast(mode==='SURVIVAL'?'SURVIVAL • WAVE 1':`LEVEL ${lvl} • WAVE 1`,1500);tone(90,.3,'sawtooth',.04,150);updateHUD();
+  const lvl=G.meta.survivalLevel||1;if(mode==='LEVELS')G.difficulty=1+Math.max(0,lvl-1)*.12;G.maxHp=100;if(skinAbility()==='Thick Skin')G.maxHp+=14;G.hp=G.maxHp;G.upgrade.power*=selectedBatDef().power;G.bat={durability:9999,max:9999,broken:false,respawnT:0,crack:0};chooseObjective();chooseWaveModifier();newShiftContract();buildArena(scene);placePlayerSafe(scene);spawnWave(scene,waveEnemyCount());spawnBat(scene);refreshPlayerCosmetics();toast(mode==='SURVIVAL'?'SURVIVAL • WAVE 1':`LEVEL ${lvl} • WAVE 1`,1500);tone(90,.3,'sawtooth',.04,150);updateHUD();
 }
 function addBlocker(mesh,pad=.34){ if(!mesh)return mesh; G.blockers.push({mesh,pad}); return mesh; }
 function fixedBox(scene,name,pos,scale,color,pad=.34){ const m=box(scene,name,pos,scale,color); G.arenaMeshes.push(m); addBlocker(m,pad); return m; }
@@ -9241,6 +9252,26 @@ function safeEnemySpawn(i=0,radius=.38){
 function waveEnemyCount(){const lvl=G.mode==='LEVELS'?(G.meta.survivalLevel||1):1;return Math.min(13,3+G.wave+Math.floor((lvl-1)*.4));}
 function awardWaveCoins(){ G.meta.coins=(G.meta.coins||0)+10; saveMeta(); announce(`WAVE ${G.wave} CLEARED • +10 COINS`,'good'); tone(430,.16,'triangle',.04,180); }
 function completeLevel(){ if(G.ended||G.state!=='shift')return; G.meta.survivalLevel=(G.meta.survivalLevel||1)+1; G.meta.shifts=(G.meta.shifts||0)+1; G.meta.bestRank=rank(); G.meta.bestCombo=Math.max(G.meta.bestCombo||0,G.bestCombo||0); saveMeta(); G.ended=true; G.waveTransition=false; G.state='ending'; toast(`LEVEL COMPLETE • NEXT: LEVEL ${G.meta.survivalLevel}`,2500); G.endTimer=setTimeout(()=>{G.endTimer=null;buildHub(scene);},2300); }
+
+function newShiftContract(){
+  const pool=[
+    {id:'KO',label:'KO 8 WORKERS',goal:8,reward:40},
+    {id:'PROP',label:'3 IMPROVISED HITS',goal:3,reward:45},
+    {id:'WAVE',label:'CLEAR 3 WAVES',goal:3,reward:50},
+    {id:'CHAOS',label:'REACH 70% CHAOS',goal:70,reward:45}
+  ];
+  G.contract={...pool[Math.floor(Math.random()*pool.length)],done:false,progress:0};
+  G.contractStartKills=G.kills||0;G.contractStartPropHits=G.propHits||0;G.contractStartWave=G.wave||1;
+}
+function updateContract(){
+  const c=G.contract;if(!c||c.done||G.state!=='shift')return;
+  if(c.id==='KO')c.progress=Math.max(0,G.kills-G.contractStartKills);
+  else if(c.id==='PROP')c.progress=Math.max(0,G.propHits-G.contractStartPropHits);
+  else if(c.id==='WAVE')c.progress=Math.max(0,G.wave-G.contractStartWave+1);
+  else if(c.id==='CHAOS')c.progress=Math.round(G.chaos);
+  if(c.progress>=c.goal){c.done=true;G.meta.coins=(G.meta.coins||0)+c.reward;saveMeta();announce(`CONTRACT COMPLETE • +${c.reward} COINS`,'good');}
+}
+
 function chooseWaveModifier(){
   const pool=['NORMAL','FAST','ARMORED','BERSERK','LOW LIGHT','PROP STORM'];
   const pick=pool[Math.floor(Math.random()*pool.length)]; G.waveMod=pick; G.waveStartT=performance.now();
@@ -9533,7 +9564,10 @@ class NPC{
     if(this.prop && Math.random()<.35)this.dropProp(); this.attackT=Math.max(this.attackT,.12); if(this.type==='boss'){const next=this.hp<this.maxHp*.32?3:this.hp<this.maxHp*.67?2:1;if(next!==this.phase){this.phase=next;announce(`BOSS PHASE ${next}`,'boss');tone(62-next*4,.3,'sawtooth',.05,55);}} if(this.hp<=0)this.die(dir);
   }
   die(dir){ this.dead=true;this.ragdollT=1.2;this.ragdollVel=(dir?.clone?.()||new B.Vector3(0,0,1)).scale(this.type==='boss'?1.4:2.4).add(new B.Vector3(0,this.type==='boss'?.8:1.4,0));this.ragdollSpin=(Math.random()<.5?-1:1)*(this.type==='boss'?1.2:2.3); G.kills++; if(this.type==='boss')npcVoice('boss'); else playNpcDeathSound(); addScore(this.type==='boss'?1600:320,this.type==='boss'?'BOSS DOWN':'KO'); if(this.type!=='boss'&&skinAbility()==='Second Wind'){G.hp=Math.min(G.maxHp,G.hp+6);toast('+6 HP SECOND WIND',700);} tone(this.type==='boss'?70:110,.18,'sawtooth',.05,-50); this.dropProp(); for(const m of this.hitMeshes)m.material.albedoColor.scaleInPlace(.55); setTimeout(()=>{this.dispose(); G.npcs=G.npcs.filter(n=>n!==this);},1650); if(this.type!=='boss'&&G.upgrade.recovery>0)G.hp=Math.min(G.maxHp,G.hp+G.upgrade.recovery); if(G.kills>=G.nextPromotion){ promote(); G.nextPromotion+=G.promotionEvery; } if(this.type==='boss'){ toast('FINAL WAVE BOSS DOWN',1800); } }
-  update(dt,playerPos){if(this.dead){if(this.ragdollT>0){this.ragdollT-=dt;this.ragdollVel.y-=9.81*dt;const next=this.root.position.add(this.ragdollVel.scale(dt));next.x=Math.max(-6.7,Math.min(6.7,next.x));next.z=Math.max(-6.7,Math.min(6.7,next.z));if(next.y<.12){next.y=.12;this.ragdollVel.y=Math.abs(this.ragdollVel.y)*.18;this.ragdollVel.x*=.72;this.ragdollVel.z*=.72;}this.root.position.copyFrom(next);this.root.rotation.z+=this.ragdollSpin*dt;this.root.rotation.x+=this.ragdollSpin*.45*dt;}return;}this.t+=dt;this.attackT=Math.max(0,this.attackT-dt);this.weaponSeekT-=dt;if(this.burnT>0){this.burnT-=dt;this.hp-=this.burnDps*dt;}if(this.poisonT>0){this.poisonT-=dt;this.hp-=this.poisonDps*dt;}if(this.slowT>0)this.slowT-=dt;if(this.hp<=0){this.die(new B.Vector3(0,0,-1));return;}this.refreshHpBar();
+  update(dt,playerPos){if(this.dead){if(this.ragdollT>0){this.ragdollT-=dt;this.ragdollVel.y-=9.81*dt;const next=this.root.position.add(this.ragdollVel.scale(dt));next.x=Math.max(-6.7,Math.min(6.7,next.x));next.z=Math.max(-6.7,Math.min(6.7,next.z));if(next.y<.12){next.y=.12;this.ragdollVel.y=Math.abs(this.ragdollVel.y)*.18;this.ragdollVel.x*=.72;this.ragdollVel.z*=.72;}this.root.position.copyFrom(next);this.root.rotation.z+=this.ragdollSpin*dt;this.root.rotation.x+=this.ragdollSpin*.45*dt;
+    const flop=Math.sin((1.2-this.ragdollT)*18)*Math.max(0,this.ragdollT);
+    if(this.armL)this.armL.rotation.z=.22+flop*.8;if(this.armR)this.armR.rotation.z=-.22-flop*.9;
+    if(this.legL)this.legL.rotation.x=flop*.65;if(this.legR)this.legR.rotation.x=-flop*.72;}return;}this.t+=dt;this.attackT=Math.max(0,this.attackT-dt);this.weaponSeekT-=dt;if(this.burnT>0){this.burnT-=dt;this.hp-=this.burnDps*dt;}if(this.poisonT>0){this.poisonT-=dt;this.hp-=this.poisonDps*dt;}if(this.slowT>0)this.slowT-=dt;if(this.hp<=0){this.die(new B.Vector3(0,0,-1));return;}this.refreshHpBar();
     const dx=playerPos.x-this.root.position.x,dz=playerPos.z-this.root.position.z,dist=Math.hypot(dx,dz),dir=new B.Vector3(dx,0,dz).normalize();this.root.rotation.y=Math.atan2(dir.x,dir.z);const walk=Math.sin(this.t*8)*.35;if(this.legL){this.legL.rotation.x=walk;this.legR.rotation.x=-walk;}
     if(!this.prop&&this.weaponSeekT<=0&&this.type!=='boss'){this.weaponSeekT=1.2+Math.random()*1.4;this.claimProp();}
     if(this.windup>0){this.windup-=dt;if(this.armR)this.armR.rotation.x=-1.0*(1-this.windup/.38);if(this.windup<=0){const useProp=this.pendingAttack==='prop'&&this.prop;const dmg=this.damage*(useProp?1.18:1);npcAttack(this,dmg,useProp?'OBJECT HIT':'NPC HIT');if(useProp){impactSound(this.prop.material,.9);this.weaponHitsLeft--;if(this.weaponHitsLeft<=0||Math.random()<.35)this.dropProp();}this.pendingAttack='';this.attackT=this.type==='boss'?.85:1.0;}} 
@@ -9594,6 +9628,7 @@ function updateRisers(dt){for(const r of G.risers){if(!r.root||r.root.isDisposed
 
 function performanceGuard(dt){G.perfT=(G.perfT||0)+dt;G.perfFrames=(G.perfFrames||0)+1;if(G.perfT>=2){const fps=G.perfFrames/G.perfT;G.perfT=0;G.perfFrames=0;try{if(fps<55&&G.perfScale<1.35){G.perfScale+=.1;engine.setHardwareScalingLevel(G.perfScale);}else if(fps>72&&G.perfScale>1.02){G.perfScale=Math.max(1,G.perfScale-.05);engine.setHardwareScalingLevel(G.perfScale);}}catch{}}}
 function tick(scene){
+  updateContract();
   const now=performance.now(),dt=Math.min(.033,(now-G.lastT)/1000); G.lastT=now; performanceGuard(dt); updateRisers(dt); updateJoystickMovement(scene,dt); updatePlayerBodyVisual(dt); const pp=playerPos(scene); if(G.state==='shift'){
     G.shiftTime+=dt; G.directorT+=dt; G.incidentT+=dt; G.attackGrace=Math.max(0,G.attackGrace-dt); G.damageFlashT=Math.max(0,G.damageFlashT-dt); const key=scene.getLightByName('key'); if(key)key.intensity=G.damageFlashT>0?1.7:1.15; G.musicT-=dt; if(G.musicT<=0){G.musicT=G.boss?.38:G.chaos>70?.48:.72;musicPulse();} if(G.comboT>0){G.comboT-=dt;if(G.comboT<=0)G.combo=0;} else G.chaos=Math.max(0,G.chaos-dt*1.6);
     for(const n of [...G.npcs])n.update(dt,pp);
@@ -9665,15 +9700,101 @@ async function setupXR(scene){
 }
 
 function controllerPos(ctrl){ return (ctrl.grip||ctrl.pointer)?.absolutePosition?.clone?.() || (ctrl.grip||ctrl.pointer)?.getAbsolutePosition?.() || B.Vector3.Zero(); }
-function triggerInteract(scene,ctrl){ if(G.state==='shift'){const handed=ctrl.inputSource?.handedness||'none';const st=G.handState.get(handed);if(st?.grabbing?.type==='camera'){addScore(65,'SNAPSHOT');tone(720,.04,'square',.03,-180);haptic(ctrl,.25,25);toast('OFFICE CAM • SNAPSHOT',700);return;}return;} if(G.state!=='hub')return; const node=ctrl.pointer||ctrl.grip; if(!node)return; const origin=node.getAbsolutePosition(); const fwd=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix()).normalize(); const ray=new B.Ray(origin,fwd,8); const hit=scene.pickWithRay(ray,m=>m.metadata?.interact); if(hit?.hit&&hit.pickedMesh){const md=hit.pickedMesh.metadata;if(md.interact==='mode')startShift(scene,md.mode||'LEVELS');else if(md.interact==='station')stationAction(md.station);return;} const p=origin; let best=null,bd=1.6; for(const m of scene.meshes){if(m.metadata?.interact){const d=B.Vector3.Distance(p,m.getAbsolutePosition());if(d<bd){best=m;bd=d;}}} if(best){if(best.metadata.interact==='mode')startShift(scene,best.metadata.mode||'LEVELS');else stationAction(best.metadata.station);} }
-function tryGrab(scene,handed,ctrl){return;}
+
+function pickHubInteractive(scene,origin,fwd,maxDist=8){
+  if(!scene||!origin||!fwd)return null;
+  const ray=new B.Ray(origin,fwd,maxDist);
+  const hit=scene.pickWithRay(ray,m=>m.metadata?.interact);
+  return hit?.hit&&hit.pickedMesh ? hit.pickedMesh : null;
+}
+function setHubButtonHover(mesh,on){
+  if(!mesh?.metadata)return;
+  const md=mesh.metadata, glow=md.hoverGlow, face=md.faceMesh||mesh, rim=md.rimMesh||null, gloss=md.glossMesh||null;
+  if(md._hovered===on)return;
+  md._hovered=on;
+  if(glow)glow.setEnabled(!!on);
+  if(face?.material){
+    try{
+      face.position.z = on ? -0.105 : -0.09;
+      face.material.emissiveColor = B.Color3.FromHexString(md.baseColor||'#777777').scale(on ? .18 : .07);
+      face.material.roughness = on ? .20 : .28;
+      face.material.metallic = on ? .28 : .18;
+    }catch{}
+  }
+  if(rim?.material){
+    try{
+      rim.material.emissiveColor = B.Color3.FromHexString(on ? '#e7f0ff' : '#4e535b').scale(on ? .35 : .06);
+      rim.material.roughness = on ? .08 : .18;
+      rim.material.metallic = on ? .75 : .55;
+    }catch{}
+  }
+  if(gloss?.material){
+    try{ gloss.material.alpha = on ? .30 : .16; }catch{}
+  }
+}
+function updateHubButtonHover(scene){
+  if(G.state!=='hub' || !G.hubButtons?.length)return;
+  const hits=new Set();
+  const nodes=[];
+  if(G.left && (G.left.pointer||G.left.grip))nodes.push(G.left.pointer||G.left.grip);
+  if(G.right && (G.right.pointer||G.right.grip))nodes.push(G.right.pointer||G.right.grip);
+
+  for(const node of nodes){
+    try{
+      const origin=node.getAbsolutePosition();
+      const fwd=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix()).normalize();
+      const picked=pickHubInteractive(scene,origin,fwd,8);
+      if(picked)hits.add(picked);
+    }catch{}
+  }
+
+  if(G.desktop && scene.activeCamera){
+    try{
+      const ray=scene.activeCamera.getForwardRay(8);
+      const picked=pickHubInteractive(scene,ray.origin,ray.direction,8);
+      if(picked)hits.add(picked);
+    }catch{}
+  }
+
+  for(const btn of G.hubButtons){
+    setHubButtonHover(btn,hits.has(btn));
+  }
+}
+
+function triggerInteract(scene,ctrl){ if(G.state==='shift'){const handed=ctrl.inputSource?.handedness||'none';const st=G.handState.get(handed);if(st?.grabbing?.type==='camera'){addScore(65,'SNAPSHOT');tone(720,.04,'square',.03,-180);haptic(ctrl,.25,25);toast('OFFICE CAM • SNAPSHOT',700);return;}return;} if(G.state!=='hub')return; const node=ctrl.pointer||ctrl.grip; if(!node)return; const origin=node.getAbsolutePosition(); const fwd=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix()).normalize(); const picked=pickHubInteractive(scene,origin,fwd,8); if(picked){const md=picked.metadata;if(md.interact==='mode')startShift(scene,md.mode||'LEVELS');else if(md.interact==='station')stationAction(md.station);return;} const p=origin; let best=null,bd=1.6; for(const m of scene.meshes){if(m.metadata?.interact){const d=B.Vector3.Distance(p,m.getAbsolutePosition());if(d<bd){best=m;bd=d;}}} if(best){if(best.metadata.interact==='mode')startShift(scene,best.metadata.mode||'LEVELS');else stationAction(best.metadata.station);} }
+function tryGrab(scene,handed,ctrl){
+  if(G.state!=='shift'||handed!=='left')return;
+  const st=G.handState.get(handed);if(!st||st.grabbing)return;
+  const p=controllerPos(ctrl);let best=null,bd=.58;
+  for(const pr of G.props){
+    if(pr.heldBy||pr.npcOwner||pr.broken)continue;
+    const d=B.Vector3.Distance(p,pr.mesh.getAbsolutePosition());if(d<bd){bd=d;best=pr;}
+  }
+  if(!best)return;const node=ctrl.grip||ctrl.pointer;if(!node)return;
+  best.heldBy=handed;best.vel.set(0,0,0);best.grounded=false;best.mesh.setParent(node);best.mesh.position=new B.Vector3(0,-.03,.06);
+  best._lastHandVel=B.Vector3.Zero();st.grabbing=best;st.prevPos=p.clone();tone(180,.035,'sine',.018);haptic(ctrl,.25,28);
+}
 function releaseGrab(handed,ctrl){ const st=G.handState.get(handed); if(!st?.grabbing)return; const pr=st.grabbing; let v=pr._lastHandVel?.clone?.()||B.Vector3.Zero(); const max=11;if(v.length()>max)v.normalize().scaleInPlace(max); pr.mesh.setParent(null); pr.heldBy=null; pr.vel=v.scale(.9); pr._lastHandVel=null; st.grabbing=null; st.prevPos=null; tone(140,.035,'sine',.015); }
 
 function updateGrabVelocity(){ for(const [hand,st] of G.handState){ if(!st.grabbing)continue; const p=controllerPos(st.ctrl); if(st.prevPos)st.grabbing._lastHandVel=p.subtract(st.prevPos).scale(60); st.prevPos=p; } }
 sceneTickGrabHack();
 function sceneTickGrabHack(){ engine.onBeginFrameObservable.add(updateGrabVelocity); }
 
+
+function runSelfChecks(){
+  const issues=[];
+  for(const [kind,arr] of Object.entries({bats:CATALOG.bats,skins:CATALOG.skins,maps:CATALOG.maps})){
+    const ids=arr.map(x=>x.id);if(new Set(ids).size!==ids.length)issues.push(kind+' duplicate IDs');if(!arr.length)issues.push(kind+' empty');
+  }
+  if(!CATALOG.bats.some(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');
+  if(!CATALOG.skins.some(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');
+  if(!CATALOG.maps.some(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');
+  if(issues.length)console.warn('CRAZY OFFICE SELF CHECK',issues);else console.info('CRAZY OFFICE SELF CHECK OK');
+  return issues;
+}
+
 const scene=makeScene();
+runSelfChecks();
 window.scene=scene;
 
 ui.enter.onclick=async()=>{ try{if(audio)await audio.resume(); const xr=await setupXR(scene); await xr.baseExperience.enterXRAsync('immersive-vr','local-floor');}catch(e){console.error(e);ui.status.textContent='WebXR could not start here. Use HTTPS in a compatible headset browser.';} };
@@ -9682,6 +9803,6 @@ ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style
 window.addEventListener('keydown',e=>{ if(!G.desktop)return; if(e.code==='KeyR')buildHub(scene); if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SURVIVAL');if((e.code==='Digit2'||e.code==='Enter')&&G.state==='hub')startShift(scene,'LEVELS'); });
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 3.0 ready • solid furniture + realistic lobby controls';
+ui.status.textContent='Reborn 3.2 ready • luxury hover buttons';
 window.__CRAZY_OFFICE_READY=true; window.dispatchEvent(new Event('crazy-office-ready'));
 updateHUD();
