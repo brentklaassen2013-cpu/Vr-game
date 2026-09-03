@@ -20,17 +20,17 @@ function activateOwnerCode(){
   toast('OWNER MODE ACTIVE • ALL FREE',1500);tone(440,.1,'triangle',.04,280);rebuildHubLabels?.();
 }
 
-const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'4.3',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
+const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'4.4',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
 function loadMeta(){
   try{
     const raw=localStorage.getItem('crazyOfficeNightShiftMeta');
     const parsed=raw?JSON.parse(raw):{};
-    const upgrading=parsed.contentVersion!=='4.3';
+    const upgrading=parsed.contentVersion!=='4.4';
     const merged={...DEFAULT_META,...parsed,settings:{...DEFAULT_META.settings,...(parsed.settings||{})}};
     merged.unlockedBats=Array.from(new Set(merged.unlockedBats||['STANDARD']));
     merged.unlockedSkins=Array.from(new Set(merged.unlockedSkins||['CLASSIC','POTATO']));
     merged.unlockedMaps=Array.from(new Set(merged.unlockedMaps||['FLOOR 13']));
-    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='4.3';
+    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='4.4';
     if(upgrading)try{localStorage.setItem('crazyOfficeNightShiftMeta',JSON.stringify(merged));}catch{}
     return merged;
   }catch(e){console.warn('Meta save could not be read; using defaults.',e);return {...DEFAULT_META,settings:{...DEFAULT_META.settings}};}
@@ -47,7 +47,7 @@ const G = {
   objective: null, meta: loadMeta(), risers: [], joystick:new B.Vector2(0,0), turnAxis:0, turnLatch:false, stationInfo:null, waveTransition:false, waveToken:0, waveMod:null, waveStartT:0, threat:0, comboBank:0, hubButtons:[], hoveredHubButtons:new Set(), contract:null, contractStartKills:0, contractStartPropHits:0, contractStartWave:1, lastNpcChatter:0, shiftAudio:null, playerStepT:0, lastNpcStepAt:0
 };
 
-const FIRE_PARTICLE_CAPACITY=1000;
+const FIRE_PARTICLE_CAPACITY=100000;
 
 const LOBBY_ASSETS = {
   "Couch_Large2.obj": `# Blender v2.79 (sub 0) OBJ File: 'Couch_Large2.blend'
@@ -9649,27 +9649,56 @@ function buildHub(scene){
   const fpCollider=box(scene,'fireplaceCollider',new B.Vector3(2.55,1.05,4.04),new B.Vector3(2.34,2.10,.76),'#000');fpCollider.isVisible=false;addBlocker(fpCollider,0);G.lobbyMeshes.push(fpCollider);
   const fireLight=new B.PointLight('fireLight',new B.Vector3(2.55,.88,4.10),scene);fireLight.diffuse=B.Color3.FromHexString('#ffad61');fireLight.intensity=.68;fireLight.range=6;G.lobbyMeshes.push({dispose:()=>{try{fireLight.dispose()}catch{}}});
 
-  // 3.8 FIREPLACE: exactly 1000 TINY flame particles, rendered as ONE particle system.
-  // This keeps the user's dense-fire look without creating 1000 individual meshes on Quest.
-  const fireTex=new B.DynamicTexture('tinyFireTexture',{width:64,height:64},scene,true);fireTex.hasAlpha=true;
-  {const c=fireTex.getContext();c.clearRect(0,0,64,64);const g=c.createRadialGradient(32,44,2,32,38,29);g.addColorStop(0,'rgba(255,255,205,1)');g.addColorStop(.22,'rgba(255,206,68,.98)');g.addColorStop(.52,'rgba(255,91,16,.82)');g.addColorStop(1,'rgba(255,20,0,0)');c.fillStyle=g;c.beginPath();c.ellipse(32,36,18,29,0,0,Math.PI*2);c.fill();fireTex.update();}
-  const tinyFire=new B.ParticleSystem('fireplace1000TinyFlames',FIRE_PARTICLE_CAPACITY,scene);
+  // 4.4 FIREPLACE: 100,000 tiny particles, tall layered fire instead of a flat spark carpet.
+  // GPU particles are used when available so this density is practical; CPU fallback keeps the same 100K capacity.
+  const fireTex=new B.DynamicTexture('tinyFireTexture',{width:48,height:96},scene,true);fireTex.hasAlpha=true;
+  {
+    const c=fireTex.getContext();c.clearRect(0,0,48,96);
+    const g=c.createLinearGradient(24,88,24,4);
+    g.addColorStop(0,'rgba(255,255,210,0)');
+    g.addColorStop(.10,'rgba(255,244,150,.94)');
+    g.addColorStop(.34,'rgba(255,177,44,.98)');
+    g.addColorStop(.66,'rgba(255,71,8,.78)');
+    g.addColorStop(1,'rgba(255,15,0,0)');
+    c.fillStyle=g;c.beginPath();
+    c.moveTo(24,3);c.bezierCurveTo(12,20,5,47,13,75);c.bezierCurveTo(17,91,31,91,36,75);c.bezierCurveTo(45,48,36,23,24,3);c.closePath();c.fill();
+    fireTex.update();
+  }
+  const useGPU=!!(B.GPUParticleSystem&&B.GPUParticleSystem.IsSupported);
+  const tinyFire=useGPU
+    ? new B.GPUParticleSystem('fireplace100000TallFlames',{capacity:FIRE_PARTICLE_CAPACITY},scene)
+    : new B.ParticleSystem('fireplace100000TallFlames',FIRE_PARTICLE_CAPACITY,scene);
   tinyFire.particleTexture=fireTex;
-  // The front stone lip is around z=3.94; every particle starts BEHIND it, inside the cavity.
-  tinyFire.emitter=new B.Vector3(2.55,.34,4.08);
-  tinyFire.minEmitBox=new B.Vector3(-.43,0,.00);tinyFire.maxEmitBox=new B.Vector3(.43,.22,.15);
-  tinyFire.color1=new B.Color4(1,.22,.018,.98);tinyFire.color2=new B.Color4(1,.72,.10,.94);tinyFire.colorDead=new B.Color4(.35,.015,0,0);
-  tinyFire.minSize=.014;tinyFire.maxSize=.047;
-  tinyFire.minLifeTime=.50;tinyFire.maxLifeTime=.78;
-  tinyFire.emitRate=1750; // keeps the 1000-particle system saturated after warm-up.
-  tinyFire.preWarmCycles=70;tinyFire.preWarmStepOffset=.012;
+  // Emit from a thin bed DEEP inside the fireplace; height comes from velocity/lifetime, not from a tall emitter box.
+  tinyFire.emitter=new B.Vector3(2.55,.25,4.13);
+  tinyFire.minEmitBox=new B.Vector3(-.42,0,-.045);tinyFire.maxEmitBox=new B.Vector3(.42,.10,.055);
+  tinyFire.color1=new B.Color4(1,.24,.012,.98);tinyFire.color2=new B.Color4(1,.78,.10,.96);tinyFire.colorDead=new B.Color4(.45,.018,0,0);
+  tinyFire.minSize=.008;tinyFire.maxSize=.038;
+  tinyFire.minLifeTime=.72;tinyFire.maxLifeTime=1.42;
+  // At ~100K/sec and ~1 sec average lifetime, the 100K system becomes visibly saturated.
+  tinyFire.emitRate=100000;
   tinyFire.blendMode=B.ParticleSystem.BLENDMODE_ADD;
-  tinyFire.direction1=new B.Vector3(-.05,.55,.004);tinyFire.direction2=new B.Vector3(.05,.95,.028);
-  tinyFire.minEmitPower=.18;tinyFire.maxEmitPower=.43;tinyFire.updateSpeed=.012;
-  tinyFire.minAngularSpeed=-1.5;tinyFire.maxAngularSpeed=1.5;
-  tinyFire.gravity=new B.Vector3(0,.14,0);
+  // Strong upward movement + modest sideways drift gives a tapered, dancing flame column instead of a flat layer.
+  tinyFire.direction1=new B.Vector3(-.18,1.30,-.025);tinyFire.direction2=new B.Vector3(.18,2.55,.035);
+  tinyFire.minEmitPower=.34;tinyFire.maxEmitPower=.78;tinyFire.updateSpeed=.008;
+  tinyFire.minAngularSpeed=-2.2;tinyFire.maxAngularSpeed=2.2;
+  tinyFire.gravity=new B.Vector3(0,.38,0);
+  if(typeof tinyFire.addColorGradient==='function'){
+    tinyFire.addColorGradient(0,new B.Color4(1,.96,.52,.96));
+    tinyFire.addColorGradient(.22,new B.Color4(1,.58,.07,.98));
+    tinyFire.addColorGradient(.62,new B.Color4(1,.16,.01,.82));
+    tinyFire.addColorGradient(1,new B.Color4(.28,.005,0,0));
+  }
+  if(typeof tinyFire.addSizeGradient==='function'){
+    tinyFire.addSizeGradient(0,.34);tinyFire.addSizeGradient(.18,1.0);tinyFire.addSizeGradient(.64,.72);tinyFire.addSizeGradient(1,.08);
+  }
+  // CPU ParticleSystem can prewarm; GPU version fills extremely quickly because emitRate is 100K.
+  if(!useGPU){tinyFire.preWarmCycles=45;tinyFire.preWarmStepOffset=.016;}
   tinyFire.start();
   G.lobbyMeshes.push({dispose:()=>{try{tinyFire.stop();tinyFire.dispose();fireTex.dispose();}catch{}}});
+
+  // A soft orange core light follows the vertical flame body and makes the cavity read as deep fire.
+  const fireCoreLight=new B.PointLight('fireCoreLight',new B.Vector3(2.55,.72,4.12),scene);fireCoreLight.diffuse=B.Color3.FromHexString('#ff7c25');fireCoreLight.intensity=.48;fireCoreLight.range=3.8;G.lobbyMeshes.push({dispose:()=>{try{fireCoreLight.dispose()}catch{}}});
 
   // Ember bed + logs are also recessed so the fire reads as being IN the stove, never in front of it.
   const emberBed=B.MeshBuilder.CreateBox('emberBed',{width:.91,height:.055,depth:.25},scene);emberBed.position=new B.Vector3(2.55,.19,4.10);emberBed.material=mat(scene,'emberBedMat','#5b180d',.55);emberBed.material.emissiveColor=B.Color3.FromHexString('#ff3e10').scale(.58);G.lobbyMeshes.push(emberBed);
@@ -10543,7 +10572,7 @@ function runSelfChecks(){
 function gauntletSelfCheck(){
   const issues=[];const ids=(arr)=>arr.map(x=>x.id);
   for(const [name,arr] of Object.entries({bats:CATALOG.bats,skins:CATALOG.skins,maps:CATALOG.maps})){const a=ids(arr);if(new Set(a).size!==a.length)issues.push(name+' duplicate id');if(!arr.length)issues.push(name+' empty');}
-  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY!=='undefined'&&FIRE_PARTICLE_CAPACITY!==1000)issues.push('fire capacity is not exactly 1000');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');
+  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY!=='undefined'&&FIRE_PARTICLE_CAPACITY!==100000)issues.push('fire capacity is not exactly 100000');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');
   const badUnlock=[...(G.meta.unlockedBats||[]).filter(id=>!CATALOG.bats.some(x=>x.id===id)),...(G.meta.unlockedSkins||[]).filter(id=>!CATALOG.skins.some(x=>x.id===id)),...(G.meta.unlockedMaps||[]).filter(id=>!CATALOG.maps.some(x=>x.id===id))];if(badUnlock.length)issues.push('stale unlock ids');
   console[issues.length?'warn':'info']('GAUNTLET SELF CHECK',issues.length?issues:`OK • ${CATALOG.maps.length} maps • ${CATALOG.bats.length} bats • ${CATALOG.skins.length} skins • ${CATALOG.props.length} prop models`);return issues;
 }
@@ -10559,6 +10588,6 @@ ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style
 window.addEventListener('keydown',e=>{ if(!G.desktop)return; if(e.code==='KeyR')buildHub(scene); if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SURVIVAL');if((e.code==='Digit2'||e.code==='Enter')&&G.state==='hub')startShift(scene,'LEVELS'); });
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 4.3 ready • cached CC0 assets + denser props + audio QA';
+ui.status.textContent='Reborn 4.4 ready • 100K tall GPU fireplace';
 window.__CRAZY_OFFICE_READY=true; window.dispatchEvent(new Event('crazy-office-ready'));
 updateHUD();
