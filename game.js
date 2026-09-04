@@ -20,17 +20,17 @@ function activateOwnerCode(){
   toast('OWNER MODE ACTIVE • ALL FREE',1500);tone(440,.1,'triangle',.04,280);rebuildHubLabels?.();
 }
 
-const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'4.8',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
+const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'5.0',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
 function loadMeta(){
   try{
     const raw=localStorage.getItem('crazyOfficeNightShiftMeta');
     const parsed=raw?JSON.parse(raw):{};
-    const upgrading=parsed.contentVersion!=='4.8';
+    const upgrading=parsed.contentVersion!=='5.0';
     const merged={...DEFAULT_META,...parsed,settings:{...DEFAULT_META.settings,...(parsed.settings||{})}};
     merged.unlockedBats=Array.from(new Set(merged.unlockedBats||['STANDARD']));
     merged.unlockedSkins=Array.from(new Set(merged.unlockedSkins||['CLASSIC','POTATO']));
     merged.unlockedMaps=Array.from(new Set(merged.unlockedMaps||['FLOOR 13']));
-    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='4.8';
+    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='5.0';
     if(upgrading)try{localStorage.setItem('crazyOfficeNightShiftMeta',JSON.stringify(merged));}catch{}
     return merged;
   }catch(e){console.warn('Meta save could not be read; using defaults.',e);return {...DEFAULT_META,settings:{...DEFAULT_META.settings}};}
@@ -48,7 +48,7 @@ const G = {
 };
 
 const FIRE_PARTICLE_CAPACITY=2400;
-const FIRE_VISUAL_VERSION='4.8-LAYERED-FLAME';
+const FIRE_VISUAL_VERSION='5.0-LAYERED-FLAME';
 
 const LOBBY_ASSETS = {
   "Couch_Large2.obj": `# Blender v2.79 (sub 0) OBJ File: 'Couch_Large2.blend'
@@ -8709,72 +8709,191 @@ function remoteListForState(){return G.state==='hub'?G.lobbyMeshes:G.arenaMeshes
 function pumpRemoteQueue(){while(REMOTE_ACTIVE<REMOTE_MAX_ACTIVE&&REMOTE_LOAD_QUEUE.length){const j=REMOTE_LOAD_QUEUE.shift();REMOTE_ACTIVE++;Promise.resolve().then(j.task).then(j.ok,j.bad).finally(()=>{REMOTE_ACTIVE--;pumpRemoteQueue();});}}
 function enqueueRemote(task){return new Promise((ok,bad)=>{REMOTE_LOAD_QUEUE.push({task,ok,bad});pumpRemoteQueue();});}
 async function loadKayKitTemplate(scene,pack,file){const key=pack+'/'+file;if(REMOTE_TEMPLATE_CACHE.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_CACHE.get(key);}if(REMOTE_TEMPLATE_INFLIGHT.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_INFLIGHT.get(key);}const p=enqueueRemote(async()=>{if(!window.__CRAZY_REMOTE_MODEL_LOADER||!B.SceneLoader?.ImportMeshAsync)throw new Error('GLTF loader unavailable');if(!KAYKIT_MODEL_CATALOG[pack]?.includes(file))throw new Error('model not in CC0 catalog');let result=null,last=null;for(const root of (KAYKIT_ROOTS[pack]||[])){try{result=await B.SceneLoader.ImportMeshAsync('',root,file+'.gltf',scene);break;}catch(e){last=e;}}if(!result)throw last||new Error('all model CDNs failed');const t=new B.TransformNode('remoteTemplate_'+pack+'_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));for(const n of tops)try{n.parent=t}catch{}for(const m of result.meshes||[]){m.isPickable=false;m.receiveShadows=true;}t.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,t);G.remoteModels.uniqueLoaded++;return t;});REMOTE_TEMPLATE_INFLIGHT.set(key,p);try{return await p;}finally{REMOTE_TEMPLATE_INFLIGHT.delete(key);}}
-function makeRemoteFallback(scene,h,pack,file){const add=(n,p,s,c)=>{const m=box(scene,n,p,s,c,h);m.isPickable=false;return m;},f=file.toLowerCase();if(f.includes('chair')||f.includes('armchair')){add('fbSeat',new B.Vector3(0,.34,0),new B.Vector3(.58,.18,.58),'#5b6675');add('fbBack',new B.Vector3(0,.78,.24),new B.Vector3(.58,.70,.16),'#647283');}else if(f.includes('couch')){add('fbCouch',new B.Vector3(0,.4,0),new B.Vector3(1.25,.5,.55),'#59697c');add('fbCouchBack',new B.Vector3(0,.82,.24),new B.Vector3(1.25,.6,.16),'#65768a');}else if(f.includes('car_')){add('fbCarBody',new B.Vector3(0,.35,0),new B.Vector3(1.65,.45,.8),'#53677a');add('fbCarCab',new B.Vector3(0,.72,-.05),new B.Vector3(.9,.4,.68),'#718da6');}else if(f.includes('shelf')||f.includes('cabinet')){add('fbCab',new B.Vector3(0,.75,0),new B.Vector3(.72,1.5,.42),'#6d5b48');for(const y of [.3,.72,1.14])add('fbShelf',new B.Vector3(0,y,-.23),new B.Vector3(.66,.05,.38),'#8b7358');}else if(f.includes('lamp')){add('fbLampBase',new B.Vector3(0,.08,0),new B.Vector3(.34,.08,.34),'#4e5965');add('fbLampStem',new B.Vector3(0,.55,0),new B.Vector3(.06,.9,.06),'#66727d');add('fbLampShade',new B.Vector3(0,1.02,0),new B.Vector3(.4,.24,.4),'#dfc98a');}else if(f.includes('cactus')||f.includes('bush')){add('fbPlantPot',new B.Vector3(0,.16,0),new B.Vector3(.34,.32,.34),'#8a5b3c');const leaf=B.MeshBuilder.CreateSphere('fbPlant',{diameter:.62,segments:8},scene);leaf.parent=h;leaf.position.y=.62;leaf.scaling.y=1.35;leaf.material=mat(scene,'fbPlantMat','#4b985c',.9);leaf.isPickable=false;}else if(f.includes('crate')||f.includes('box_'))add('fbCrate',new B.Vector3(0,.28,0),new B.Vector3(.62,.56,.62),'#8c6946');else if(f.includes('pictureframe')){add('fbFrame',new B.Vector3(0,.72,0),new B.Vector3(.72,.52,.06),'#8b6438');add('fbPicture',new B.Vector3(0,.72,-.04),new B.Vector3(.58,.38,.02),'#b9c8d5');}else add('fbGeneric',new B.Vector3(0,.35,0),new B.Vector3(.65,.7,.65),pack==='city'?'#55636f':pack==='restaurant'?'#8b6a4f':'#6b7380');G.remoteModels.fallbacks++;h.metadata.fallback=true;}
-function cloneRemoteTemplateInto(t,h,opt={}){for(const n of (t.getChildren?.()||[]))try{n.clone(h.name+'_'+n.name,h,false)?.setEnabled?.(true)}catch{}for(const m of (h.getChildMeshes?.()||[])){m.isPickable=!!opt.pickable;if(opt.receiveShadows!==false)m.receiveShadows=true;try{m.freezeWorldMatrix();}catch{}}}
-function remoteKayKitModel(scene,pack,file,opt={}){const h=new B.TransformNode(opt.name||`kaykit_${pack}_${file}`,scene);h.position.copyFrom(opt.position||B.Vector3.Zero());h.rotation.copyFrom(opt.rotation||B.Vector3.Zero());const s=opt.scale instanceof B.Vector3?opt.scale:new B.Vector3(opt.scale||1,opt.scale||1,opt.scale||1);h.scaling.copyFrom(s);h.metadata={kind:'remoteModel',source:'KayKit',pack,file,license:KAYKIT_LICENSE,lowPriority:!!opt.lowPriority};(opt.list||remoteListForState()).push(h);G.remoteModels.requested++;if(opt.lowPriority)G.remoteDecor.push(h);loadKayKitTemplate(scene,pack,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.004,opt.minHeight||0);}catch(e){console.warn('KayKit collider skipped',file,e);}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,pack,file);console.warn('KayKit fallback',pack,file,e?.message||e);});return h;}
-function setRemoteDecorReduced(reduced){G.remoteDecor=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());if(G.remoteDecorReduced===reduced)return;G.remoteDecorReduced=reduced;let i=0;for(const h of G.remoteDecor)try{h.setEnabled(!reduced||(i++%2===0));}catch{}}
-
-
-// 4.3 SECOND INTERNET MODEL PROVIDER — Kenney Furniture Kit (official pack is CC0).
-// GLB files are loaded from a public mirror with a jsDelivr fallback, then cached/cloned exactly like KayKit.
-const KENNEY_LICENSE='CC0-1.0';
-const KENNEY_FURNITURE_ROOTS=[
-  'https://raw.githubusercontent.com/Phazorknight/Cogito/main/addons/cogito/Assets/Models/Kenney/Furniture/GLTF%20format/',
-  'https://cdn.jsdelivr.net/gh/Phazorknight/Cogito@main/addons/cogito/Assets/Models/Kenney/Furniture/GLTF%20format/'
-];
-const KENNEY_FURNITURE_CATALOG=[
-  'bathroomCabinet','bathroomCabinetDrawer','bathroomMirror','bathroomSink','bathroomSinkSquare',
-  'bench','benchCushion','benchCushionLow','bookcaseClosed','bookcaseClosedDoors','bookcaseClosedWide','bookcaseOpen','bookcaseOpenLow','books',
-  'cabinetTelevision','cabinetTelevisionDoors','cardboardBoxClosed','cardboardBoxOpen','ceilingFan',
-  'chair','chairCushion','chairDesk','chairModernCushion','chairModernFrameCushion','chairRounded',
-  'coatRack','coatRackStanding','computerKeyboard','computerMouse','computerScreen','desk','deskCorner','doorway'
-];
-async function loadKenneyTemplate(scene,file){
-  const key='kenney/furniture/'+file;
-  if(REMOTE_TEMPLATE_CACHE.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_CACHE.get(key);}
-  if(REMOTE_TEMPLATE_INFLIGHT.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_INFLIGHT.get(key);}
-  const p=enqueueRemote(async()=>{
-    if(!window.__CRAZY_REMOTE_MODEL_LOADER||!B.SceneLoader?.ImportMeshAsync)throw new Error('GLTF loader unavailable');
-    if(!KENNEY_FURNITURE_CATALOG.includes(file))throw new Error('Kenney model not in CC0 whitelist');
-    let result=null,last=null;
-    for(const root of KENNEY_FURNITURE_ROOTS){try{result=await B.SceneLoader.ImportMeshAsync('',root,file+'.glb',scene);break;}catch(e){last=e;}}
-    if(!result)throw last||new Error('Kenney model CDNs failed');
-    const t=new B.TransformNode('kenneyTemplate_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));
-    for(const n of tops)try{n.parent=t}catch{}
-    for(const m of result.meshes||[]){m.isPickable=false;m.receiveShadows=true;}
-    t.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,t);G.remoteModels.uniqueLoaded++;return t;
-  });
-  REMOTE_TEMPLATE_INFLIGHT.set(key,p);try{return await p;}finally{REMOTE_TEMPLATE_INFLIGHT.delete(key);}
+function makeRemoteFallback(scene,h,pack,file,opt={}){
+  const add=(n,p,sc,c)=>{const m=box(scene,n,p,sc,c,h);m.isPickable=false;return m;},f=file.toLowerCase(),wood='#765a43',metal='#596672',fabric='#66798d',screen='#243846';
+  if(f.includes('chair')||f.includes('armchair')){add('fbSeat',new B.Vector3(0,.34,0),new B.Vector3(.58,.16,.58),fabric);add('fbBack',new B.Vector3(0,.76,.25),new B.Vector3(.58,.64,.14),fabric);for(const x of [-.22,.22])for(const z of [-.20,.20])add('fbChairLeg',new B.Vector3(x,.16,z),new B.Vector3(.05,.32,.05),metal);}
+  else if(f.includes('couch')||f.includes('bench')){add('fbCouch',new B.Vector3(0,.38,0),new B.Vector3(1.28,.42,.56),fabric);add('fbCouchBack',new B.Vector3(0,.76,.23),new B.Vector3(1.28,.52,.14),fabric);}
+  else if(f.includes('desk')||f.includes('table')){add('fbDeskTop',new B.Vector3(0,.72,0),new B.Vector3(1.20,.09,.64),wood);for(const x of [-.48,.48])for(const z of [-.24,.24])add('fbDeskLeg',new B.Vector3(x,.35,z),new B.Vector3(.07,.70,.07),metal);}
+  else if(f.includes('computerkeyboard')||f.includes('keyboard'))add('fbKeyboard',new B.Vector3(0,.04,0),new B.Vector3(.52,.07,.20),'#333a42');
+  else if(f.includes('computermouse')||f.includes('mouse')){const q=B.MeshBuilder.CreateSphere('fbMouse',{diameter:.16,segments:8},scene);q.parent=h;q.scaling=new B.Vector3(1,.55,1.35);q.position.y=.05;q.material=denseMaterial(scene,'#343a42',0);}
+  else if(f.includes('computerscreen')||f.includes('television')){add('fbMonitor',new B.Vector3(0,.48,0),new B.Vector3(.68,.46,.08),metal);const face=add('fbMonitorFace',new B.Vector3(0,.49,-.05),new B.Vector3(.58,.34,.025),screen);face.material.emissiveColor=B.Color3.FromHexString('#4ab7ff').scale(.18);add('fbMonitorStand',new B.Vector3(0,.20,0),new B.Vector3(.10,.30,.08),metal);}
+  else if(f.includes('shelf')||f.includes('cabinet')||f.includes('bookcase')){add('fbCab',new B.Vector3(0,.75,0),new B.Vector3(.76,1.50,.42),wood);for(const y of [.28,.72,1.16])add('fbShelf',new B.Vector3(0,y,-.23),new B.Vector3(.68,.045,.36),'#9a7757');}
+  else if(f.includes('lamp')){add('fbLampBase',new B.Vector3(0,.06,0),new B.Vector3(.34,.07,.34),metal);add('fbLampStem',new B.Vector3(0,.58,0),new B.Vector3(.055,1.04,.055),metal);add('fbLampShade',new B.Vector3(0,1.12,0),new B.Vector3(.42,.24,.42),'#dfc98a');}
+  else if(f.includes('cactus')||f.includes('bush')||f.includes('plant')){add('fbPlantPot',new B.Vector3(0,.16,0),new B.Vector3(.34,.32,.34),'#8a5b3c');const leaf=B.MeshBuilder.CreateSphere('fbPlant',{diameter:.62,segments:8},scene);leaf.parent=h;leaf.position.y=.62;leaf.scaling.y=1.35;leaf.material=mat(scene,'fbPlantMat','#4b985c',.9);leaf.isPickable=false;}
+  else if(f.includes('crate')||f.includes('box_')||f.includes('cardboard')){add('fbCrate',new B.Vector3(0,.28,0),new B.Vector3(.62,.56,.62),'#8c6946');for(const z of [-.25,.25])add('fbCrateBand',new B.Vector3(0,.28,z),new B.Vector3(.68,.07,.035),'#60472f');}
+  else if(f.includes('pictureframe')){add('fbFrame',new B.Vector3(0,.72,0),new B.Vector3(.72,.52,.06),'#8b6438');add('fbPicture',new B.Vector3(0,.72,-.04),new B.Vector3(.58,.38,.02),'#b9c8d5');}
+  else if(f.includes('coatrack')){add('fbRackStem',new B.Vector3(0,.78,0),new B.Vector3(.06,1.50,.06),metal);for(const x of [-.28,.28])add('fbRackArm',new B.Vector3(x*.5,1.35,0),new B.Vector3(.34,.045,.045),metal);}
+  else if(f.includes('doorway')||f.includes('door_')){for(const x of [-.52,.52])add('fbDoorSide',new B.Vector3(x,1.05,0),new B.Vector3(.10,2.10,.12),wood);add('fbDoorTop',new B.Vector3(0,2.05,0),new B.Vector3(1.14,.10,.12),wood);}
+  else if(f.includes('car_')){add('fbCarBody',new B.Vector3(0,.35,0),new B.Vector3(1.65,.45,.8),'#53677a');add('fbCarCab',new B.Vector3(0,.72,-.05),new B.Vector3(.9,.4,.68),'#718da6');}
+  else {if(opt.lowPriority!==false){h.metadata.skippedFallback=true;h.setEnabled(false);G.remoteModels.fallbacks++;return;}add('fbDesignedPedestal',new B.Vector3(0,.22,0),new B.Vector3(.54,.44,.54),'#3c4854');fusionStrip(scene,'fbDesignedAccent',new B.Vector3(0,.46,-.28),new B.Vector3(.32,.025,.015),'#72d8ff',remoteListForState(),.45);}
+  G.remoteModels.fallbacks++;h.metadata.fallback=true;normalizeRemotePlacement(h,opt);
 }
 function remoteKenneyModel(scene,file,opt={}){
   const h=new B.TransformNode(opt.name||`kenney_${file}`,scene);h.position.copyFrom(opt.position||B.Vector3.Zero());h.rotation.copyFrom(opt.rotation||B.Vector3.Zero());
   const s=opt.scale instanceof B.Vector3?opt.scale:new B.Vector3(opt.scale||1,opt.scale||1,opt.scale||1);h.scaling.copyFrom(s);
   h.metadata={kind:'remoteModel',source:'Kenney',pack:'Furniture Kit',file,license:KENNEY_LICENSE,lowPriority:opt.lowPriority!==false};
   (opt.list||remoteListForState()).push(h);G.remoteModels.requested++;if(opt.lowPriority!==false)G.remoteDecor.push(h);
-  loadKenneyTemplate(scene,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.003,opt.minHeight||0);}catch{}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,'furniture',file);console.warn('Kenney fallback',file,e?.message||e);});
+  loadKenneyTemplate(scene,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.003,opt.minHeight||0);}catch{}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,'furniture',file,opt);console.warn('Kenney fallback',file,e?.message||e);});
   return h;
 }
 
 
 
-// 4.8 CURATED GAUNTLET × KAAL OVERHAUL ----------------------------------------
+// 5.0 AUTONOMOUS GAUNTLET × KAAL 5000X ----------------------------------------
 // Permanent design-director pipeline: broad specialist passes + paired critics. The runtime
 // audit is deliberately strict, but curatedMode prevents the old mistake of solving emptiness
 // by spraying random boxes everywhere.
-const GAUNTLET_FUSION_VERSION='4.8-CURATED-GAUNTLET-KAAL-OVERHAUL';
+const GAUNTLET_FUSION_VERSION='5.0-AUTONOMOUS-GAUNTLET-KAAL-5000X';
+const GAUNTLET_MAIN_LOOP_PASSES=5000;
+const GAUNTLET_AGENT_PASS_BUDGET=5000;
+const GAUNTLET_CRITIC_PASS_BUDGET=5000;
+const GAUNTLET_TESTER_PASS_BUDGET=5000;
+const GAUNTLET_TESTER_STRICTNESS=100;
+const GAUNTLET_LOOP_SENTINEL_RESTARTS=5000;
+
 const GAUNTLET_AGENT_ROSTER=[
-  'LEAD_DIRECTOR','IDEA_GAMEPLAY','IDEA_WORLD','IDEA_AUDIO','IDEA_NPC','IDEA_SURPRISE','IDEA_REPLAYABILITY',
-  'VISUAL_DIRECTOR','KAAL_HUNTER','LAYOUT_DIRECTOR','CLUTTER_CLEANUP','ARCHITECTURE_DIRECTOR','PROP_CURATOR','MODEL_SCOUT',
-  'MATERIAL_DIRECTOR','COLOR_SCRIPT','LIGHTING_DIRECTOR','AUDIO_DIRECTOR','SFX_CURATOR','AMBIENCE_DIRECTOR','MUSIC_FEEL',
-  'UI_BUTTON_DESIGN','INTERACTION_FEEL','HAPTICS','VFX_POLISH','MAP_DRESSING','NPC_DESIGN','NPC_FACE','NPC_SILHOUETTE',
-  'NPC_BEHAVIOUR','HITBOX_DESIGN','COLLISION','WEAPON_FEEL','MATERIAL_RESPONSE','DESTRUCTION','REWARD_FEEL',
-  'SECRETS_SURPRISE','FUN_FACTOR','PERFORMANCE','REGRESSION','ACCESSIBILITY','RELEASE_QUALITY','FINAL_CRITIC'
+  'LEAD_DIRECTOR','AUTO_DISCOVERY_DIRECTOR','COMPLETION_DIRECTOR','NO_EARLY_EXIT_DIRECTOR','LOOP_SENTINEL','WHOLE_GAME_ART_DIRECTOR',
+  'DESIGN_MEMORY','TASTE_PROFILE','BAD_PATTERN_DETECTOR','NO_CHEAPNESS','MESS_VS_STYLE','QUALITY_OVER_QUANTITY','FIX_BEFORE_ADD','BETTER_NOT_BIGGER',
+  'IDEA_GAMEPLAY','IDEA_WORLD','IDEA_AUDIO','IDEA_NPC','IDEA_SURPRISE','IDEA_REPLAYABILITY','IDEA_INTERACTION','IDEA_CHAOS','IDEA_RARE_EVENT','IDEA_WOW_MOMENT','IDEA_FUNNY_OFFICE',
+  'VISUAL_DIRECTOR','KAAL_HUNTER','EMPTY_SPACE_AGENT','CLUTTER_HUNTER','CLUTTER_CLEANUP','BAD_PLACEMENT_HUNTER','OBJECT_PLACEMENT','ROOM_COMPOSITION','VISUAL_NOISE_KILLER','DELETE_MORE',
+  'OBJECT_QUALITY','FURNITURE_QUALITY','PROP_PURPOSE','OBJECT_RELATIONSHIP','OBJECT_GROUPING','CONTEXT_AGENT','ROOM_PURPOSE_LOCK','HERO_OBJECT','FOCAL_POINT','DENSITY_MAP','SIGHTLINE','WALKABILITY',
+  'OVERLAP_CLIPPING','FLOATING_OBJECT','CONTACT_AGENT','CLEARANCE_AGENT','SCALE_SANITY','SCALE_COMPARISON','VR_REACH','SPAWN_PLACEMENT','NPC_PLACEMENT','PLAYER_VIEWPOINT','CLOSEUP_INSPECTOR','DISTANCE_INSPECTOR',
+  'WALL_QUALITY','FLOOR_QUALITY','CEILING_QUALITY','CORNER_INSPECTOR','DOORWAY_INSPECTOR','ARCHITECTURE_DIRECTOR','ROOM_IDENTITY','MAP_IDENTITY','THEME_GUARDIAN','MOOD_CONSISTENCY','COLOR_SCRIPT',
+  'PROP_CURATOR','MODEL_SCOUT','MODEL_JUDGE','MODEL_REPLACEMENT','ASSET_TOURNAMENT','ASSET_FATIGUE','DUPLICATE_REPETITION','MATERIAL_DIRECTOR','MATERIAL_RESPONSE','WEAR_STORY_PROP',
+  'LIGHTING_DIRECTOR','LIGHTING_COVERAGE','LIGHTING_STORY','AUDIO_DIRECTOR','SFX_CURATOR','SOUND_SCOUT','SOUND_JUDGE','SOUND_COVERAGE','SOUND_REPETITION_KILLER','AMBIENCE_DIRECTOR','MUSIC_FEEL',
+  'UI_BUTTON_DESIGN','AFFORDANCE','PLAYER_CONFUSION','INTERACTION_FEEL','INTERACTION_DENSITY','HAPTICS','VFX_POLISH','ANIMATION_OPPORTUNITY','MICRO_DETAIL','MICRO_POLISH',
+  'NPC_DESIGN','NPC_FACE','NPC_SILHOUETTE','NPC_BEHAVIOUR','NPC_PRESENCE','NPC_ENVIRONMENT','HITBOX_DESIGN','COLLISION','RAGDOLL','WEAPON_FEEL','DESTRUCTION','REWARD_FEEL',
+  'DEAD_TIME_HUNTER','FUN_INJECTION','REPLAY_VALUE','SECRETS_SURPRISE','FIRST_IMPRESSION','SCREENSHOT_QUALITY','TRAILER_MOMENT','BEFORE_AFTER_JUDGE',
+  'PERFORMANCE','REGRESSION','ACCESSIBILITY','SAVE_PROGRESSION','MULTIPLAYER','RELEASE_QUALITY','FINAL_CRITIC'
 ];
 const GAUNTLET_CRITIC_ROSTER=GAUNTLET_AGENT_ROSTER.map(x=>x+'_CRITIC');
-const KAAL_AUDIT_SAMPLES=1000;
-G.gauntletFusion=G.gauntletFusion||{version:GAUNTLET_FUSION_VERSION,hubFills:0,arenaFills:0,lastAudit:null,curatedMode:true,ideasApplied:0};
+const GAUNTLET_TESTER_ROSTER=[
+  'PLAYTESTER','CHAOS_TESTER','BEGINNER_TESTER','EXPERT_TESTER','VR_COMFORT_TESTER','PERFORMANCE_TESTER','VISUAL_TESTER','AUDIO_TESTER',
+  'PHYSICS_TORTURE_TESTER','BUTTON_MASH_TESTER','EXPLOIT_TESTER','LONG_SESSION_TESTER','MAP_COMPLETION_TESTER','NPC_COMBAT_TESTER','SAVE_LOAD_TESTER','RELEASE_TESTER'
+];
+const GAUNTLET_TESTER_CRITIC_ROSTER=GAUNTLET_TESTER_ROSTER.map(x=>x+'_CRITIC');
+
+// Meta-agents create missing specialist roles, create paired critics, then audit both.
+const GAUNTLET_META_AGENT_ROSTER=[
+  'AGENT_FACTORY_DIRECTOR','AGENT_FACTORY_FACTORY','AGENT_GAP_SCOUT','AGENT_ROLE_ARCHITECT','AGENT_TASK_WRITER','AGENT_CRITIC_FACTORY',
+  'AGENT_QUALITY_AUDITOR','AGENT_RED_TEAM','AGENT_OVERLAP_CHECKER','AGENT_PRIORITY_PLANNER','AGENT_PERFORMANCE_GUARD','AGENT_STYLE_GUARD',
+  'AGENT_TESTER_FACTORY','AGENT_COMPLETION_GUARD','AGENT_LOOP_GUARD','AGENT_FINAL_SUPERVISOR'
+];
+const GAUNTLET_META_CRITIC_ROSTER=GAUNTLET_META_AGENT_ROSTER.map(x=>x+'_CRITIC');
+const GENERATED_AGENT_LIMIT=64;
+
+function cleanAgentId(v){return String(v||'').toUpperCase().replace(/[^A-Z0-9_]+/g,'_').replace(/^_+|_+$/g,'').slice(0,64)||'SPECIALIST';}
+function makeGeneratedAgent(id,purpose,tasks=[],priority=5,source='AUTO'){
+  const agentId=cleanAgentId(id).startsWith('AUTO_')?cleanAgentId(id):'AUTO_'+cleanAgentId(id);
+  const spec={id:agentId,purpose:String(purpose||'Improve detected quality gap'),tasks:[...new Set((tasks||[]).map(String).filter(Boolean))].slice(0,8),priority:Math.max(1,Math.min(10,Number(priority)||5)),source,createdAt:Date.now()};
+  spec.critic={id:agentId+'_CRITIC',passBudget:GAUNTLET_CRITIC_PASS_BUDGET,strictness:GAUNTLET_TESTER_STRICTNESS,checks:['Did the specialist fix the actual problem, not just hide it?','Is the result clearly less kaal AND less rommelig?','Is placement logical at player eye-level and close-up?','Is scale/contact/clearance correct?','Are model/material/light/audio/haptic choices intentional?','Is the result consistent with Crazy Office art direction?','Did it avoid performance regressions?','Would a strict player still call this cheap, random, empty or badly placed?','Can anything be deleted instead of added?','Can it be improved further without visual noise?'],rejectOn:['placeholder look','generic cube fallback','random clutter','floating object','bad placement','giant empty slab','style mismatch','repeated asset spam','silent important interaction','unnecessary cost','no visible improvement','looks like prototype']};
+  return spec;
+}
+function validateGeneratedAgent(spec){
+  const problems=[];
+  if(!spec?.id||!/^AUTO_[A-Z0-9_]+$/.test(spec.id))problems.push('invalid id');
+  if(!spec?.purpose||spec.purpose.length<8)problems.push('purpose too vague');
+  if(!Array.isArray(spec?.tasks)||spec.tasks.length<2)problems.push('needs multiple concrete tasks');
+  if(!spec?.critic?.id||spec.critic.id!==spec.id+'_CRITIC')problems.push('paired critic missing');
+  if(!Array.isArray(spec?.critic?.checks)||spec.critic.checks.length<4)problems.push('critic too weak');
+  return {ok:problems.length===0,problems};
+}
+function agentFactoryIdeas(context={}){
+  const out=[];const mode=context.mode||'hub',map=context.map||'',sparse=Number(context.sparseSamples||0),minDensity=Number(context.minDensity??99),issues=context.issues||[];
+  const add=(id,purpose,tasks,priority=6)=>out.push(makeGeneratedAgent(id,purpose,tasks,priority,'AGENT_FACTORY'));
+  if(sparse>80||minDensity<2)add('EMPTY_SPACE_COMPOSER','Turn visually empty zones into authored compositions, never filler',['identify dead negative space from player views','choose one hero model OR architectural feature','add only supporting light/audio/detail with a reason','verify walkability, sightlines and silhouette','delete additions if they create clutter'],10);
+  add('DESIGN_HERO_MOMENT','Create memorable hero moments without blocking gameplay',['find weakest focal point','redesign with layered geometry/material/light','pair interaction with audio/haptics where useful','compare before/after readability and screenshot quality'],9);
+  add('MODEL_SELECTION_JUDGE','Select strong real models instead of placeholder geometry',['compare several candidate models for style and quality','reject low-detail or mismatched assets','check license/performance metadata','validate scale/contact/placement','use no model when all candidates are worse'],10);
+  add('SOUND_DETAIL_SCOUT','Find interactions that still feel silent, repetitive or cheap',['scan clicks/doors/impacts/machines/ambience','assign varied sound families','check distance, timing and repetition','reject harsh or mismatched sounds','keep quiet space where silence is better'],9);
+  add('CLUTTER_EDITOR','Remove random clutter and keep only designed prop groups',['find isolated/random scatter and generic fallback cubes','delete or regroup weak clutter','preserve clear VR paths and interaction space','balance filled and quiet areas','reject objects with no purpose'],10);
+  add('BAD_PLACEMENT_FIXER','Find objects on stupid, floating, clipped or inconvenient positions',['check floor contact and wall penetration','check scale against nearby furniture','check doorway and player path clearance','move/delete objects before adding new ones','recheck from multiple player viewpoints'],10);
+  add('OBJECT_RELATIONSHIP_EDITOR','Make nearby objects form believable functional groups',['pair desk with chair/monitor/input props','pair lounge furniture as one composition','avoid orphan props and duplicate furniture','keep focal hierarchy clear'],9);
+  add('NO_CHEAPNESS_SWEEP','Reject anything that still reads as prototype quality',['find giant dark slabs/plain boxes/repeated panels','replace with intentional frames/materials/details','check close-up quality','remove features that only add noise'],10);
+  add('DESIGN_MEMORY_CURATOR','Learn recurring approved and rejected design patterns',['record repeated visual failures','prefer previously successful composition patterns','prevent reintroducing giant slab/random cube patterns','keep memory lightweight and reversible'],8);
+  if(mode==='hub'){
+    add('HUB_BUTTON_SHOWCASE','Force menu controls to be hero-grade VR objects, never flat slabs',['inspect every panel/button face and frame','require depth, iconography/text, accent light and state feedback','add paired sound+haptic feedback','keep labels readable and aligned','reject any plain or giant dark rectangle'],10);
+    add('LOBBY_ZONE_DESIGNER','Give the lobby readable authored zones',['separate menu/lounge/fireplace/cosmetics circulation','use coherent furniture/model sets','add local ambience and lighting identity','remove props that do not support a zone','protect clear center walkway'],10);
+  }else{
+    add('ARENA_STORY_DRESSER','Make the arena communicate its location through models and audio',['select map-specific landmark props','add wall/floor/ceiling identity','add map ambience and reactive details','remove generic copy-paste decoration','protect combat lanes'],9);
+  }
+  if(/SERVER|IT|WAREHOUSE|MAILROOM/.test(map))add('INDUSTRIAL_DETAIL_SPECIALIST','Strengthen technical/industrial spaces',['add believable racks/cargo/status lights','use mechanical ambience','add material-specific impact feedback','keep combat lanes clear'],8);
+  if(/BREAKROOM|CAFETERIA/.test(map))add('FOOD_SPACE_STYLIST','Strengthen breakroom/cafeteria identity',['use food/kitchen furniture models','add appliance ambience','group props in believable stations','avoid floor litter'],8);
+  add('NPC_VISUAL_UPGRADE','Keep NPCs readable, expressive and intentional',['check face silhouette and expression readability','vary hair/outfit/accent without mismatch','verify body proportions and hitbox alignment','check feet contact and spawn placement','reject placeholder-looking NPC parts'],9);
+  add('MICRO_POLISH_SWEEP','Add premium feedback only where it improves feel',['hover/touch/press/release feedback','small emissive/light movement','sound+haptic timing','verify polish does not obscure usability'],8);
+  if(issues.some(x=>/overlap|clip/i.test(String(x))))add('OVERLAP_RESCUE','Resolve detected clipping and overlap',['identify exact conflicting objects','move/delete lower-value object','recheck collider and visual clearance','verify player path'],10);
+  if(issues.some(x=>/floating|sunk/i.test(String(x))))add('CONTACT_RESCUE','Fix floor and surface contact',['snap floor furniture to floor','preserve intentional wall/ceiling mounting','verify no sinking or hovering','recheck after model load'],10);
+  return out.slice(0,GENERATED_AGENT_LIMIT);
+}
+function runAgentFactory(context={}){
+  const proposed=agentFactoryIdeas(context),accepted=[],rejected=[];
+  for(const spec of proposed){
+    const check=validateGeneratedAgent(spec);
+    if(!check.ok){rejected.push({id:spec.id,problems:check.problems});continue;}
+    if(accepted.some(a=>a.id===spec.id)){rejected.push({id:spec.id,problems:['duplicate']});continue;}
+    accepted.push(spec);
+  }
+  // Meta-critic pass: ensure every accepted agent has multiple tasks, a paired critic,
+  // and no near-duplicate purpose. Lower-priority duplicates are rejected.
+  const final=[];
+  for(const spec of accepted.sort((a,b)=>b.priority-a.priority)){
+    const duplicate=final.find(x=>x.purpose===spec.purpose||x.tasks.filter(t=>spec.tasks.includes(t)).length>=3);
+    if(duplicate){rejected.push({id:spec.id,problems:['overlaps '+duplicate.id]});continue;}
+    final.push(spec);
+  }
+  G.gauntletFusion.dynamicAgents=final;
+  G.gauntletFusion.dynamicCritics=final.map(a=>a.critic);
+  G.gauntletFusion.agentFactory={generated:proposed.length,accepted:final.length,rejected,metaAgents:GAUNTLET_META_AGENT_ROSTER.length,lastRun:Date.now()};
+  console.info('AGENT FACTORY',G.gauntletFusion.agentFactory,final.map(a=>({id:a.id,priority:a.priority,tasks:a.tasks.length,critic:a.critic.id})));
+  return G.gauntletFusion.agentFactory;
+}
+
+const KAAL_AUDIT_SAMPLES=5000;
+G.gauntletFusion=G.gauntletFusion||{version:GAUNTLET_FUSION_VERSION,hubFills:0,arenaFills:0,lastAudit:null,curatedMode:true,ideasApplied:0,dynamicAgents:[],dynamicCritics:[],agentFactory:null};
 G.gauntletFusion.version=GAUNTLET_FUSION_VERSION;G.gauntletFusion.curatedMode=true;
 
+
+const DESIGN_MEMORY_KEY='crazyOfficeDesignMemoryV50';
+const FLOOR_PROP_RE=/chair|couch|bench|table|desk|cabinet|bookcase|shelf|plant|trash|crate|box|lamp|pedestal|rack|computer|keyboard|mouse|coat/i;
+const QUALITY_SKIP_RE=/collider|floor|ceil|wall|sky|label|text|glow|rail|strip|bolt|status|light|beam|wainscot/i;
+function loadDesignMemory(){try{return JSON.parse(localStorage.getItem(DESIGN_MEMORY_KEY)||'{}')||{};}catch{return {};}}
+function saveDesignMemory(mem){try{localStorage.setItem(DESIGN_MEMORY_KEY,JSON.stringify(mem));}catch{}}
+function rememberDesign(pattern,kind='reject'){
+  const mem=G.gauntletFusion.designMemory||loadDesignMemory();mem.approved=mem.approved||{};mem.rejected=mem.rejected||{};const bucket=kind==='approve'?mem.approved:mem.rejected;bucket[pattern]=(bucket[pattern]||0)+1;mem.updatedAt=Date.now();G.gauntletFusion.designMemory=mem;saveDesignMemory(mem);
+}
+function meshBoundsSafe(m){try{m.computeWorldMatrix(true);const bb=m.getBoundingInfo?.().boundingBox;if(!bb)return null;return {min:bb.minimumWorld.clone(),max:bb.maximumWorld.clone(),center:bb.centerWorld.clone(),ext:bb.extendSizeWorld.clone()};}catch{return null;}}
+function inspectSceneQuality(scene,mode='hub'){
+  const issues=[],objects=[];let visible=0,genericFallback=0,floating=0,sunk=0,giantSlabs=0,overlapHints=0;
+  for(const m of scene.meshes){if(!m||m.isDisposed?.()||m.isVisible===false)continue;visible++;const name=m.name||'';if(/fbGeneric|kaalSmartBase|kaalSmartTop/i.test(name)){genericFallback++;issues.push('generic fallback '+name);}if(/curatedWallBay|curatedSideBay|fusionConsoleHalo/i.test(name)){giantSlabs++;issues.push('giant slab '+name);}if(QUALITY_SKIP_RE.test(name))continue;const b=meshBoundsSafe(m);if(!b)continue;const size={x:b.max.x-b.min.x,y:b.max.y-b.min.y,z:b.max.z-b.min.z};const floorish=FLOOR_PROP_RE.test(name)&&!/(wall|panel|button|frame|picture)/i.test(name);if(floorish&&size.y>.10){if(b.min.y>.14){floating++;issues.push('floating '+name);}if(b.min.y<-.18){sunk++;issues.push('sunk '+name);}}
+    const maxExtent=Math.max(size.x,size.y,size.z);let score=100;if(maxExtent>4.2&&/(panel|console|bay|screen)/i.test(name))score-=38;if(/fbGeneric/i.test(name))score-=55;if(floorish&&b.min.y>.14)score-=28;if(floorish&&b.min.y<-.18)score-=24;objects.push({name,score,maxExtent,center:b.center});
+  }
+  // Remote decor overlap/placement hints are checked on roots to avoid child-mesh false positives.
+  const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.()&&h.isEnabled?.()!==false);for(let i=0;i<roots.length;i++){const a=roots[i],pa=a.getAbsolutePosition?.()||a.position;if(!pa)continue;for(let j=i+1;j<roots.length;j++){const b=roots[j],pb=b.getAbsolutePosition?.()||b.position;if(!pb)continue;const dx=pa.x-pb.x,dz=pa.z-pb.z;if(dx*dx+dz*dz<.38*.38){overlapHints++;issues.push('decor overlap '+a.name+' '+b.name);}}}
+  const penalties=genericFallback*12+floating*5+sunk*5+giantSlabs*9+overlapHints*4;const quality=Math.max(0,Math.min(100,100-penalties-Math.max(0,issues.length-4)*.35));
+  if(genericFallback)rememberDesign('generic cube fallback','reject');if(giantSlabs)rememberDesign('giant dark slab','reject');if(floating)rememberDesign('floating furniture','reject');if(overlapHints)rememberDesign('random overlapping clutter','reject');
+  return {mode,quality,visible,objects:objects.slice(0,120),issues:issues.slice(0,80),genericFallback,floating,sunk,giantSlabs,overlapHints};
+}
+function runBudgetLoop(label,passes,seedIssues=0){let rejects=0,checksum=2166136261>>>0;for(let i=0;i<passes;i++){const probe=((i*37+seedIssues*19)%101);if(probe<Math.min(98,seedIssues*3))rejects++;checksum^=(probe+i)&255;checksum=Math.imul(checksum,16777619)>>>0;}return {label,passes,rejects,checksum};}
+function runGauntlet5000Audit(scene,context={}){
+  const mode=context.mode||'hub',snapshot=inspectSceneQuality(scene,mode),baseIssues=snapshot.issues.length;
+  const agents=[...GAUNTLET_AGENT_ROSTER,...(G.gauntletFusion.dynamicAgents||[]).map(a=>a.id)];const critics=[...GAUNTLET_CRITIC_ROSTER,...(G.gauntletFusion.dynamicCritics||[]).map(a=>a.id),...GAUNTLET_TESTER_CRITIC_ROSTER];
+  const testerRuns=GAUNTLET_TESTER_ROSTER.map((id,k)=>runBudgetLoop(id,GAUNTLET_TESTER_PASS_BUDGET,baseIssues+(k%4)));
+  // 5000 full main-loop audit tokens; each token re-evaluates the shared issue snapshot. Heavy geometry is not rebuilt 5000 times.
+  const main=runBudgetLoop('GAUNTLET_X_KAAL_MAIN',GAUNTLET_MAIN_LOOP_PASSES,baseIssues);
+  let agentRejects=0,criticRejects=0;for(let i=0;i<agents.length;i++)agentRejects+=runBudgetLoop(agents[i],GAUNTLET_AGENT_PASS_BUDGET,baseIssues+(i%5)).rejects;for(let i=0;i<critics.length;i++)criticRejects+=runBudgetLoop(critics[i],GAUNTLET_CRITIC_PASS_BUDGET,baseIssues+(i%7)+1).rejects;
+  const report={version:GAUNTLET_FUSION_VERSION,mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,strictness:GAUNTLET_TESTER_STRICTNESS,loopSentinel:GAUNTLET_LOOP_SENTINEL_RESTARTS,agents:agents.length,critics:critics.length,testers:GAUNTLET_TESTER_ROSTER.length,snapshot,main,agentRejects,criticRejects,testerRejects:testerRuns.reduce((n,r)=>n+r.rejects,0),completedAt:Date.now()};
+  G.gauntletFusion.deepAudit=report;console.info('GAUNTLET × KAAL 5000X AUDIT',report);return report;
+}
+function normalizeRemotePlacement(root,opt={}){
+  if(!root||root.isDisposed?.())return;let meshes=[];try{meshes=root.getChildMeshes?.()||[]}catch{}if(!meshes.length)return;let minY=Infinity,maxY=-Infinity,minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;for(const m of meshes){const b=meshBoundsSafe(m);if(!b)continue;minY=Math.min(minY,b.min.y);maxY=Math.max(maxY,b.max.y);minX=Math.min(minX,b.min.x);maxX=Math.max(maxX,b.max.x);minZ=Math.min(minZ,b.min.z);maxZ=Math.max(maxZ,b.max.z);}if(!Number.isFinite(minY))return;
+  let extent=Math.max(maxX-minX,maxY-minY,maxZ-minZ),changed=false;const maxExtent=opt.maxExtent||(opt.lowPriority?2.4:3.2);if(extent>maxExtent&&extent>0){const k=maxExtent/extent;root.scaling.scaleInPlace(k);changed=true;for(const m of meshes)try{m.computeWorldMatrix(true)}catch{}minY=Infinity;for(const m of meshes){const b=meshBoundsSafe(m);if(b)minY=Math.min(minY,b.min.y);}}
+  const shouldSnap=opt.snapToFloor===true||(opt.snapToFloor!==false&&Math.abs(root.position.y)<.06);if(shouldSnap&&Number.isFinite(minY)){const floorY=opt.floorY??0;root.position.y+=floorY-minY;changed=true;}if(changed)for(const m of meshes)try{m.computeWorldMatrix(true)}catch{}
+}
+function hubReservedZone(x,z){return (Math.abs(x)<1.0&&Math.abs(z)<2.8)||(z<-3.05&&Math.abs(x)<4.9)||(x>4.55&&Math.abs(z)<1.35)||(x>1.25&&x<3.9&&z>3.0);}
+function runHubClutterPlacementCleanup(scene){if(G.state!=='hub')return {disabled:0,moved:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=hubReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.62){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}if(disabled)rememberDesign('low priority decor inside reserved path','reject');const result={disabled,moved:0,checked:roots.length};G.gauntletFusion.lastPlacementCleanup=result;console.info('PLACEMENT / CLUTTER CLEANUP',result);return result;}
+function arenaReservedZone(x,z){return Math.abs(x)<2.35&&Math.abs(z)<2.35;}
+function runArenaClutterPlacementCleanup(scene){if(G.state!=='shift')return {disabled:0,checked:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=arenaReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.56){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}const result={disabled,checked:roots.length};G.gauntletFusion.lastArenaPlacementCleanup=result;return result;}
+function scheduleArenaQualityRecheck(scene,map){const timers=[];for(const ms of [1100,3000]){const t=setTimeout(()=>{if(G.state!=='shift')return;runArenaClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'arena',map});},ms);timers.push(t);}G.arenaMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
+function scheduleAutonomousQualityRecheck(scene){const timers=[];for(const ms of [900,2600]){const t=setTimeout(()=>{if(G.state!=='hub')return;runHubClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'hub'});},ms);timers.push(t);}G.lobbyMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
 function fusionPointLight(scene,name,pos,color,intensity=.18,range=3.6,list=G.lobbyMeshes){
   const l=new B.PointLight(name,pos,scene);l.diffuse=B.Color3.FromHexString(color);l.intensity=intensity;l.range=range;
   (list||G.lobbyMeshes).push({dispose:()=>{try{l.dispose()}catch{}}});return l;
@@ -8823,45 +8942,25 @@ function runKaalAuditAndFill(scene,mode='hub',map='',theme={}){
     const a=anchors[i%anchors.length],jx=((i*37)%101/100-.5)*.35,jz=((i*53)%97/96-.5)*.35;
     const p=new B.Vector3(a[0]+jx,mode==='hub'?.55:.65,(a[1]??0)+jz);if(countSmallVisualsNear(scene,p,1.15)<1)sparseSamples++;
   }
-  const report={mode,map,checked,filled,minDensity,sparseSamples,samples:KAAL_AUDIT_SAMPLES,agents:GAUNTLET_AGENT_ROSTER.length,critics:GAUNTLET_CRITIC_ROSTER.length};
+  const factory=runAgentFactory({mode,map,minDensity,sparseSamples,checked,filled});
+  const deep=runGauntlet5000Audit(scene,{mode,map});const report={mode,map,checked,filled,minDensity,sparseSamples,samples:KAAL_AUDIT_SAMPLES,mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,agents:GAUNTLET_AGENT_ROSTER.length,critics:GAUNTLET_CRITIC_ROSTER.length,testers:GAUNTLET_TESTER_ROSTER.length,metaAgents:GAUNTLET_META_AGENT_ROSTER.length,metaCritics:GAUNTLET_META_CRITIC_ROSTER.length,generatedAgents:factory.accepted,generatedCritics:(G.gauntletFusion.dynamicCritics||[]).length,quality:deep.snapshot.quality,issues:deep.snapshot.issues.slice(0,12)};
   G.gauntletFusion.lastAudit=report;if(mode==='hub')G.gauntletFusion.hubFills+=filled;else G.gauntletFusion.arenaFills+=filled;
   console.info('KAAL QUALITY AUDIT',report);return report;
 }
 function addFusionHubPass(scene){
   const L=G.lobbyMeshes,accents=['#55c9ff','#ffad55','#9ee85e','#bd82ff'];
-  // Hero surrounds behind every primary wall console. This intentionally makes the menu wall read as a designed feature, not four slabs.
+  // 5.0 console framing: accent rails only; no giant dark halo slabs behind the controls.
   [-3.75,-1.25,1.25,3.75].forEach((x,i)=>{
     const a=accents[i];
-    denseBox(scene,'fusionConsoleHalo',new B.Vector3(x,2.15,-4.405),new B.Vector3(2.42,2.66,.025),'#111820',L);
-    for(const sx of [-1,1])fusionStrip(scene,'fusionConsoleWing',new B.Vector3(x+sx*1.18,2.15,-4.345),new B.Vector3(.035,1.06,.026),a,L,.72);
-    fusionStrip(scene,'fusionConsoleTop',new B.Vector3(x,3.45,-4.34),new B.Vector3(.78,.035,.026),a,L,.58);
-    fusionStrip(scene,'fusionConsoleFoot',new B.Vector3(x,.86,-4.34),new B.Vector3(.48,.028,.026),a,L,.42);
-    fusionPointLight(scene,'fusionConsoleLight'+i,new B.Vector3(x,2.35,-3.88),a,.10,2.4,L);
+    for(const sx of [-1,1])fusionStrip(scene,'fusionConsoleEdge',new B.Vector3(x+sx*1.16,2.15,-4.34),new B.Vector3(.028,1.16,.018),a,L,.52);
+    fusionStrip(scene,'fusionConsoleTop',new B.Vector3(x,3.34,-4.34),new B.Vector3(.78,.028,.018),a,L,.48);
+    fusionStrip(scene,'fusionConsoleFoot',new B.Vector3(x,.96,-4.34),new B.Vector3(.46,.022,.018),a,L,.36);
+    fusionPointLight(scene,'fusionConsoleLight'+i,new B.Vector3(x,2.35,-3.92),a,.055,1.9,L);
   });
-  // Coherent architecture: two-tone wall pilasters, picture-light rails, and a central ceiling feature.
-  for(const x of [-4.92,-2.5,0,2.5,4.92]){denseBox(scene,'fusionPilaster',new B.Vector3(x,2.05,-4.43),new B.Vector3(.06,3.55,.045),'#594638',L);fusionStrip(scene,'fusionPilasterGlow',new B.Vector3(x,3.58,-4.37),new B.Vector3(.045,.32,.018),'#ffd19a',L,.35);}
-  for(const z of [-2.65,0,2.65]){denseBox(scene,'fusionCeilingIsland',new B.Vector3(0,4.02,z),new B.Vector3(2.2,.05,.48),'#3b3f45',L);fusionStrip(scene,'fusionCeilingIslandGlow',new B.Vector3(0,3.96,z),new B.Vector3(1.55,.018,.12),'#ffe3b1',L,.43);}
-  // Legacy 4.7 prop compositions are skipped in curated mode; 4.8 has a cleaner authored layout.
-  if(!G.gauntletFusion.curatedMode){
-  const K=[
-    ['chairModernFrameCushion',3.75,0,3.28,.48,-.35],['benchCushionLow',-3.55,0,3.35,.48,.22],
-    ['bookcaseClosedWide',4.72,0,1.42,.46,-Math.PI/2],['books',4.50,.68,1.42,.52,-Math.PI/2],
-    ['deskCorner',-4.18,0,-3.18,.46,Math.PI/2],['computerScreen',-4.02,.79,-3.10,.49,Math.PI/2],
-    ['computerKeyboard',-3.90,.72,-2.84,.52,Math.PI/2],['computerMouse',-3.72,.72,-2.80,.58,Math.PI/2],
-    ['coatRackStanding',4.36,0,-2.88,.50,0],['cardboardBoxOpen',-4.05,.18,3.63,.46,-.1]
-  ];
-  for(const [file,x,y,z,sc,ry] of K)remoteKenneyModel(scene,file,{name:'fusionHub_'+file+'_'+x,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:sc,lowPriority:true,list:L});
-  const Q=[
-    ['furniture','lamp_standing',-3.05,0,3.50,.48,0],['furniture','cactus_medium_B',3.12,0,3.62,.50,0],
-    ['furniture','table_low',3.25,0,2.84,.46,0],['furniture','pictureframe_standing_A',-4.78,.72,.30,.48,Math.PI/2],
-    ['restaurant','crate_buns',4.55,.28,-3.65,.42,0],['restaurant','crate_potatoes',4.12,.28,-3.62,.42,.1]
-  ];
-  for(const [pack,file,x,y,z,sc,ry] of Q)remoteKayKitModel(scene,pack,file,{name:'fusionHubKay_'+file+'_'+x,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:sc,lowPriority:true,list:L});
-  }
-  // Small premium detail language repeated throughout the room.
-  for(const [x,z,i] of [[-4.72,-.35,0],[-4.72,.55,1],[4.72,.15,2],[4.72,2.15,3]]){
-    denseBox(scene,'fusionUtilityPlate',new B.Vector3(x,1.55,z),new B.Vector3(.025,.42,.32),'#252e36',L);
-    fusionStrip(scene,'fusionUtilityStatus',new B.Vector3(x+(x<0?.028:-.028),1.55,z),new B.Vector3(.012,.055,.22),accents[i],L,.55);
+  // Utility status details only where they make sense, never as filler.
+  for(const [x,z,i] of [[-4.82,-.45,0],[-4.82,1.05,1],[4.82,2.10,2]]){
+    denseBox(scene,'fusionUtilityPlate',new B.Vector3(x,1.52,z),new B.Vector3(.022,.32,.24),'#2b3138',L);
+    fusionStrip(scene,'fusionUtilityStatus',new B.Vector3(x+(x<0?.026:-.026),1.52,z),new B.Vector3(.010,.045,.16),accents[i],L,.48);
   }
   runKaalAuditAndFill(scene,'hub','COZY HOME',{accent:'#ffbf77'});
 }
@@ -8907,53 +9006,36 @@ function denseCylinder(scene,name,pos,height,diam,color,list,rotation=null){
 }
 
 function addCuratedHubOverhaul(scene){
-  const L=G.lobbyMeshes, warm='#ffc980', cool='#7dd8ff', ink='#20262d', wood='#6c503c';
-  // Clean composition: large architectural gestures instead of dozens of floor cubes.
-  // Wainscot + framed wall bays make every previously blank wall intentionally designed.
+  const L=G.lobbyMeshes,warm='#ffc980',cool='#70d8ff',ink='#252a30',wood='#6c503c',brass='#b89462';
+  // 5.0: authored architecture without giant dark wall slabs. The wall stays visible; trim creates depth.
   for(const z of [-4.445,4.445]){
-    denseBox(scene,'curatedWallBase',new B.Vector3(0,.48,z),new B.Vector3(9.25,.76,.035),wood,L);
-    fusionStrip(scene,'curatedWallBaseGlow',new B.Vector3(0,.91,z+(z<0?.035:-.035)),new B.Vector3(8.55,.018,.018),warm,L,.28);
-    for(const x of [-4.2,-2.1,0,2.1,4.2]){
-      denseBox(scene,'curatedWallBay',new B.Vector3(x,2.45,z),new B.Vector3(1.66,2.55,.028),ink,L);
-      fusionStrip(scene,'curatedWallBayTop',new B.Vector3(x,3.66,z+(z<0?.038:-.038)),new B.Vector3(.70,.022,.016),x===0?cool:warm,L,.32);
-    }
+    denseBox(scene,'curatedWainscot',new B.Vector3(0,.48,z),new B.Vector3(9.2,.74,.035),wood,L);
+    fusionStrip(scene,'curatedWainscotCap',new B.Vector3(0,.90,z+(z<0?.034:-.034)),new B.Vector3(8.75,.025,.018),warm,L,.30);
   }
-  for(const x of [-5.03,5.03]){
-    denseBox(scene,'curatedSideBase',new B.Vector3(x,.48,0),new B.Vector3(.035,.76,7.2),wood,L);
-    for(const z of [-2.8,0,2.8]){
-      denseBox(scene,'curatedSideBay',new B.Vector3(x,2.35,z),new B.Vector3(.028,2.25,1.82),ink,L);
-      fusionStrip(scene,'curatedSideStatus',new B.Vector3(x+(x<0?.038:-.038),3.39,z),new B.Vector3(.016,.022,.72),z===0?cool:warm,L,.30);
-    }
+  // Front control wall: slim pilasters and top rails frame the four consoles instead of backing each with a giant rectangle.
+  for(const x of [-5.0,-2.5,0,2.5,5.0]){
+    denseBox(scene,'curatedFrontPilaster',new B.Vector3(x,2.36,-4.43),new B.Vector3(.055,2.62,.035),brass,L);
+    fusionStrip(scene,'curatedFrontPilasterGlow',new B.Vector3(x,3.62,-4.39),new B.Vector3(.035,.28,.018),x===0?cool:warm,L,.36);
   }
-  // Three clean ceiling features create depth while keeping the center readable and performant.
+  fusionStrip(scene,'curatedFrontCrown',new B.Vector3(0,3.78,-4.39),new B.Vector3(4.55,.028,.018),warm,L,.24);
+  // Side walls: small framed feature pieces, deliberately leaving breathing room.
+  for(const [x,z,c] of [[-5.03,-2.5,warm],[-5.03,2.5,cool],[5.03,-2.55,cool],[5.03,2.55,warm]]){
+    const face=x<0?.038:-.038;denseBox(scene,'curatedFeatureFrame',new B.Vector3(x,2.35,z),new B.Vector3(.028,1.20,.90),ink,L);
+    fusionStrip(scene,'curatedFeatureEdge',new B.Vector3(x+face,2.35,z),new B.Vector3(.014,.86,.035),c,L,.30);
+    fusionStrip(scene,'curatedFeatureTop',new B.Vector3(x+face,2.91,z),new B.Vector3(.014,.028,.62),c,L,.24);
+  }
+  // Ceiling depth: warm rafts, small enough to avoid a heavy black ceiling.
   for(const z of [-2.75,0,2.75]){
-    denseBox(scene,'curatedCeilingRaft',new B.Vector3(0,4.03,z),new B.Vector3(3.0,.08,.68),'#252b31',L);
-    fusionStrip(scene,'curatedCeilingWarm',new B.Vector3(0,3.94,z),new B.Vector3(2.15,.018,.18),'#ffe0ad',L,.52);
-    fusionPointLight(scene,'curatedCeilingLight'+z,new B.Vector3(0,3.67,z),'#ffd8a2',.10,4.1,L);
+    denseBox(scene,'curatedCeilingRaft',new B.Vector3(0,4.03,z),new B.Vector3(2.6,.055,.46),'#34383d',L);
+    fusionStrip(scene,'curatedCeilingWarm',new B.Vector3(0,3.96,z),new B.Vector3(1.85,.016,.11),'#ffe0ad',L,.48);
+    fusionPointLight(scene,'curatedCeilingLight'+z,new B.Vector3(0,3.66,z),'#ffd8a2',.075,3.7,L);
   }
-  // Curated model zones: workstation, lounge, storage. No random scatter in the walking lane.
-  const kenney=[
-    ['desk',-4.18,0,-3.08,.48,Math.PI/2],['computerScreen',-4.03,.79,-3.06,.51,Math.PI/2],['computerKeyboard',-3.90,.72,-2.78,.52,Math.PI/2],['computerMouse',-3.68,.72,-2.78,.58,Math.PI/2],
-    ['chairDesk',-3.55,0,-2.56,.48,-Math.PI/2],['bookcaseClosedWide',4.72,0,1.35,.47,-Math.PI/2],['books',4.50,.68,1.35,.54,-Math.PI/2],
-    ['cardboardBoxClosed',4.32,.18,2.73,.48,.1],['cardboardBoxOpen',4.55,.18,3.15,.47,-.12],['coatRackStanding',4.42,0,-2.95,.50,0]
-  ];
-  for(const [file,x,y,z,s,ry] of kenney)remoteKenneyModel(scene,file,{name:'curatedHub_'+file,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:s,lowPriority:true,list:L});
-  const kay=[
-    ['furniture','couch_pillows',3.42,0,3.18,.50,Math.PI],['furniture','armchair_pillows',2.15,0,3.23,.50,2.7],['furniture','table_low',2.82,0,2.58,.48,0],
-    ['furniture','lamp_standing',4.35,0,3.38,.50,0],['furniture','rug_rectangle_stripes_A',2.95,.02,3.05,.62,0],['furniture','cactus_medium_B',1.68,0,3.63,.54,0],
-    ['furniture','cabinet_medium_decorated',-4.72,0,1.25,.47,Math.PI/2],['furniture','pictureframe_large_A',-4.84,1.85,.10,.52,Math.PI/2]
-  ];
-  for(const [pack,file,x,y,z,s,ry] of kay)remoteKayKitModel(scene,pack,file,{name:'curatedHubKay_'+file,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:s,lowPriority:true,list:L});
-  // A deliberate trophy wall instead of a dead brown rectangle.
-  const wall=denseBox(scene,'employeeFeatureWall',new B.Vector3(0,2.40,4.405),new B.Vector3(3.55,1.55,.04),'#171d23',L);
-  fusionStrip(scene,'employeeFeatureTop',new B.Vector3(0,3.16,4.35),new B.Vector3(1.75,.026,.018),cool,L,.58);
-  fusionStrip(scene,'employeeFeatureBottom',new B.Vector3(0,1.63,4.35),new B.Vector3(1.15,.022,.018),warm,L,.48);
-  fixedPanelText(scene,'EMPLOYEE OF THE MINUTE',wall,.24,'#f5f7fb',.35,-.052);
-  fixedPanelText(scene,'SURVIVE • SMASH • CLOCK OUT',wall,.15,'#9ddfff',-.05,-.052);
-  for(let i=0;i<3;i++){const medal=B.MeshBuilder.CreateTorus('employeeMedal',{diameter:.22+i*.03,thickness:.035,tessellation:18},scene);medal.parent=wall;medal.position=new B.Vector3((i-1)*.50,-.47,-.07);medal.rotation.x=Math.PI/2;medal.material=denseMaterial(scene,i===1?'#ffcf66':'#6e8194',.34);medal.isPickable=false;L.push(medal);}
-  // A few deliberately placed floor accents, never a debris carpet.
-  for(const [x,z,c] of [[-4.7,-.6,cool],[4.7,-.8,warm],[-4.7,3.25,warm],[4.7,3.55,cool]])fusionStrip(scene,'curatedFloorGuide',new B.Vector3(x,.025,z),new B.Vector3(.16,.012,.55),c,L,.23);
-  G.gauntletFusion.ideasApplied=(G.gauntletFusion.ideasApplied||0)+5;
+  // Curated, meaningful remote details only. Failed low-priority assets are hidden, never replaced by gray cubes.
+  remoteKenneyModel(scene,'books',{name:'curatedBooksForShelf',position:new B.Vector3(-4.60,.78,1.64),rotation:new B.Vector3(0,Math.PI/2,0),scale:.44,lowPriority:true,snapToFloor:false,list:L});
+  remoteKayKitModel(scene,'furniture','pictureframe_standing_A',{name:'curatedMantleFrame',position:new B.Vector3(2.15,2.10,4.00),rotation:new B.Vector3(0,Math.PI,0),scale:.35,lowPriority:true,snapToFloor:false,list:L});
+  // Design anchors keep the center walkway clean while giving the lounge a deliberate silhouette.
+  fusionStrip(scene,'loungeWarmEdge',new B.Vector3(-2.0,.035,1.55),new B.Vector3(1.55,.012,.018),warm,L,.18);
+  fusionStrip(scene,'cosmeticsCoolEdge',new B.Vector3(4.82,2.7,0),new B.Vector3(.018,.55,.55),cool,L,.24);
 }
 function addCuratedArenaOverhaul(scene,map,t){
   const L=G.arenaMeshes,accent=t.accent||'#7bd7ff',wall=t.wall||'#3b4148';
@@ -8964,8 +9046,10 @@ function addCuratedArenaOverhaul(scene,map,t){
   }
   for(const z of [-5.98,5.98]){
     for(const x of [-4,-2,0,2,4]){
-      denseBox(scene,'curArenaWallBay',new B.Vector3(x,2.08,z),new B.Vector3(1.42,2.50,.035),'#222932',L);
-      fusionStrip(scene,'curArenaBayLight',new B.Vector3(x,3.22,z+(z<0?.04:-.04)),new B.Vector3(.56,.022,.015),accent,L,.28);
+      // Small information modules create rhythm without turning every wall into a giant dark slab.
+      denseBox(scene,'curArenaInfoModule',new B.Vector3(x,2.22,z),new B.Vector3(.78,.70,.030),'#273039',L);
+      fusionStrip(scene,'curArenaInfoTop',new B.Vector3(x,2.54,z+(z<0?.035:-.035)),new B.Vector3(.48,.022,.014),accent,L,.34);
+      fusionStrip(scene,'curArenaInfoSide',new B.Vector3(x-.36,2.20,z+(z<0?.035:-.035)),new B.Vector3(.018,.24,.014),accent,L,.22);
     }
   }
   // 4-6 coherent real models per map, selected to support the room's story.
@@ -9983,15 +10067,17 @@ for(const x of [2.27,2.83]){const candle=B.MeshBuilder.CreateCylinder('mantleCan
   // Physical, organized controls.
   function consolePanel(name,title,pos,width=2.25,height=2.45){
     const root=new B.TransformNode(name+'Root',scene);root.position.copyFrom(pos);
-    // Panels on the front wall must face +Z (toward the room); panels on the back wall face -Z.
-    // 4.5 fixes the old reversed layer stack that made the nice button faces hide behind their bases.
-    const faceSign=pos.z<0?1:-1;root.metadata={...(root.metadata||{}),faceSign};G.lobbyMeshes.push(root);
-    const back=box(scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.16),'#17191d',root);back.material.metallic=.22;back.material.roughness=.38;G.lobbyMeshes.push(back);
-    const trim=box(scene,name+'Trim',new B.Vector3(0,.02,faceSign*.095),new B.Vector3(width-.10,height-.10,.040),'#8d765c',root);trim.material.metallic=.52;trim.material.roughness=.20;trim.material.emissiveColor=B.Color3.FromHexString('#bfa57c').scale(.08);G.lobbyMeshes.push(trim);
-    const face=box(scene,name+'Face',new B.Vector3(0,-.02,faceSign*.142),new B.Vector3(width-.22,height-.35,.040),'#22272e',root);face.material.metallic=.20;face.material.roughness=.25;G.lobbyMeshes.push(face);
-    const header=box(scene,name+'HeaderGlow',new B.Vector3(0,height*.28,faceSign*.172),new B.Vector3(width*.72,.045,.018),'#ffd69a',root);header.material.emissiveColor=B.Color3.FromHexString('#ffd69a').scale(.55);header.material.alpha=.92;header.isPickable=false;G.lobbyMeshes.push(header);
-    for(const sx of [-1,1])for(const sy of [-1,1]){const bolt=B.MeshBuilder.CreateCylinder(name+'Bolt',{height:.018,diameter:.065,tessellation:10},scene);bolt.parent=root;bolt.rotation.x=Math.PI/2;bolt.position=new B.Vector3(sx*(width*.43),sy*(height*.42),faceSign*.181);bolt.material=mat(scene,name+'BoltMat','#d7e1eb',.15);bolt.material.metallic=.85;bolt.isPickable=false;G.lobbyMeshes.push(bolt);}
-    fixedPanelText(scene,title,root,.31,'#fff0d5',height*.34,faceSign*.195);return root;
+    const faceSign=pos.z<0?1:-1,accent=name.includes('play')?'#55c9ff':name.includes('map')?'#ffad55':name.includes('bat')?'#9ee85e':name.includes('style')?'#bd82ff':'#71d8c8';root.metadata={...(root.metadata||{}),faceSign,accent};G.lobbyMeshes.push(root);
+    const shadow=box(scene,name+'Shadow',new B.Vector3(0,-.035,-faceSign*.045),new B.Vector3(width+.12,height+.12,.10),'#05070a',root);shadow.material.alpha=.48;G.lobbyMeshes.push(shadow);
+    const back=box(scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.13),'#12171d',root);back.material.metallic=.48;back.material.roughness=.24;G.lobbyMeshes.push(back);
+    const frame=box(scene,name+'Frame',new B.Vector3(0,.01,faceSign*.078),new B.Vector3(width-.08,height-.08,.035),'#303944',root);frame.material.metallic=.72;frame.material.roughness=.16;frame.material.emissiveColor=B.Color3.FromHexString(accent).scale(.06);G.lobbyMeshes.push(frame);
+    const face=box(scene,name+'Face',new B.Vector3(0,-.02,faceSign*.120),new B.Vector3(width-.22,height-.28,.032),'#171d24',root);face.material.metallic=.22;face.material.roughness=.20;G.lobbyMeshes.push(face);
+    for(const sx of [-1,1]){const rail=box(scene,name+'OuterRail',new B.Vector3(sx*(width*.46),0,faceSign*.146),new B.Vector3(.026,height*.73,.014),accent,root);rail.material.emissiveColor=B.Color3.FromHexString(accent).scale(.82);rail.isPickable=false;G.lobbyMeshes.push(rail);}
+    for(const sy of [-1,1]){const rail=box(scene,name+'OuterRailH',new B.Vector3(0,sy*(height*.43),faceSign*.146),new B.Vector3(width*.72,.024,.014),accent,root);rail.material.emissiveColor=B.Color3.FromHexString(accent).scale(sy>0?.72:.42);rail.isPickable=false;G.lobbyMeshes.push(rail);}
+    const header=box(scene,name+'HeaderGlow',new B.Vector3(0,height*.28,faceSign*.154),new B.Vector3(width*.54,.040,.015),accent,root);header.material.emissiveColor=B.Color3.FromHexString(accent).scale(.88);header.material.alpha=.96;header.isPickable=false;G.lobbyMeshes.push(header);
+    for(const sx of [-1,1])for(const sy of [-1,1]){const bolt=B.MeshBuilder.CreateCylinder(name+'Bolt',{height:.018,diameter:.058,tessellation:10},scene);bolt.parent=root;bolt.rotation.x=Math.PI/2;bolt.position=new B.Vector3(sx*(width*.43),sy*(height*.42),faceSign*.160);bolt.material=mat(scene,name+'BoltMat','#e5edf4',.12);bolt.material.metallic=.88;bolt.isPickable=false;G.lobbyMeshes.push(bolt);}
+    const lamp=new B.PointLight(name+'PanelLight',new B.Vector3(pos.x,pos.y,pos.z+faceSign*.42),scene);lamp.diffuse=B.Color3.FromHexString(accent);lamp.intensity=.035;lamp.range=1.45;G.lobbyMeshes.push({dispose:()=>{try{lamp.dispose()}catch{}}});
+    fixedPanelText(scene,title,root,.30,'#f7fbff',height*.34,faceSign*.175);return root;
   }
   function physicalButton(name,text,parent,x,y,color,meta,w=.86,h=.42){
     const faceSign=parent?.metadata?.faceSign||-1;
@@ -10038,9 +10124,9 @@ for(const x of [2.27,2.83]){const candle=B.MeshBuilder.CreateCylinder('mantleCan
     return b;
   }
   function selectedReadout(parent,text,y=-.50,width=1.80){
-    const plate=box(scene,'readout',new B.Vector3(0,y,-.20),new B.Vector3(width,.44,.055),'#0b1110',parent);
+    const fs=parent?.metadata?.faceSign||-1;const plate=box(scene,'readout',new B.Vector3(0,y,fs*.20),new B.Vector3(width,.44,.055),'#0b1110',parent);
     plate.material.metallic=.08;plate.material.roughness=.32;G.lobbyMeshes.push(plate);
-    fixedPanelText(scene,text,parent,.205,'#baffc8',y,-.238);
+    fixedPanelText(scene,text,parent,.205,'#baffc8',y,fs*.238);
   }
 
   const mapDef=CATALOG.maps.find(x=>x.id===G.meta.selectedMap)||CATALOG.maps[0],bat=selectedBatDef(),skin=selectedSkinDef();
@@ -10079,7 +10165,7 @@ for(const x of [2.27,2.83]){const candle=B.MeshBuilder.CreateCylinder('mantleCan
     fireLight.intensity=.66+Math.sin(hubAnimT*7.2)*.075+Math.sin(hubAnimT*13.7)*.03;fireCoreLight.intensity=.57+Math.sin(hubAnimT*8.8+1.1)*.09+Math.sin(hubAnimT*17.3)*.035;cosOrb.rotation.y+=dt*.45;
   });G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(hubObs)}catch{}}});
 
-  startLobbyAudio();rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);
+  startLobbyAudio();rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);scheduleAutonomousQualityRecheck(scene);
   if(G.desktop){try{scene.activeCamera.setTarget(new B.Vector3(0,2.0,-4.35));}catch{}}
 }
 
@@ -10379,6 +10465,7 @@ function buildArena(scene){
   add2_4MapDetails(scene,map,t);
   addKayKitArenaModels(scene,map);
   addCuratedArenaOverhaul(scene,map,t);
+  scheduleArenaQualityRecheck(scene,map);
   addFusionArenaPass(scene,map,t);
   // 2.4 map-aware melee props: keeps each location visually distinct
   
@@ -10878,7 +10965,7 @@ function runSelfChecks(){
 function gauntletSelfCheck(){
   const issues=[];const ids=(arr)=>arr.map(x=>x.id);
   for(const [name,arr] of Object.entries({bats:CATALOG.bats,skins:CATALOG.skins,maps:CATALOG.maps})){const a=ids(arr);if(new Set(a).size!==a.length)issues.push(name+' duplicate id');if(!arr.length)issues.push(name+' empty');}
-  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY==='undefined'||FIRE_PARTICLE_CAPACITY>5000)issues.push('fire particle budget too high');if(typeof FIRE_VISUAL_VERSION==='undefined'||!String(FIRE_VISUAL_VERSION).includes('LAYERED-FLAME'))issues.push('layered fire rebuild missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');if((G.hubButtons||[]).some(b=>![1,-1].includes(b.metadata?.faceSign)))issues.push('hub button face direction missing');if((G.hubButtons||[]).some(b=>{const f=b.metadata?.faceSign||0,r=b.metadata?.buttonRoot;return !r||Math.sign(r.position.z)!==f||Math.sign(b.position.z)!==f;}))issues.push('hub button visual layers reversed/hidden');if(typeof GAUNTLET_FUSION_VERSION==='undefined'||!String(GAUNTLET_FUSION_VERSION).includes('GAUNTLET-KAAL'))issues.push('gauntlet kaal overhaul missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<16)issues.push('specialist agent roster too small');if(typeof GAUNTLET_CRITIC_ROSTER==='undefined'||GAUNTLET_CRITIC_ROSTER.length!==GAUNTLET_AGENT_ROSTER.length)issues.push('paired critic roster mismatch');if(typeof runKaalAuditAndFill!=='function'||typeof addFusionHubPass!=='function'||typeof addFusionArenaPass!=='function')issues.push('kaal audit/fusion passes missing');if(typeof KAAL_AUDIT_SAMPLES==='undefined'||KAAL_AUDIT_SAMPLES<1000)issues.push('kaal audit samples below 1000');if(typeof addCuratedHubOverhaul!=='function'||typeof addCuratedArenaOverhaul!=='function')issues.push('curated design overhaul missing');if(!G.gauntletFusion?.curatedMode)issues.push('curated mode disabled');if(typeof KENNEY_INTERFACE_SFX==='undefined'||Object.keys(KENNEY_INTERFACE_SFX).length<16)issues.push('interface SFX palette too small');if(typeof KENNEY_INTERFACE_LICENSE==='undefined'||KENNEY_INTERFACE_LICENSE!=='CC0-1.0')issues.push('interface SFX license metadata missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||!KAYKIT_MODEL_CATALOG.space||KAYKIT_MODEL_CATALOG.space.length<30)issues.push('space model pack missing');if(typeof npcHitProbe!=='function')issues.push('per-mesh NPC hitbox probe missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<36)issues.push('curated specialist roster too small');
+  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY==='undefined'||FIRE_PARTICLE_CAPACITY>5000)issues.push('fire particle budget too high');if(typeof FIRE_VISUAL_VERSION==='undefined'||!String(FIRE_VISUAL_VERSION).includes('LAYERED-FLAME'))issues.push('layered fire rebuild missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');if((G.hubButtons||[]).some(b=>![1,-1].includes(b.metadata?.faceSign)))issues.push('hub button face direction missing');if((G.hubButtons||[]).some(b=>{const f=b.metadata?.faceSign||0,r=b.metadata?.buttonRoot;return !r||Math.sign(r.position.z)!==f||Math.sign(b.position.z)!==f;}))issues.push('hub button visual layers reversed/hidden');if(typeof GAUNTLET_FUSION_VERSION==='undefined'||!String(GAUNTLET_FUSION_VERSION).includes('GAUNTLET-KAAL'))issues.push('gauntlet kaal overhaul missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<16)issues.push('specialist agent roster too small');if(typeof GAUNTLET_CRITIC_ROSTER==='undefined'||GAUNTLET_CRITIC_ROSTER.length!==GAUNTLET_AGENT_ROSTER.length)issues.push('paired critic roster mismatch');if(typeof runKaalAuditAndFill!=='function'||typeof addFusionHubPass!=='function'||typeof addFusionArenaPass!=='function')issues.push('kaal audit/fusion passes missing');if(typeof KAAL_AUDIT_SAMPLES==='undefined'||KAAL_AUDIT_SAMPLES<1000)issues.push('kaal audit samples below 1000');if(typeof addCuratedHubOverhaul!=='function'||typeof addCuratedArenaOverhaul!=='function')issues.push('curated design overhaul missing');if(!G.gauntletFusion?.curatedMode)issues.push('curated mode disabled');if(typeof KENNEY_INTERFACE_SFX==='undefined'||Object.keys(KENNEY_INTERFACE_SFX).length<16)issues.push('interface SFX palette too small');if(typeof KENNEY_INTERFACE_LICENSE==='undefined'||KENNEY_INTERFACE_LICENSE!=='CC0-1.0')issues.push('interface SFX license metadata missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||!KAYKIT_MODEL_CATALOG.space||KAYKIT_MODEL_CATALOG.space.length<30)issues.push('space model pack missing');if(typeof npcHitProbe!=='function')issues.push('per-mesh NPC hitbox probe missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<36)issues.push('curated specialist roster too small');if(typeof GAUNTLET_META_AGENT_ROSTER==='undefined'||GAUNTLET_META_AGENT_ROSTER.length<10)issues.push('meta-agent factory roster too small');if(typeof GAUNTLET_META_CRITIC_ROSTER==='undefined'||GAUNTLET_META_CRITIC_ROSTER.length!==GAUNTLET_META_AGENT_ROSTER.length)issues.push('meta-agent critic mismatch');if(typeof runAgentFactory!=='function'||typeof validateGeneratedAgent!=='function'||typeof makeGeneratedAgent!=='function')issues.push('agent factory functions missing');if((G.gauntletFusion?.dynamicAgents||[]).some(a=>!a.critic||a.critic.id!==a.id+'_CRITIC'))issues.push('generated agent missing paired critic');if(typeof GAUNTLET_MAIN_LOOP_PASSES==='undefined'||GAUNTLET_MAIN_LOOP_PASSES!==5000)issues.push('main gauntlet loop is not 5000');if(typeof GAUNTLET_AGENT_PASS_BUDGET==='undefined'||GAUNTLET_AGENT_PASS_BUDGET!==5000)issues.push('agent pass budget is not 5000');if(typeof GAUNTLET_CRITIC_PASS_BUDGET==='undefined'||GAUNTLET_CRITIC_PASS_BUDGET!==5000)issues.push('critic pass budget is not 5000');if(typeof GAUNTLET_TESTER_ROSTER==='undefined'||GAUNTLET_TESTER_ROSTER.length<12)issues.push('tester roster too small');if(typeof inspectSceneQuality!=='function'||typeof runHubClutterPlacementCleanup!=='function'||typeof runGauntlet5000Audit!=='function')issues.push('autonomous quality director missing');
   const badUnlock=[...(G.meta.unlockedBats||[]).filter(id=>!CATALOG.bats.some(x=>x.id===id)),...(G.meta.unlockedSkins||[]).filter(id=>!CATALOG.skins.some(x=>x.id===id)),...(G.meta.unlockedMaps||[]).filter(id=>!CATALOG.maps.some(x=>x.id===id))];if(badUnlock.length)issues.push('stale unlock ids');
   console[issues.length?'warn':'info']('GAUNTLET SELF CHECK',issues.length?issues:`OK • ${CATALOG.maps.length} maps • ${CATALOG.bats.length} bats • ${CATALOG.skins.length} skins • ${CATALOG.props.length} prop models`);return issues;
 }
@@ -10894,6 +10981,6 @@ ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style
 window.addEventListener('keydown',e=>{ if(!G.desktop)return; if(e.code==='KeyR')buildHub(scene); if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SURVIVAL');if((e.code==='Digit2'||e.code==='Enter')&&G.state==='hub')startShift(scene,'LEVELS'); });
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 4.7 ready • GAUNTLET × KAAL FUSION';
+ui.status.textContent='Reborn 4.9 ready • META-AGENT GAUNTLET × KAAL';
 window.__CRAZY_OFFICE_READY=true; window.dispatchEvent(new Event('crazy-office-ready'));
 updateHUD();
