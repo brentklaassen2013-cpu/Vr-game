@@ -4,9 +4,12 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
 <meta name="theme-color" content="#0d1017" />
-<title>Crazy Office: Night Shift — Reborn 5.5 · GAUNTLET × KAAL 50X · DEEP REVIEW</title>
+<title>Crazy Office: Night Shift — Reborn 5.7 · COMPLETE GAME LOOP · MULTIPLATFORM</title>
 <style>
-html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff}#game{width:100%;height:100%;touch-action:none;display:block}#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#20263a 0,#0b0e16 42%,#05070b 100%);z-index:20;gap:10px}.brand{font-weight:1000;letter-spacing:.08em;font-size:clamp(44px,10vw,90px);transform:skew(-5deg);text-shadow:0 8px 30px #000}.subtitle{letter-spacing:.5em;font-size:14px;opacity:.7;margin-bottom:20px}button{border:1px solid #ffffff33;background:#ffffff0d;color:#fff;font-weight:800;padding:13px 24px;border-radius:999px;min-width:220px;backdrop-filter:blur(12px)}button:hover{background:#ffffff1a}.note,#bootStatus{opacity:.62;font-size:12px;max-width:440px;text-align:center}.note{margin-top:14px}#hud{position:fixed;left:max(16px,env(safe-area-inset-left));top:max(16px,env(safe-area-inset-top));display:none;flex-direction:column;gap:8px;z-index:50;pointer-events:none;max-width:min(92vw,430px)}.pill,.meter{background:#05080eef;border:2px solid #ffffff32;border-radius:14px;padding:10px 12px;backdrop-filter:blur(12px);box-shadow:0 10px 30px #0005}.pill{display:flex;gap:8px;align-items:center;font-size:14px;white-space:nowrap;overflow:hidden}.pill span{opacity:.62}.pill.small{width:max-content}.meter{display:grid;grid-template-columns:64px minmax(170px,240px) 82px;align-items:center;gap:8px;font-size:14px;font-weight:900}.meter i{height:12px;border-radius:999px;background:#ffffff15;overflow:hidden}.meter i b{height:100%;display:block;width:100%;background:white;border-radius:999px;transition:width .15s}#toast{position:fixed;left:50%;bottom:12%;transform:translateX(-50%);font-weight:900;font-size:clamp(18px,3vw,30px);text-align:center;text-shadow:0 4px 20px #000;pointer-events:none;z-index:6;opacity:0;transition:opacity .18s}.show{opacity:1!important}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff}#game{width:100%;height:100%;touch-action:none;display:block}#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#20263a 0,#0b0e16 42%,#05070b 100%);z-index:20;gap:10px}.brand{font-weight:1000;letter-spacing:.08em;font-size:clamp(44px,10vw,90px);transform:skew(-5deg);text-shadow:0 8px 30px #000}.subtitle{letter-spacing:.5em;font-size:14px;opacity:.7;margin-bottom:20px}button{border:1px solid #ffffff33;background:#ffffff0d;color:#fff;font-weight:800;padding:13px 24px;border-radius:999px;min-width:220px;backdrop-filter:blur(12px)}button:hover{background:#ffffff1a}button:disabled{opacity:.35;filter:saturate(.35);cursor:not-allowed}.note,#bootStatus{opacity:.62;font-size:12px;max-width:440px;text-align:center}.note{margin-top:14px}#hud{position:fixed;left:max(16px,env(safe-area-inset-left));top:max(16px,env(safe-area-inset-top));display:none;flex-direction:column;gap:8px;z-index:50;pointer-events:none;max-width:min(92vw,430px)}.pill,.meter{background:#05080eef;border:2px solid #ffffff32;border-radius:14px;padding:10px 12px;backdrop-filter:blur(12px);box-shadow:0 10px 30px #0005}.pill{display:flex;gap:8px;align-items:center;font-size:14px;white-space:nowrap;overflow:hidden}.pill span{opacity:.62}.pill.small{width:max-content}.meter{display:grid;grid-template-columns:64px minmax(170px,240px) 82px;align-items:center;gap:8px;font-size:14px;font-weight:900}.meter i{height:12px;border-radius:999px;background:#ffffff15;overflow:hidden}.meter i b{height:100%;display:block;width:100%;background:white;border-radius:999px;transition:width .15s}#toast{position:fixed;left:50%;bottom:12%;transform:translateX(-50%);font-weight:900;font-size:clamp(18px,3vw,30px);text-align:center;text-shadow:0 4px 20px #000;pointer-events:none;z-index:6;opacity:0;transition:opacity .18s}.show{opacity:1!important}
+
+#touchControls{position:fixed;inset:0;display:none;z-index:48;pointer-events:none;user-select:none;-webkit-user-select:none}.touchStick{position:absolute;left:max(18px,env(safe-area-inset-left));bottom:max(22px,env(safe-area-inset-bottom));width:138px;height:138px;border-radius:50%;border:2px solid #ffffff38;background:#07101c77;box-shadow:inset 0 0 35px #64c8ff12,0 10px 40px #0007;pointer-events:auto;touch-action:none}.touchKnob{position:absolute;left:50%;top:50%;width:58px;height:58px;border-radius:50%;transform:translate(-50%,-50%);background:radial-gradient(circle at 35% 30%,#dff8ff,#5ac7ff 46%,#176f9e);border:2px solid #dff8ffcc;box-shadow:0 0 20px #5ad7ff66}.lookPad{position:absolute;right:0;top:0;width:58%;height:100%;pointer-events:auto;touch-action:none;z-index:0}.touchActions{position:absolute;right:max(16px,env(safe-area-inset-right));bottom:max(22px,env(safe-area-inset-bottom));display:grid;grid-template-columns:74px 74px;gap:10px;pointer-events:auto;z-index:2}.touchActions button{min-width:0;width:74px;height:58px;padding:0;border-radius:18px;background:#0a1422d9;border:2px solid #7ce5ff66;box-shadow:0 8px 24px #0008, inset 0 0 18px #5bd8ff12;font-size:12px;letter-spacing:.04em}.touchActions button:active{transform:translateY(2px) scale(.97);background:#18334bdd}.touchActions #touchHit{grid-row:1/span 2;height:126px;border-color:#ffb15f88;box-shadow:0 8px 24px #0008,inset 0 0 22px #ff8d3818}.touchHint{position:absolute;right:18px;bottom:158px;font-size:10px;opacity:.45;pointer-events:none}
+.multiPanel{margin-top:8px;padding:10px 12px;border:1px solid #ffffff24;border-radius:16px;background:#080c14aa;display:grid;grid-template-columns:104px 84px 84px;gap:7px;align-items:center}.multiPanel input{width:88px;box-sizing:border-box;border:1px solid #ffffff35;background:#111827;color:#fff;border-radius:10px;padding:9px 8px;font-size:15px;font-weight:900;letter-spacing:.18em;text-align:center}.multiPanel button{min-width:0;padding:9px 8px;border-radius:10px;font-size:11px}.multiStatus{grid-column:1/-1;text-align:center;font-size:10px;letter-spacing:.08em;opacity:.65}.multiStatus.bad{color:#ff9a9a;opacity:1}.multiLeave{grid-column:1/-1;justify-self:center;width:120px!important}.aimReticle{position:fixed;left:50%;top:50%;width:13px;height:13px;transform:translate(-50%,-50%);display:none;z-index:49;pointer-events:none}.aimReticle:before,.aimReticle:after{content:'';position:absolute;background:#ffffffd9;box-shadow:0 0 6px #5edcff88}.aimReticle:before{left:6px;top:0;width:1px;height:13px}.aimReticle:after{left:0;top:6px;width:13px;height:1px}.actionPrompt{position:fixed;left:50%;top:calc(50% + 18px);transform:translateX(-50%);font-size:11px;font-weight:1000;letter-spacing:.16em;color:#dff8ff;text-shadow:0 2px 8px #000;opacity:0;z-index:49;pointer-events:none;transition:opacity .08s}
 
 </style>
 </head>
@@ -14,11 +17,18 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;fon
   <canvas id="game"></canvas>
   <div id="boot">
     <div class="brand">CRAZY OFFICE</div>
-    <div class="subtitle">REBORN 5.5 · GAUNTLET × KAAL 50X</div>
+    <div class="subtitle">REBORN 5.7 · COMPLETE GAME LOOP</div>
     <div id="bootStatus">Starting engine…</div>
     <button id="enterVR" disabled>ENTER VR</button>
     <button id="desktopStart" disabled>DESKTOP PREVIEW</button>
-    <div class="note">Left stick move · right stick snap-turn.<br>Explore the cozy lobby, walk into the cosmetics room, then choose SURVIVAL or LEVELS.</div>
+    <div class="multiPanel" aria-label="Multiplayer room setup">
+      <input id="roomCode" inputmode="numeric" pattern="[0-9]*" maxlength="5" placeholder="CODE" aria-label="5 digit room code" />
+      <button id="hostRoom" disabled>HOST</button>
+      <button id="joinRoom" disabled>JOIN</button>
+      <div id="multiStatus" class="multiStatus">OFFLINE • optional P2P co-op</div>
+      <button id="leaveRoom" class="multiLeave" disabled>LEAVE ROOM</button>
+    </div>
+    <div class="note">VR: sticks + hands · PC: WASD + mouse, E use/grab, F/Space hit · Gamepad: sticks + A/X action · Phone: touch move/look + HIT/USE/GRAB/HUB. Multiplayer: host or join with a 5-digit code.</div>
   </div>
   <div id="hud">
     <div class="pill"><b id="modeText">ELEVATOR HUB</b><span id="shiftText">Choose a shift</span></div>
@@ -26,7 +36,22 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;fon
     <div class="meter"><span>BAT</span><i><b id="batBar"></b></i><strong id="batText">100%</strong></div>
     <div class="meter"><span>CHAOS</span><i><b id="chaosBar"></b></i><strong id="chaosText">0%</strong></div>
     <div class="pill small"><span>RANK</span><b id="rankText">D</b><span id="scoreText">0</span></div>
+    <div class="pill small"><span>NET</span><b id="netText">SOLO</b></div>
   </div>
+
+  <div id="touchControls" aria-hidden="true">
+    <div id="lookPad" class="lookPad"></div>
+    <div id="moveStick" class="touchStick"><div id="moveKnob" class="touchKnob"></div></div>
+    <div class="touchActions">
+      <button id="touchHit">HIT</button>
+      <button id="touchUse">USE</button>
+      <button id="touchGrab">GRAB / THROW</button>
+      <button id="touchHub">HUB</button>
+    </div>
+    <div class="touchHint">Drag right side to look</div>
+  </div>
+  <div id="reticle" class="aimReticle" aria-hidden="true"></div>
+  <div id="actionPrompt" class="actionPrompt" aria-hidden="true"></div>
   <div id="toast"></div>
 <script>
 (function(){
@@ -38,7 +63,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;fon
   window.addEventListener('error',e=>{ if(!finished){ console.error(e.error||e.message); status.textContent='LOAD ERROR • '+(e.message||'unknown error'); }});
   window.addEventListener('unhandledrejection',e=>{ if(!finished){ console.error(e.reason); status.textContent='LOAD ERROR • '+(e.reason?.message||'startup failed'); }});
   function loadClassic(url,timeout=8000){return new Promise((ok,bad)=>{let done=false;const s=document.createElement('script');const t=setTimeout(()=>{if(done)return;done=true;s.remove();bad(new Error('timeout'));},timeout);s.src=url;s.async=true;s.onload=()=>{if(done)return;done=true;clearTimeout(t);ok();};s.onerror=()=>{if(done)return;done=true;clearTimeout(t);s.remove();bad(new Error('script failed'));};document.head.appendChild(s);});}
-  async function loadGameRobust(){try{return await loadClassic('./game.js?build=55',9000);}catch(first){console.warn('Direct game.js load failed; trying text/blob fallback.',first);const r=await fetch('./game.js?build=55',{cache:'no-store'});if(!r.ok)throw new Error('game.js HTTP '+r.status);const code=await r.text();if(code.length<1000)throw new Error('game.js response was incomplete');const blob=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));try{await loadClassic(blob,9000);}finally{URL.revokeObjectURL(blob);}}}
+  async function loadGameRobust(){try{return await loadClassic('./game.js?build=57',9000);}catch(first){console.warn('Direct game.js load failed; trying text/blob fallback.',first);const r=await fetch('./game.js?build=57',{cache:'no-store'});if(!r.ok)throw new Error('game.js HTTP '+r.status);const code=await r.text();if(code.length<1000)throw new Error('game.js response was incomplete');const blob=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));try{await loadClassic(blob,9000);}finally{URL.revokeObjectURL(blob);}}}
   async function boot(){
     for(let i=0;i<cdns.length&&!window.BABYLON;i++){
       status.textContent='Loading 3D engine '+(i+1)+'/'+cdns.length+'…';
@@ -53,7 +78,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;fon
     window.__CRAZY_REMOTE_MODEL_LOADER=loaderReady;
     status.textContent='Building Crazy Office…';
     window.__CRAZY_OFFICE_READY=false;
-    try{await loadGameRobust();}catch(e){console.error(e);fatal('game.js could not load. Replace BOTH 5.5 files together.');return;}
+    try{await loadGameRobust();}catch(e){console.error(e);fatal('game.js could not load. Replace BOTH 5.7 files together.');return;}
     // Large mobile/Quest builds can take well over five seconds to parse and build.
     // Do not falsely lock the player out just because startup is slower.
     let waited=0;
@@ -61,8 +86,10 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;fon
     const unlock=()=>{
       if(finished)return;
       finished=true;
-      status.textContent='Ready';
-      enter.disabled=false;
+      const vrCapable=!!navigator.xr&&window.isSecureContext;
+      status.textContent=vrCapable?'Ready • choose VR or Desktop Preview':'Ready • Desktop Preview available • VR needs a WebXR headset/browser';
+      enter.disabled=!vrCapable;
+      enter.textContent=vrCapable?'ENTER VR':'VR UNAVAILABLE HERE';
       preview.disabled=false;
     };
     if(window.__CRAZY_OFFICE_READY){unlock();return;}
@@ -74,7 +101,7 @@ html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;fon
       if(waited>=maxWait){
         clearInterval(verify);
         // Keep the page recoverable instead of permanently disabling both buttons.
-        status.textContent='Still loading. If this stays here, refresh once after replacing BOTH 5.5 files.';
+        status.textContent='Still loading. If this stays here, refresh once after replacing BOTH 5.7 files.';
       }
     },250);
   }
