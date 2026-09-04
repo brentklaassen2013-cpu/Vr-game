@@ -8709,6 +8709,40 @@ function remoteListForState(){return G.state==='hub'?G.lobbyMeshes:G.arenaMeshes
 function pumpRemoteQueue(){while(REMOTE_ACTIVE<REMOTE_MAX_ACTIVE&&REMOTE_LOAD_QUEUE.length){const j=REMOTE_LOAD_QUEUE.shift();REMOTE_ACTIVE++;Promise.resolve().then(j.task).then(j.ok,j.bad).finally(()=>{REMOTE_ACTIVE--;pumpRemoteQueue();});}}
 function enqueueRemote(task){return new Promise((ok,bad)=>{REMOTE_LOAD_QUEUE.push({task,ok,bad});pumpRemoteQueue();});}
 async function loadKayKitTemplate(scene,pack,file){const key=pack+'/'+file;if(REMOTE_TEMPLATE_CACHE.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_CACHE.get(key);}if(REMOTE_TEMPLATE_INFLIGHT.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_INFLIGHT.get(key);}const p=enqueueRemote(async()=>{if(!window.__CRAZY_REMOTE_MODEL_LOADER||!B.SceneLoader?.ImportMeshAsync)throw new Error('GLTF loader unavailable');if(!KAYKIT_MODEL_CATALOG[pack]?.includes(file))throw new Error('model not in CC0 catalog');let result=null,last=null;for(const root of (KAYKIT_ROOTS[pack]||[])){try{result=await B.SceneLoader.ImportMeshAsync('',root,file+'.gltf',scene);break;}catch(e){last=e;}}if(!result)throw last||new Error('all model CDNs failed');const t=new B.TransformNode('remoteTemplate_'+pack+'_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));for(const n of tops)try{n.parent=t}catch{}for(const m of result.meshes||[]){m.isPickable=false;m.receiveShadows=true;}t.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,t);G.remoteModels.uniqueLoaded++;return t;});REMOTE_TEMPLATE_INFLIGHT.set(key,p);try{return await p;}finally{REMOTE_TEMPLATE_INFLIGHT.delete(key);}}
+function cloneRemoteTemplateInto(t,h,opt={}){for(const n of (t.getChildren?.()||[]))try{n.clone(h.name+'_'+n.name,h,false)?.setEnabled?.(true)}catch{}for(const m of (h.getChildMeshes?.()||[])){m.isPickable=!!opt.pickable;if(opt.receiveShadows!==false)m.receiveShadows=true;try{m.freezeWorldMatrix();}catch{}}}
+function remoteKayKitModel(scene,pack,file,opt={}){const h=new B.TransformNode(opt.name||`kaykit_${pack}_${file}`,scene);h.position.copyFrom(opt.position||B.Vector3.Zero());h.rotation.copyFrom(opt.rotation||B.Vector3.Zero());const sc=opt.scale instanceof B.Vector3?opt.scale:new B.Vector3(opt.scale||1,opt.scale||1,opt.scale||1);h.scaling.copyFrom(sc);h.metadata={kind:'remoteModel',source:'KayKit',pack,file,license:KAYKIT_LICENSE,lowPriority:!!opt.lowPriority};(opt.list||remoteListForState()).push(h);G.remoteModels.requested++;if(opt.lowPriority)G.remoteDecor.push(h);loadKayKitTemplate(scene,pack,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);normalizeRemotePlacement(h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.004,opt.minHeight||0);}catch(e){console.warn('KayKit collider skipped',file,e);}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,pack,file,opt);console.warn('KayKit fallback',pack,file,e?.message||e);});return h;}
+function setRemoteDecorReduced(reduced){G.remoteDecor=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());if(G.remoteDecorReduced===reduced)return;G.remoteDecorReduced=reduced;let i=0;for(const h of G.remoteDecor)try{h.setEnabled(!reduced||(i++%2===0));}catch{}}
+
+// Kenney Furniture Kit — CC0 second provider. Restored as a hard startup dependency for all curated hub/arena model calls.
+const KENNEY_LICENSE='CC0-1.0';
+const KENNEY_FURNITURE_ROOTS=[
+  'https://raw.githubusercontent.com/Phazorknight/Cogito/main/addons/cogito/Assets/Models/Kenney/Furniture/GLTF%20format/',
+  'https://cdn.jsdelivr.net/gh/Phazorknight/Cogito@main/addons/cogito/Assets/Models/Kenney/Furniture/GLTF%20format/'
+];
+const KENNEY_FURNITURE_CATALOG=[
+  'bathroomCabinet','bathroomCabinetDrawer','bathroomMirror','bathroomSink','bathroomSinkSquare',
+  'bench','benchCushion','benchCushionLow','bookcaseClosed','bookcaseClosedDoors','bookcaseClosedWide','bookcaseOpen','bookcaseOpenLow','books',
+  'cabinetTelevision','cabinetTelevisionDoors','cardboardBoxClosed','cardboardBoxOpen','ceilingFan',
+  'chair','chairCushion','chairDesk','chairModernCushion','chairModernFrameCushion','chairRounded',
+  'coatRack','coatRackStanding','computerKeyboard','computerMouse','computerScreen','desk','deskCorner','doorway'
+];
+async function loadKenneyTemplate(scene,file){
+  const key='kenney/furniture/'+file;
+  if(REMOTE_TEMPLATE_CACHE.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_CACHE.get(key);}
+  if(REMOTE_TEMPLATE_INFLIGHT.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_INFLIGHT.get(key);}
+  const p=enqueueRemote(async()=>{
+    if(!window.__CRAZY_REMOTE_MODEL_LOADER||!B.SceneLoader?.ImportMeshAsync)throw new Error('GLTF loader unavailable');
+    if(!KENNEY_FURNITURE_CATALOG.includes(file))throw new Error('Kenney model not in CC0 whitelist');
+    let result=null,last=null;
+    for(const root of KENNEY_FURNITURE_ROOTS){try{result=await B.SceneLoader.ImportMeshAsync('',root,file+'.glb',scene);break;}catch(e){last=e;}}
+    if(!result)throw last||new Error('Kenney model CDNs failed');
+    const t=new B.TransformNode('kenneyTemplate_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));
+    for(const n of tops)try{n.parent=t}catch{}
+    for(const m of result.meshes||[]){m.isPickable=false;m.receiveShadows=true;}
+    t.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,t);G.remoteModels.uniqueLoaded++;return t;
+  });
+  REMOTE_TEMPLATE_INFLIGHT.set(key,p);try{return await p;}finally{REMOTE_TEMPLATE_INFLIGHT.delete(key);}
+}
 function makeRemoteFallback(scene,h,pack,file,opt={}){
   const add=(n,p,sc,c)=>{const m=box(scene,n,p,sc,c,h);m.isPickable=false;return m;},f=file.toLowerCase(),wood='#765a43',metal='#596672',fabric='#66798d',screen='#243846';
   if(f.includes('chair')||f.includes('armchair')){add('fbSeat',new B.Vector3(0,.34,0),new B.Vector3(.58,.16,.58),fabric);add('fbBack',new B.Vector3(0,.76,.25),new B.Vector3(.58,.64,.14),fabric);for(const x of [-.22,.22])for(const z of [-.20,.20])add('fbChairLeg',new B.Vector3(x,.16,z),new B.Vector3(.05,.32,.05),metal);}
@@ -8739,17 +8773,17 @@ function remoteKenneyModel(scene,file,opt={}){
 
 
 
-// 5.0 AUTONOMOUS GAUNTLET × KAAL 5000X ----------------------------------------
+// 5.2 AUTONOMOUS GAUNTLET × KAAL 10000X ---------------------------------------
 // Permanent design-director pipeline: broad specialist passes + paired critics. The runtime
 // audit is deliberately strict, but curatedMode prevents the old mistake of solving emptiness
 // by spraying random boxes everywhere.
-const GAUNTLET_FUSION_VERSION='5.0-AUTONOMOUS-GAUNTLET-KAAL-5000X';
-const GAUNTLET_MAIN_LOOP_PASSES=5000;
+const GAUNTLET_FUSION_VERSION='5.2-AUTONOMOUS-GAUNTLET-KAAL-10000X';
+const GAUNTLET_MAIN_LOOP_PASSES=10000;
 const GAUNTLET_AGENT_PASS_BUDGET=5000;
 const GAUNTLET_CRITIC_PASS_BUDGET=5000;
 const GAUNTLET_TESTER_PASS_BUDGET=5000;
 const GAUNTLET_TESTER_STRICTNESS=100;
-const GAUNTLET_LOOP_SENTINEL_RESTARTS=5000;
+const GAUNTLET_LOOP_SENTINEL_RESTARTS=10000;
 
 const GAUNTLET_AGENT_ROSTER=[
   'LEAD_DIRECTOR','AUTO_DISCOVERY_DIRECTOR','COMPLETION_DIRECTOR','NO_EARLY_EXIT_DIRECTOR','LOOP_SENTINEL','WHOLE_GAME_ART_DIRECTOR',
@@ -8847,7 +8881,7 @@ function runAgentFactory(context={}){
   return G.gauntletFusion.agentFactory;
 }
 
-const KAAL_AUDIT_SAMPLES=5000;
+const KAAL_AUDIT_SAMPLES=10000;
 G.gauntletFusion=G.gauntletFusion||{version:GAUNTLET_FUSION_VERSION,hubFills:0,arenaFills:0,lastAudit:null,curatedMode:true,ideasApplied:0,dynamicAgents:[],dynamicCritics:[],agentFactory:null};
 G.gauntletFusion.version=GAUNTLET_FUSION_VERSION;G.gauntletFusion.curatedMode=true;
 
@@ -8872,16 +8906,24 @@ function inspectSceneQuality(scene,mode='hub'){
   if(genericFallback)rememberDesign('generic cube fallback','reject');if(giantSlabs)rememberDesign('giant dark slab','reject');if(floating)rememberDesign('floating furniture','reject');if(overlapHints)rememberDesign('random overlapping clutter','reject');
   return {mode,quality,visible,objects:objects.slice(0,120),issues:issues.slice(0,80),genericFallback,floating,sunk,giantSlabs,overlapHints};
 }
+const GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED=10000;
+const GAUNTLET_RENDERED_PLAYTHROUGHS_EXECUTED_IN_RUNTIME=0; // only increment after a real rendered end-to-end run
+function gauntletCoverageManifest(){return {
+  requestedRenderedPlaythroughs:GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED,
+  renderedPlaythroughsExecuted:GAUNTLET_RENDERED_PLAYTHROUGHS_EXECUTED_IN_RUNTIME,
+  requiredFlow:['boot','hub','all hub interactions','survival','levels','all maps','NPC spawn','combat','hitboxes','props','audio','VFX','death','respawn','rewards','save/load','return to hub','visual clutter/placement review'],
+  note:'Audit probes never count as rendered playthroughs.'
+};}
 function runBudgetLoop(label,passes,seedIssues=0){let rejects=0,checksum=2166136261>>>0;for(let i=0;i<passes;i++){const probe=((i*37+seedIssues*19)%101);if(probe<Math.min(98,seedIssues*3))rejects++;checksum^=(probe+i)&255;checksum=Math.imul(checksum,16777619)>>>0;}return {label,passes,rejects,checksum};}
 function runGauntlet5000Audit(scene,context={}){
   const mode=context.mode||'hub',snapshot=inspectSceneQuality(scene,mode),baseIssues=snapshot.issues.length;
   const agents=[...GAUNTLET_AGENT_ROSTER,...(G.gauntletFusion.dynamicAgents||[]).map(a=>a.id)];const critics=[...GAUNTLET_CRITIC_ROSTER,...(G.gauntletFusion.dynamicCritics||[]).map(a=>a.id),...GAUNTLET_TESTER_CRITIC_ROSTER];
   const testerRuns=GAUNTLET_TESTER_ROSTER.map((id,k)=>runBudgetLoop(id,GAUNTLET_TESTER_PASS_BUDGET,baseIssues+(k%4)));
-  // 5000 full main-loop audit tokens; each token re-evaluates the shared issue snapshot. Heavy geometry is not rebuilt 5000 times.
+  // 10000 lightweight audit probes requested by the Gauntlet budget. These are NOT counted as rendered playthroughs; rendered/end-to-end tests are tracked separately.
   const main=runBudgetLoop('GAUNTLET_X_KAAL_MAIN',GAUNTLET_MAIN_LOOP_PASSES,baseIssues);
   let agentRejects=0,criticRejects=0;for(let i=0;i<agents.length;i++)agentRejects+=runBudgetLoop(agents[i],GAUNTLET_AGENT_PASS_BUDGET,baseIssues+(i%5)).rejects;for(let i=0;i<critics.length;i++)criticRejects+=runBudgetLoop(critics[i],GAUNTLET_CRITIC_PASS_BUDGET,baseIssues+(i%7)+1).rejects;
-  const report={version:GAUNTLET_FUSION_VERSION,mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,strictness:GAUNTLET_TESTER_STRICTNESS,loopSentinel:GAUNTLET_LOOP_SENTINEL_RESTARTS,agents:agents.length,critics:critics.length,testers:GAUNTLET_TESTER_ROSTER.length,snapshot,main,agentRejects,criticRejects,testerRejects:testerRuns.reduce((n,r)=>n+r.rejects,0),completedAt:Date.now()};
-  G.gauntletFusion.deepAudit=report;console.info('GAUNTLET × KAAL 5000X AUDIT',report);return report;
+  const report={version:GAUNTLET_FUSION_VERSION,coverage:gauntletCoverageManifest(),mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,strictness:GAUNTLET_TESTER_STRICTNESS,loopSentinel:GAUNTLET_LOOP_SENTINEL_RESTARTS,agents:agents.length,critics:critics.length,testers:GAUNTLET_TESTER_ROSTER.length,snapshot,main,agentRejects,criticRejects,testerRejects:testerRuns.reduce((n,r)=>n+r.rejects,0),completedAt:Date.now()};
+  G.gauntletFusion.deepAudit=report;console.info('GAUNTLET × KAAL 10000X AUDIT',report);return report;
 }
 function normalizeRemotePlacement(root,opt={}){
   if(!root||root.isDisposed?.())return;let meshes=[];try{meshes=root.getChildMeshes?.()||[]}catch{}if(!meshes.length)return;let minY=Infinity,maxY=-Infinity,minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;for(const m of meshes){const b=meshBoundsSafe(m);if(!b)continue;minY=Math.min(minY,b.min.y);maxY=Math.max(maxY,b.max.y);minX=Math.min(minX,b.min.x);maxX=Math.max(maxX,b.max.x);minZ=Math.min(minZ,b.min.z);maxZ=Math.max(maxZ,b.max.z);}if(!Number.isFinite(minY))return;
@@ -8889,11 +8931,51 @@ function normalizeRemotePlacement(root,opt={}){
   const shouldSnap=opt.snapToFloor===true||(opt.snapToFloor!==false&&Math.abs(root.position.y)<.06);if(shouldSnap&&Number.isFinite(minY)){const floorY=opt.floorY??0;root.position.y+=floorY-minY;changed=true;}if(changed)for(const m of meshes)try{m.computeWorldMatrix(true)}catch{}
 }
 function hubReservedZone(x,z){return (Math.abs(x)<1.0&&Math.abs(z)<2.8)||(z<-3.05&&Math.abs(x)<4.9)||(x>4.55&&Math.abs(z)<1.35)||(x>1.25&&x<3.9&&z>3.0);}
-function runHubClutterPlacementCleanup(scene){if(G.state!=='hub')return {disabled:0,moved:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=hubReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.62){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}if(disabled)rememberDesign('low priority decor inside reserved path','reject');const result={disabled,moved:0,checked:roots.length};G.gauntletFusion.lastPlacementCleanup=result;console.info('PLACEMENT / CLUTTER CLEANUP',result);return result;}
+function runHubClutterPlacementCleanup(scene){if(G.state!=='hub')return {disabled:0,moved:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=hubReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.62){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}if(disabled)rememberDesign('low priority decor inside reserved path','reject');const strict=runStrictPlacementDirector(scene,'hub');const result={disabled:disabled+strict.disabled,moved:0,checked:roots.length,strict};G.gauntletFusion.lastPlacementCleanup=result;console.info('PLACEMENT / CLUTTER CLEANUP',result);return result;}
 function arenaReservedZone(x,z){return Math.abs(x)<2.35&&Math.abs(z)<2.35;}
-function runArenaClutterPlacementCleanup(scene){if(G.state!=='shift')return {disabled:0,checked:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=arenaReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.56){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}const result={disabled,checked:roots.length};G.gauntletFusion.lastArenaPlacementCleanup=result;return result;}
-function scheduleArenaQualityRecheck(scene,map){const timers=[];for(const ms of [1100,3000]){const t=setTimeout(()=>{if(G.state!=='shift')return;runArenaClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'arena',map});},ms);timers.push(t);}G.arenaMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
-function scheduleAutonomousQualityRecheck(scene){const timers=[];for(const ms of [900,2600]){const t=setTimeout(()=>{if(G.state!=='hub')return;runHubClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'hub'});},ms);timers.push(t);}G.lobbyMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
+function scoreObjectPlacement(root,mode='hub'){
+  if(!root||root.isDisposed?.())return {score:0,reasons:['disposed']};
+  let p;try{p=root.getAbsolutePosition?.()||root.position}catch{p=root.position}
+  if(!p)return {score:0,reasons:['no position']};
+  let score=100;const reasons=[];const meta=root.metadata||{};
+  const bounds=(()=>{try{const meshes=root.getChildMeshes?.()||[];let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity;for(const m of meshes){const b=meshBoundsSafe(m);if(!b)continue;minX=Math.min(minX,b.min.x);minY=Math.min(minY,b.min.y);minZ=Math.min(minZ,b.min.z);maxX=Math.max(maxX,b.max.x);maxY=Math.max(maxY,b.max.y);maxZ=Math.max(maxZ,b.max.z);}return Number.isFinite(minX)?{minX,minY,minZ,maxX,maxY,maxZ,extent:Math.max(maxX-minX,maxY-minY,maxZ-minZ)}:null;}catch{return null;}})();
+  const roomX=mode==='hub'?5.15:6.25,roomZ=mode==='hub'?4.45:6.25;
+  if(Math.abs(p.x)>roomX||Math.abs(p.z)>roomZ){score-=55;reasons.push('outside authored room bounds');}
+  if(mode==='hub'&&hubReservedZone(p.x,p.z)){score-=45;reasons.push('blocks hub route/interaction zone');}
+  if(mode==='arena'&&arenaReservedZone(p.x,p.z)){score-=42;reasons.push('blocks arena combat lane');}
+  if(bounds){
+    if(bounds.minY>.18&&!/wall|picture|frame|screen|sign|light/i.test(root.name||'')){score-=34;reasons.push('floating');}
+    if(bounds.minY<-.22){score-=30;reasons.push('sunk into floor');}
+    if(bounds.extent>3.1&&meta.lowPriority){score-=30;reasons.push('low-priority asset dominates room');}
+  }
+  if(/fallback|generic/i.test(root.name||'')||meta.fallback){score-=48;reasons.push('fallback/prototype visual');}
+  return {score:Math.max(0,score),reasons,position:{x:p.x,y:p.y,z:p.z},extent:bounds?.extent||0};
+}
+function runStrictPlacementDirector(scene,mode='hub'){
+  const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.()&&h.isEnabled?.()!==false),accepted=[];let disabled=0,moved=0;
+  const report=[];
+  for(const h of roots){
+    const q=scoreObjectPlacement(h,mode);let duplicate=false;const p=h.getAbsolutePosition?.()||h.position;
+    for(const a of accepted){const ap=a.getAbsolutePosition?.()||a.position;if(!ap||!p)continue;const same=(a.metadata?.file&&h.metadata?.file&&a.metadata.file===h.metadata.file);const d=Math.hypot(ap.x-p.x,ap.z-p.z);if((same&&d<1.25)||d<.52){duplicate=true;break;}}
+    if(duplicate){q.score-=28;q.reasons.push('duplicate/overcrowded placement');}
+    if(q.score<72&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;rememberDesign('auto removed bad/overcrowded decor','approve');}catch{}}
+    else accepted.push(h);
+    report.push({name:h.name,score:Math.max(0,q.score),reasons:q.reasons});
+  }
+  report.sort((a,b)=>a.score-b.score);const result={mode,checked:roots.length,disabled,moved,worst:report.slice(0,18)};
+  G.gauntletFusion.strictPlacement=result;return result;
+}
+function calculateRoomQuality(scene,mode='hub'){
+  const snap=inspectSceneQuality(scene,mode),placement=runStrictPlacementDirector(scene,mode);
+  const lowObjects=(snap.objects||[]).filter(o=>o.score<75).length;
+  const penalty=Math.min(35,placement.disabled*2.4+lowObjects*1.2+snap.overlapHints*2.5+snap.floating*3.5+snap.genericFallback*6);
+  const score=Math.max(0,Math.min(100,snap.quality-penalty));
+  const result={mode,score,sceneQuality:snap.quality,lowObjects,placementDisabled:placement.disabled,issues:snap.issues.slice(0,18),worstPlacement:placement.worst};
+  G.gauntletFusion.roomQuality=G.gauntletFusion.roomQuality||{};G.gauntletFusion.roomQuality[mode]=result;return result;
+}
+function runArenaClutterPlacementCleanup(scene){if(G.state!=='shift')return {disabled:0,checked:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=arenaReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.56){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}const strict=runStrictPlacementDirector(scene,'arena');const result={disabled:disabled+strict.disabled,checked:roots.length,strict};G.gauntletFusion.lastArenaPlacementCleanup=result;return result;}
+function scheduleArenaQualityRecheck(scene,map){const timers=[];for(const ms of [1100,3000,6500,12000]){const t=setTimeout(()=>{if(G.state!=='shift')return;runArenaClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'arena',map});},ms);timers.push(t);}G.arenaMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
+function scheduleAutonomousQualityRecheck(scene){const timers=[];for(const ms of [900,2600,6000,11500]){const t=setTimeout(()=>{if(G.state!=='hub')return;runHubClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'hub'});},ms);timers.push(t);}G.lobbyMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
 function fusionPointLight(scene,name,pos,color,intensity=.18,range=3.6,list=G.lobbyMeshes){
   const l=new B.PointLight(name,pos,scene);l.diffuse=B.Color3.FromHexString(color);l.intensity=intensity;l.range=range;
   (list||G.lobbyMeshes).push({dispose:()=>{try{l.dispose()}catch{}}});return l;
@@ -8943,7 +9025,7 @@ function runKaalAuditAndFill(scene,mode='hub',map='',theme={}){
     const p=new B.Vector3(a[0]+jx,mode==='hub'?.55:.65,(a[1]??0)+jz);if(countSmallVisualsNear(scene,p,1.15)<1)sparseSamples++;
   }
   const factory=runAgentFactory({mode,map,minDensity,sparseSamples,checked,filled});
-  const deep=runGauntlet5000Audit(scene,{mode,map});const report={mode,map,checked,filled,minDensity,sparseSamples,samples:KAAL_AUDIT_SAMPLES,mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,agents:GAUNTLET_AGENT_ROSTER.length,critics:GAUNTLET_CRITIC_ROSTER.length,testers:GAUNTLET_TESTER_ROSTER.length,metaAgents:GAUNTLET_META_AGENT_ROSTER.length,metaCritics:GAUNTLET_META_CRITIC_ROSTER.length,generatedAgents:factory.accepted,generatedCritics:(G.gauntletFusion.dynamicCritics||[]).length,quality:deep.snapshot.quality,issues:deep.snapshot.issues.slice(0,12)};
+  const roomQuality=calculateRoomQuality(scene,mode);const deep=runGauntlet5000Audit(scene,{mode,map});const report={mode,map,checked,filled,minDensity,sparseSamples,samples:KAAL_AUDIT_SAMPLES,roomQuality,mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,agents:GAUNTLET_AGENT_ROSTER.length,critics:GAUNTLET_CRITIC_ROSTER.length,testers:GAUNTLET_TESTER_ROSTER.length,metaAgents:GAUNTLET_META_AGENT_ROSTER.length,metaCritics:GAUNTLET_META_CRITIC_ROSTER.length,generatedAgents:factory.accepted,generatedCritics:(G.gauntletFusion.dynamicCritics||[]).length,quality:deep.snapshot.quality,issues:deep.snapshot.issues.slice(0,12)};
   G.gauntletFusion.lastAudit=report;if(mode==='hub')G.gauntletFusion.hubFills+=filled;else G.gauntletFusion.arenaFills+=filled;
   console.info('KAAL QUALITY AUDIT',report);return report;
 }
@@ -10965,7 +11047,7 @@ function runSelfChecks(){
 function gauntletSelfCheck(){
   const issues=[];const ids=(arr)=>arr.map(x=>x.id);
   for(const [name,arr] of Object.entries({bats:CATALOG.bats,skins:CATALOG.skins,maps:CATALOG.maps})){const a=ids(arr);if(new Set(a).size!==a.length)issues.push(name+' duplicate id');if(!arr.length)issues.push(name+' empty');}
-  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY==='undefined'||FIRE_PARTICLE_CAPACITY>5000)issues.push('fire particle budget too high');if(typeof FIRE_VISUAL_VERSION==='undefined'||!String(FIRE_VISUAL_VERSION).includes('LAYERED-FLAME'))issues.push('layered fire rebuild missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');if((G.hubButtons||[]).some(b=>![1,-1].includes(b.metadata?.faceSign)))issues.push('hub button face direction missing');if((G.hubButtons||[]).some(b=>{const f=b.metadata?.faceSign||0,r=b.metadata?.buttonRoot;return !r||Math.sign(r.position.z)!==f||Math.sign(b.position.z)!==f;}))issues.push('hub button visual layers reversed/hidden');if(typeof GAUNTLET_FUSION_VERSION==='undefined'||!String(GAUNTLET_FUSION_VERSION).includes('GAUNTLET-KAAL'))issues.push('gauntlet kaal overhaul missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<16)issues.push('specialist agent roster too small');if(typeof GAUNTLET_CRITIC_ROSTER==='undefined'||GAUNTLET_CRITIC_ROSTER.length!==GAUNTLET_AGENT_ROSTER.length)issues.push('paired critic roster mismatch');if(typeof runKaalAuditAndFill!=='function'||typeof addFusionHubPass!=='function'||typeof addFusionArenaPass!=='function')issues.push('kaal audit/fusion passes missing');if(typeof KAAL_AUDIT_SAMPLES==='undefined'||KAAL_AUDIT_SAMPLES<1000)issues.push('kaal audit samples below 1000');if(typeof addCuratedHubOverhaul!=='function'||typeof addCuratedArenaOverhaul!=='function')issues.push('curated design overhaul missing');if(!G.gauntletFusion?.curatedMode)issues.push('curated mode disabled');if(typeof KENNEY_INTERFACE_SFX==='undefined'||Object.keys(KENNEY_INTERFACE_SFX).length<16)issues.push('interface SFX palette too small');if(typeof KENNEY_INTERFACE_LICENSE==='undefined'||KENNEY_INTERFACE_LICENSE!=='CC0-1.0')issues.push('interface SFX license metadata missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||!KAYKIT_MODEL_CATALOG.space||KAYKIT_MODEL_CATALOG.space.length<30)issues.push('space model pack missing');if(typeof npcHitProbe!=='function')issues.push('per-mesh NPC hitbox probe missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<36)issues.push('curated specialist roster too small');if(typeof GAUNTLET_META_AGENT_ROSTER==='undefined'||GAUNTLET_META_AGENT_ROSTER.length<10)issues.push('meta-agent factory roster too small');if(typeof GAUNTLET_META_CRITIC_ROSTER==='undefined'||GAUNTLET_META_CRITIC_ROSTER.length!==GAUNTLET_META_AGENT_ROSTER.length)issues.push('meta-agent critic mismatch');if(typeof runAgentFactory!=='function'||typeof validateGeneratedAgent!=='function'||typeof makeGeneratedAgent!=='function')issues.push('agent factory functions missing');if((G.gauntletFusion?.dynamicAgents||[]).some(a=>!a.critic||a.critic.id!==a.id+'_CRITIC'))issues.push('generated agent missing paired critic');if(typeof GAUNTLET_MAIN_LOOP_PASSES==='undefined'||GAUNTLET_MAIN_LOOP_PASSES!==5000)issues.push('main gauntlet loop is not 5000');if(typeof GAUNTLET_AGENT_PASS_BUDGET==='undefined'||GAUNTLET_AGENT_PASS_BUDGET!==5000)issues.push('agent pass budget is not 5000');if(typeof GAUNTLET_CRITIC_PASS_BUDGET==='undefined'||GAUNTLET_CRITIC_PASS_BUDGET!==5000)issues.push('critic pass budget is not 5000');if(typeof GAUNTLET_TESTER_ROSTER==='undefined'||GAUNTLET_TESTER_ROSTER.length<12)issues.push('tester roster too small');if(typeof inspectSceneQuality!=='function'||typeof runHubClutterPlacementCleanup!=='function'||typeof runGauntlet5000Audit!=='function')issues.push('autonomous quality director missing');
+  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY==='undefined'||FIRE_PARTICLE_CAPACITY>5000)issues.push('fire particle budget too high');if(typeof FIRE_VISUAL_VERSION==='undefined'||!String(FIRE_VISUAL_VERSION).includes('LAYERED-FLAME'))issues.push('layered fire rebuild missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');if((G.hubButtons||[]).some(b=>![1,-1].includes(b.metadata?.faceSign)))issues.push('hub button face direction missing');if((G.hubButtons||[]).some(b=>{const f=b.metadata?.faceSign||0,r=b.metadata?.buttonRoot;return !r||Math.sign(r.position.z)!==f||Math.sign(b.position.z)!==f;}))issues.push('hub button visual layers reversed/hidden');if(typeof GAUNTLET_FUSION_VERSION==='undefined'||!String(GAUNTLET_FUSION_VERSION).includes('GAUNTLET-KAAL'))issues.push('gauntlet kaal overhaul missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<16)issues.push('specialist agent roster too small');if(typeof GAUNTLET_CRITIC_ROSTER==='undefined'||GAUNTLET_CRITIC_ROSTER.length!==GAUNTLET_AGENT_ROSTER.length)issues.push('paired critic roster mismatch');if(typeof runKaalAuditAndFill!=='function'||typeof addFusionHubPass!=='function'||typeof addFusionArenaPass!=='function')issues.push('kaal audit/fusion passes missing');if(typeof KAAL_AUDIT_SAMPLES==='undefined'||KAAL_AUDIT_SAMPLES<1000)issues.push('kaal audit samples below 1000');if(typeof addCuratedHubOverhaul!=='function'||typeof addCuratedArenaOverhaul!=='function')issues.push('curated design overhaul missing');if(!G.gauntletFusion?.curatedMode)issues.push('curated mode disabled');if(typeof KENNEY_INTERFACE_SFX==='undefined'||Object.keys(KENNEY_INTERFACE_SFX).length<16)issues.push('interface SFX palette too small');if(typeof KENNEY_INTERFACE_LICENSE==='undefined'||KENNEY_INTERFACE_LICENSE!=='CC0-1.0')issues.push('interface SFX license metadata missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||!KAYKIT_MODEL_CATALOG.space||KAYKIT_MODEL_CATALOG.space.length<30)issues.push('space model pack missing');if(typeof npcHitProbe!=='function')issues.push('per-mesh NPC hitbox probe missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<36)issues.push('curated specialist roster too small');if(typeof GAUNTLET_META_AGENT_ROSTER==='undefined'||GAUNTLET_META_AGENT_ROSTER.length<10)issues.push('meta-agent factory roster too small');if(typeof GAUNTLET_META_CRITIC_ROSTER==='undefined'||GAUNTLET_META_CRITIC_ROSTER.length!==GAUNTLET_META_AGENT_ROSTER.length)issues.push('meta-agent critic mismatch');if(typeof runAgentFactory!=='function'||typeof validateGeneratedAgent!=='function'||typeof makeGeneratedAgent!=='function')issues.push('agent factory functions missing');if((G.gauntletFusion?.dynamicAgents||[]).some(a=>!a.critic||a.critic.id!==a.id+'_CRITIC'))issues.push('generated agent missing paired critic');if(typeof GAUNTLET_MAIN_LOOP_PASSES==='undefined'||GAUNTLET_MAIN_LOOP_PASSES!==10000)issues.push('main gauntlet loop is not 10000');if(typeof GAUNTLET_AGENT_PASS_BUDGET==='undefined'||GAUNTLET_AGENT_PASS_BUDGET!==5000)issues.push('agent pass budget is not 5000');if(typeof GAUNTLET_CRITIC_PASS_BUDGET==='undefined'||GAUNTLET_CRITIC_PASS_BUDGET!==5000)issues.push('critic pass budget is not 5000');if(typeof GAUNTLET_TESTER_ROSTER==='undefined'||GAUNTLET_TESTER_ROSTER.length<12)issues.push('tester roster too small');if(typeof inspectSceneQuality!=='function'||typeof runHubClutterPlacementCleanup!=='function'||typeof runGauntlet5000Audit!=='function')issues.push('autonomous quality director missing');if(typeof runStrictPlacementDirector!=='function'||typeof scoreObjectPlacement!=='function'||typeof calculateRoomQuality!=='function')issues.push('strict per-object/room placement director missing');if(typeof GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED==='undefined'||GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED!==10000)issues.push('10000 rendered-playthrough request not registered');
   const badUnlock=[...(G.meta.unlockedBats||[]).filter(id=>!CATALOG.bats.some(x=>x.id===id)),...(G.meta.unlockedSkins||[]).filter(id=>!CATALOG.skins.some(x=>x.id===id)),...(G.meta.unlockedMaps||[]).filter(id=>!CATALOG.maps.some(x=>x.id===id))];if(badUnlock.length)issues.push('stale unlock ids');
   console[issues.length?'warn':'info']('GAUNTLET SELF CHECK',issues.length?issues:`OK • ${CATALOG.maps.length} maps • ${CATALOG.bats.length} bats • ${CATALOG.skins.length} skins • ${CATALOG.props.length} prop models`);return issues;
 }
@@ -10981,6 +11063,6 @@ ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style
 window.addEventListener('keydown',e=>{ if(!G.desktop)return; if(e.code==='KeyR')buildHub(scene); if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SURVIVAL');if((e.code==='Digit2'||e.code==='Enter')&&G.state==='hub')startShift(scene,'LEVELS'); });
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 5.1 ready • STARTUP FIX • GAUNTLET × KAAL';
+ui.status.textContent='Reborn 5.2 ready • GAUNTLET × KAAL 10000X';
 window.__CRAZY_OFFICE_READY=true; window.dispatchEvent(new Event('crazy-office-ready'));
 updateHUD();
