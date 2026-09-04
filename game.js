@@ -20,17 +20,17 @@ function activateOwnerCode(){
   toast('OWNER MODE ACTIVE • ALL FREE',1500);tone(440,.1,'triangle',.04,280);rebuildHubLabels?.();
 }
 
-const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'4.4',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
+const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'4.8',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
 function loadMeta(){
   try{
     const raw=localStorage.getItem('crazyOfficeNightShiftMeta');
     const parsed=raw?JSON.parse(raw):{};
-    const upgrading=parsed.contentVersion!=='4.4';
+    const upgrading=parsed.contentVersion!=='4.8';
     const merged={...DEFAULT_META,...parsed,settings:{...DEFAULT_META.settings,...(parsed.settings||{})}};
     merged.unlockedBats=Array.from(new Set(merged.unlockedBats||['STANDARD']));
     merged.unlockedSkins=Array.from(new Set(merged.unlockedSkins||['CLASSIC','POTATO']));
     merged.unlockedMaps=Array.from(new Set(merged.unlockedMaps||['FLOOR 13']));
-    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='4.4';
+    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='4.8';
     if(upgrading)try{localStorage.setItem('crazyOfficeNightShiftMeta',JSON.stringify(merged));}catch{}
     return merged;
   }catch(e){console.warn('Meta save could not be read; using defaults.',e);return {...DEFAULT_META,settings:{...DEFAULT_META.settings}};}
@@ -47,7 +47,8 @@ const G = {
   objective: null, meta: loadMeta(), risers: [], joystick:new B.Vector2(0,0), turnAxis:0, turnLatch:false, stationInfo:null, waveTransition:false, waveToken:0, waveMod:null, waveStartT:0, threat:0, comboBank:0, hubButtons:[], hoveredHubButtons:new Set(), contract:null, contractStartKills:0, contractStartPropHits:0, contractStartWave:1, lastNpcChatter:0, shiftAudio:null, playerStepT:0, lastNpcStepAt:0
 };
 
-const FIRE_PARTICLE_CAPACITY=100000;
+const FIRE_PARTICLE_CAPACITY=2400;
+const FIRE_VISUAL_VERSION='4.8-LAYERED-FLAME';
 
 const LOBBY_ASSETS = {
   "Couch_Large2.obj": `# Blender v2.79 (sub 0) OBJ File: 'Couch_Large2.blend'
@@ -8692,13 +8693,15 @@ function buildEmbeddedObj(scene,name,objText,mtlText,opt={}){
 const KAYKIT_ROOTS={
   furniture:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0@main/addons/kaykit_furniture_bits/Assets/gltf/'],
   restaurant:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0@main/addons/kaykit_restaurant_bits/Assets/gltf/'],
-  city:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0/main/addons/kaykit_city_builder_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0@main/addons/kaykit_city_builder_bits/Assets/gltf/']
+  city:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0/main/addons/kaykit_city_builder_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0@main/addons/kaykit_city_builder_bits/Assets/gltf/'],
+  space:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Space-Base-Bits-1.0/main/addons/kaykit_space_base_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-Space-Base-Bits-1.0@main/addons/kaykit_space_base_bits/Assets/gltf/']
 };
 const KAYKIT_LICENSE='CC0-1.0';
 const KAYKIT_MODEL_CATALOG={
   furniture:['armchair','armchair_pillows','cabinet_medium','cabinet_medium_decorated','cabinet_small','cabinet_small_decorated','cactus_medium_A','cactus_medium_B','cactus_small_A','cactus_small_B','chair_A','chair_A_wood','chair_B','chair_B_wood','chair_C','chair_stool','chair_stool_wood','couch','couch_pillows','lamp_standing','lamp_table','pictureframe_large_A','pictureframe_large_B','pictureframe_medium','pictureframe_small_A','pictureframe_small_B','pictureframe_small_C','pictureframe_standing_A','pictureframe_standing_B','pillow_A','pillow_B','rug_oval_A','rug_oval_B','rug_rectangle_A','rug_rectangle_B','rug_rectangle_stripes_A','rug_rectangle_stripes_B','shelf_A_big','shelf_A_small','shelf_B_large','shelf_B_large_decorated','shelf_B_small','shelf_B_small_decorated','table_low'],
   restaurant:['bowl','bowl_dirty','bowl_small','chair_A','chair_B','chair_stool','crate','crate_buns','crate_carrots','crate_cheese','crate_ham','crate_lettuce','crate_lid','crate_onions','crate_potatoes','crate_steak','crate_tomatoes','cuttingboard','dishrack','dishrack_plates','door_A','door_B','extractorhood','food_burger','food_dinner','food_ingredient_bun','food_ingredient_bun_bottom','food_ingredient_bun_top','food_ingredient_burger_cooked','food_ingredient_burger_uncooked','food_ingredient_carrot','food_ingredient_carrot_chopped','food_ingredient_cheese','food_ingredient_cheese_slice','food_ingredient_ham','food_ingredient_ham_cooked','food_ingredient_lettuce','food_ingredient_onion','food_ingredient_onion_rings','food_ingredient_potato','food_ingredient_potato_chopped'],
-  city:['base','bench','box_A','box_B','building_A','building_A_withoutBase','building_B','building_B_withoutBase','building_C','building_C_withoutBase','building_D','building_D_withoutBase','building_E','building_E_withoutBase','building_F','building_F_withoutBase','building_G','building_G_withoutBase','building_H','building_H_withoutBase','bush','car_hatchback','car_police','car_sedan','car_stationwagon','car_taxi','dumpster','firehydrant','road_corner','road_corner_curved','road_junction','road_straight','road_straight_crossing','road_tsplit','streetlight','trafficlight_A','trafficlight_B','trafficlight_C','trash_A','trash_B','watertower']
+  city:['base','bench','box_A','box_B','building_A','building_A_withoutBase','building_B','building_B_withoutBase','building_C','building_C_withoutBase','building_D','building_D_withoutBase','building_E','building_E_withoutBase','building_F','building_F_withoutBase','building_G','building_G_withoutBase','building_H','building_H_withoutBase','bush','car_hatchback','car_police','car_sedan','car_stationwagon','car_taxi','dumpster','firehydrant','road_corner','road_corner_curved','road_junction','road_straight','road_straight_crossing','road_tsplit','streetlight','trafficlight_A','trafficlight_B','trafficlight_C','trash_A','trash_B','watertower'],
+  space:['basemodule_A','basemodule_B','basemodule_C','basemodule_D','basemodule_E','basemodule_garage','cargo_A','cargo_A_packed','cargo_A_stacked','cargo_B','cargo_B_packed','cargo_B_stacked','cargodepot_A','cargodepot_B','cargodepot_C','containers_A','containers_B','containers_C','containers_D','drill_structure','lander_A','lander_B','lander_base','landingpad_large','landingpad_small','lights','rock_A','rock_B','rocks_A','rocks_B','roofmodule_base','roofmodule_cargo_A','roofmodule_cargo_B','roofmodule_cargo_C','roofmodule_solarpanels','solarpanel','spacetruck','spacetruck_large','spacetruck_trailer','structure_low','structure_tall']
 };
 const REMOTE_MAX_ACTIVE=4,REMOTE_TEMPLATE_CACHE=new Map(),REMOTE_TEMPLATE_INFLIGHT=new Map(),REMOTE_LOAD_QUEUE=[];let REMOTE_ACTIVE=0;
 G.remoteModels=G.remoteModels||{requested:0,loaded:0,failed:0,uniqueLoaded:0,cacheHits:0,fallbacks:0};G.remoteDecor=G.remoteDecor||[];
@@ -8753,6 +8756,143 @@ function remoteKenneyModel(scene,file,opt={}){
 }
 
 
+
+// 4.8 CURATED GAUNTLET × KAAL OVERHAUL ----------------------------------------
+// Permanent design-director pipeline: broad specialist passes + paired critics. The runtime
+// audit is deliberately strict, but curatedMode prevents the old mistake of solving emptiness
+// by spraying random boxes everywhere.
+const GAUNTLET_FUSION_VERSION='4.8-CURATED-GAUNTLET-KAAL-OVERHAUL';
+const GAUNTLET_AGENT_ROSTER=[
+  'LEAD_DIRECTOR','IDEA_GAMEPLAY','IDEA_WORLD','IDEA_AUDIO','IDEA_NPC','IDEA_SURPRISE','IDEA_REPLAYABILITY',
+  'VISUAL_DIRECTOR','KAAL_HUNTER','LAYOUT_DIRECTOR','CLUTTER_CLEANUP','ARCHITECTURE_DIRECTOR','PROP_CURATOR','MODEL_SCOUT',
+  'MATERIAL_DIRECTOR','COLOR_SCRIPT','LIGHTING_DIRECTOR','AUDIO_DIRECTOR','SFX_CURATOR','AMBIENCE_DIRECTOR','MUSIC_FEEL',
+  'UI_BUTTON_DESIGN','INTERACTION_FEEL','HAPTICS','VFX_POLISH','MAP_DRESSING','NPC_DESIGN','NPC_FACE','NPC_SILHOUETTE',
+  'NPC_BEHAVIOUR','HITBOX_DESIGN','COLLISION','WEAPON_FEEL','MATERIAL_RESPONSE','DESTRUCTION','REWARD_FEEL',
+  'SECRETS_SURPRISE','FUN_FACTOR','PERFORMANCE','REGRESSION','ACCESSIBILITY','RELEASE_QUALITY','FINAL_CRITIC'
+];
+const GAUNTLET_CRITIC_ROSTER=GAUNTLET_AGENT_ROSTER.map(x=>x+'_CRITIC');
+const KAAL_AUDIT_SAMPLES=1000;
+G.gauntletFusion=G.gauntletFusion||{version:GAUNTLET_FUSION_VERSION,hubFills:0,arenaFills:0,lastAudit:null,curatedMode:true,ideasApplied:0};
+G.gauntletFusion.version=GAUNTLET_FUSION_VERSION;G.gauntletFusion.curatedMode=true;
+
+function fusionPointLight(scene,name,pos,color,intensity=.18,range=3.6,list=G.lobbyMeshes){
+  const l=new B.PointLight(name,pos,scene);l.diffuse=B.Color3.FromHexString(color);l.intensity=intensity;l.range=range;
+  (list||G.lobbyMeshes).push({dispose:()=>{try{l.dispose()}catch{}}});return l;
+}
+function fusionStrip(scene,name,pos,scale,color,list,em=.55,rotation=null){
+  const m=denseBox(scene,name,pos,scale,color,list,em,rotation);m.material.roughness=.25;m.material.metallic=.22;return m;
+}
+function countSmallVisualsNear(scene,pos,r=1.15){
+  const r2=r*r;let c=0;
+  for(const m of scene.meshes){
+    if(!m||m.isDisposed?.()||m.isVisible===false||/collider|floor|ceil|wall|sky/i.test(m.name||''))continue;
+    let p;try{p=m.getAbsolutePosition?.()||m.position}catch{p=m.position}
+    if(!p)continue;const dx=p.x-pos.x,dy=(p.y||0)-pos.y,dz=p.z-pos.z;
+    if(dx*dx+dy*dy+dz*dz<r2)c++;
+  }
+  return c;
+}
+function addSmartKaalCluster(scene,list,pos,accent,index=0,wall=false){
+  if(wall){
+    const frame=denseBox(scene,'kaalSmartFrame',pos,new B.Vector3(.66,.48,.035),'#242c34',list);
+    denseBox(scene,'kaalSmartInset',new B.Vector3(pos.x,pos.y,pos.z+(pos.z<0?.026:-.026)),new B.Vector3(.54,.36,.014),accent,list,.10);
+    fusionStrip(scene,'kaalSmartStatus',new B.Vector3(pos.x,pos.y-.31,pos.z+(pos.z<0?.035:-.035)),new B.Vector3(.34,.025,.012),accent,list,.62);
+    for(const sx of [-1,1]){const bolt=B.MeshBuilder.CreateCylinder('kaalSmartBolt',{height:.015,diameter:.04,tessellation:8},scene);bolt.position=new B.Vector3(pos.x+sx*.27,pos.y+.19,pos.z+(pos.z<0?.043:-.043));bolt.rotation.x=Math.PI/2;bolt.material=denseMaterial(scene,'#cad6df',.06);bolt.isPickable=false;list.push(bolt);}
+    return frame;
+  }
+  const baseCols=['#775b46','#536879','#695b72','#546b58'],topCols=['#d9ccb8','#b8cbd6','#cabbd2','#bfd1bd'];
+  denseBox(scene,'kaalSmartBase',new B.Vector3(pos.x,.13,pos.z),new B.Vector3(.34,.22,.29),baseCols[index%baseCols.length],list);
+  denseBox(scene,'kaalSmartTop',new B.Vector3(pos.x+(index%2?.09:-.08),.33,pos.z+.03),new B.Vector3(.22,.11,.18),topCols[index%topCols.length],list);
+  if(index%2===0)denseCylinder(scene,'kaalSmartCan',new B.Vector3(pos.x-.15,.39,pos.z-.10),.28,.075,'#7f919a',list);
+  fusionStrip(scene,'kaalSmartGlow',new B.Vector3(pos.x,.045,pos.z-.24),new B.Vector3(.25,.012,.018),accent,list,.28);
+}
+function runKaalAuditAndFill(scene,mode='hub',map='',theme={}){
+  const L=mode==='hub'?G.lobbyMeshes:G.arenaMeshes,accent=theme.accent||'#75d6ff';
+  const floorAnchors=mode==='hub'?[
+    [-4.55,-3.6],[-4.55,-2.2],[-4.55,-.8],[-4.55,1.0],[-4.55,2.5],[-4.55,3.55],
+    [4.55,-3.55],[4.55,-2.05],[4.55,-.65],[4.55,1.1],[4.55,2.55],[4.55,3.55]
+  ]:[[-5.75,-5.3],[-3.9,-5.75],[-1.9,-5.75],[1.9,-5.75],[3.9,-5.75],[5.75,-5.3],[5.75,-2.7],[5.75,0],[5.75,2.7],[5.75,5.3],[-5.75,5.3],[-5.75,2.7],[-5.75,0],[-5.75,-2.7]];
+  let checked=0,filled=0,minDensity=999;
+  floorAnchors.forEach(([x,z],i)=>{const p=new B.Vector3(x,.3,z),density=countSmallVisualsNear(scene,p,1.05);checked++;minDensity=Math.min(minDensity,density);if(density<2&&!G.gauntletFusion.curatedMode){addSmartKaalCluster(scene,L,p,accent,i,false);filled++;}});
+  const wallZ=mode==='hub'?-4.36:6.73,wallXs=mode==='hub'?[-4.45,-3.15,-1.85,-.55,.55,1.85,3.15,4.45]:[-5.2,-3.7,-2.2,-.7,.7,2.2,3.7,5.2];
+  wallXs.forEach((x,i)=>{const p=new B.Vector3(x,2.45,wallZ),density=countSmallVisualsNear(scene,p,.82);checked++;minDensity=Math.min(minDensity,density);if(density<2&&!G.gauntletFusion.curatedMode){addSmartKaalCluster(scene,L,p,accent,i,true);filled++;}});
+  // 1000 lightweight critic samples: this samples density/style coverage without creating 1000 meshes.
+  // It is intentionally an audit, not a claim of 1000 full game-development loops.
+  let sparseSamples=0;const anchors=[...floorAnchors,...wallXs.map(x=>[x,wallZ])];
+  for(let i=0;i<KAAL_AUDIT_SAMPLES;i++){
+    const a=anchors[i%anchors.length],jx=((i*37)%101/100-.5)*.35,jz=((i*53)%97/96-.5)*.35;
+    const p=new B.Vector3(a[0]+jx,mode==='hub'?.55:.65,(a[1]??0)+jz);if(countSmallVisualsNear(scene,p,1.15)<1)sparseSamples++;
+  }
+  const report={mode,map,checked,filled,minDensity,sparseSamples,samples:KAAL_AUDIT_SAMPLES,agents:GAUNTLET_AGENT_ROSTER.length,critics:GAUNTLET_CRITIC_ROSTER.length};
+  G.gauntletFusion.lastAudit=report;if(mode==='hub')G.gauntletFusion.hubFills+=filled;else G.gauntletFusion.arenaFills+=filled;
+  console.info('KAAL QUALITY AUDIT',report);return report;
+}
+function addFusionHubPass(scene){
+  const L=G.lobbyMeshes,accents=['#55c9ff','#ffad55','#9ee85e','#bd82ff'];
+  // Hero surrounds behind every primary wall console. This intentionally makes the menu wall read as a designed feature, not four slabs.
+  [-3.75,-1.25,1.25,3.75].forEach((x,i)=>{
+    const a=accents[i];
+    denseBox(scene,'fusionConsoleHalo',new B.Vector3(x,2.15,-4.405),new B.Vector3(2.42,2.66,.025),'#111820',L);
+    for(const sx of [-1,1])fusionStrip(scene,'fusionConsoleWing',new B.Vector3(x+sx*1.18,2.15,-4.345),new B.Vector3(.035,1.06,.026),a,L,.72);
+    fusionStrip(scene,'fusionConsoleTop',new B.Vector3(x,3.45,-4.34),new B.Vector3(.78,.035,.026),a,L,.58);
+    fusionStrip(scene,'fusionConsoleFoot',new B.Vector3(x,.86,-4.34),new B.Vector3(.48,.028,.026),a,L,.42);
+    fusionPointLight(scene,'fusionConsoleLight'+i,new B.Vector3(x,2.35,-3.88),a,.10,2.4,L);
+  });
+  // Coherent architecture: two-tone wall pilasters, picture-light rails, and a central ceiling feature.
+  for(const x of [-4.92,-2.5,0,2.5,4.92]){denseBox(scene,'fusionPilaster',new B.Vector3(x,2.05,-4.43),new B.Vector3(.06,3.55,.045),'#594638',L);fusionStrip(scene,'fusionPilasterGlow',new B.Vector3(x,3.58,-4.37),new B.Vector3(.045,.32,.018),'#ffd19a',L,.35);}
+  for(const z of [-2.65,0,2.65]){denseBox(scene,'fusionCeilingIsland',new B.Vector3(0,4.02,z),new B.Vector3(2.2,.05,.48),'#3b3f45',L);fusionStrip(scene,'fusionCeilingIslandGlow',new B.Vector3(0,3.96,z),new B.Vector3(1.55,.018,.12),'#ffe3b1',L,.43);}
+  // Legacy 4.7 prop compositions are skipped in curated mode; 4.8 has a cleaner authored layout.
+  if(!G.gauntletFusion.curatedMode){
+  const K=[
+    ['chairModernFrameCushion',3.75,0,3.28,.48,-.35],['benchCushionLow',-3.55,0,3.35,.48,.22],
+    ['bookcaseClosedWide',4.72,0,1.42,.46,-Math.PI/2],['books',4.50,.68,1.42,.52,-Math.PI/2],
+    ['deskCorner',-4.18,0,-3.18,.46,Math.PI/2],['computerScreen',-4.02,.79,-3.10,.49,Math.PI/2],
+    ['computerKeyboard',-3.90,.72,-2.84,.52,Math.PI/2],['computerMouse',-3.72,.72,-2.80,.58,Math.PI/2],
+    ['coatRackStanding',4.36,0,-2.88,.50,0],['cardboardBoxOpen',-4.05,.18,3.63,.46,-.1]
+  ];
+  for(const [file,x,y,z,sc,ry] of K)remoteKenneyModel(scene,file,{name:'fusionHub_'+file+'_'+x,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:sc,lowPriority:true,list:L});
+  const Q=[
+    ['furniture','lamp_standing',-3.05,0,3.50,.48,0],['furniture','cactus_medium_B',3.12,0,3.62,.50,0],
+    ['furniture','table_low',3.25,0,2.84,.46,0],['furniture','pictureframe_standing_A',-4.78,.72,.30,.48,Math.PI/2],
+    ['restaurant','crate_buns',4.55,.28,-3.65,.42,0],['restaurant','crate_potatoes',4.12,.28,-3.62,.42,.1]
+  ];
+  for(const [pack,file,x,y,z,sc,ry] of Q)remoteKayKitModel(scene,pack,file,{name:'fusionHubKay_'+file+'_'+x,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:sc,lowPriority:true,list:L});
+  }
+  // Small premium detail language repeated throughout the room.
+  for(const [x,z,i] of [[-4.72,-.35,0],[-4.72,.55,1],[4.72,.15,2],[4.72,2.15,3]]){
+    denseBox(scene,'fusionUtilityPlate',new B.Vector3(x,1.55,z),new B.Vector3(.025,.42,.32),'#252e36',L);
+    fusionStrip(scene,'fusionUtilityStatus',new B.Vector3(x+(x<0?.028:-.028),1.55,z),new B.Vector3(.012,.055,.22),accents[i],L,.55);
+  }
+  runKaalAuditAndFill(scene,'hub','COZY HOME',{accent:'#ffbf77'});
+}
+function addFusionArenaPass(scene,map,t){
+  const L=G.arenaMeshes,accent=t.accent||'#78d8ff';
+  // Stronger visual rhythm: illuminated room corners + suspended feature rails.
+  for(const [x,z] of [[-5.7,-5.7],[5.7,-5.7],[-5.7,5.7],[5.7,5.7]]){
+    fusionStrip(scene,'fusionCornerGlow',new B.Vector3(x,1.82,z),new B.Vector3(.035,1.25,.035),accent,L,.46);
+  }
+  for(const x of [-4,-2,0,2,4])fusionStrip(scene,'fusionCeilingRail',new B.Vector3(x,3.47,0),new B.Vector3(.035,.018,5.0),accent,L,.12);
+  fusionPointLight(scene,'fusionArenaKeyA',new B.Vector3(-4.6,2.65,-4.6),accent,.075,4.2,L);
+  fusionPointLight(scene,'fusionArenaKeyB',new B.Vector3(4.6,2.65,4.6),accent,.065,4.0,L);
+  // Older broad prop scatter is retained only as a fallback when curated mode is disabled.
+  if(!G.gauntletFusion.curatedMode){
+  const groups={
+    'FLOOR 13':['desk','chairDesk','computerScreen','bookcaseOpen'], 'ARCHIVE':['bookcaseClosedWide','books','cardboardBoxClosed','bench'],
+    'BREAKROOM':['chairRounded','benchCushionLow','cardboardBoxOpen','chairCushion'], 'SERVER':['deskCorner','computerScreen','computerKeyboard','computerMouse'],
+    'ROOFTOP':['bench','cardboardBoxClosed','coatRackStanding','chair'], 'PARKING':['bench','cardboardBoxOpen','chair','coatRack'],
+    'HR MAZE':['deskCorner','chairDesk','bookcaseOpenLow','coatRackStanding'], 'IT LAB':['desk','computerScreen','computerKeyboard','computerMouse'],
+    'CAFETERIA':['benchCushion','chairRounded','cardboardBoxOpen','chairCushion'], 'PENTHOUSE':['chairModernCushion','chairModernFrameCushion','bookcaseClosedDoors','books'],
+    'WAREHOUSE':['cardboardBoxClosed','cardboardBoxOpen','bench','coatRack'], 'CONFERENCE':['chairModernCushion','chairModernFrameCushion','desk','coatRackStanding'],
+    'COPY':['desk','computerScreen','cardboardBoxClosed','chairDesk'], 'ELEVATOR':['bench','cardboardBoxClosed','coatRack','chair'],
+    'MAILROOM':['cardboardBoxClosed','cardboardBoxOpen','bench','coatRackStanding'], 'LEGAL':['bookcaseClosedWide','books','chairModernFrameCushion','desk']
+  };
+  const files=groups[map]||groups['FLOOR 13'],spots=[[-5.25,0,4.75,.43,.15],[5.25,0,-4.75,.43,-.15],[-5.25,0,-3.25,.40,.25],[5.25,0,3.25,.40,-.25]];
+  files.forEach((file,i)=>{const [x,y,z,sc,ry]=spots[i];remoteKenneyModel(scene,file,{name:'fusionArena_'+map+'_'+file,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:sc,lowPriority:true,list:L});});
+  }
+  runKaalAuditAndFill(scene,'arena',map,t);
+}
+
+
 // 4.2 DENSE WORLD PASS — fill visual dead space without turning the maps into collision mazes.
 const DENSE_MATS=new WeakMap();
 function denseMaterial(scene,color,emissive=0){
@@ -8765,6 +8905,93 @@ function denseBox(scene,name,pos,scale,color,list,emissive=0,rotation=null){
 function denseCylinder(scene,name,pos,height,diam,color,list,rotation=null){
   const m=B.MeshBuilder.CreateCylinder(name,{height,diameter:diam,tessellation:10},scene);m.position.copyFrom(pos);if(rotation)m.rotation.copyFrom(rotation);m.material=denseMaterial(scene,color,0);m.isPickable=false;(list||remoteListForState()).push(m);try{m.freezeWorldMatrix()}catch{}return m;
 }
+
+function addCuratedHubOverhaul(scene){
+  const L=G.lobbyMeshes, warm='#ffc980', cool='#7dd8ff', ink='#20262d', wood='#6c503c';
+  // Clean composition: large architectural gestures instead of dozens of floor cubes.
+  // Wainscot + framed wall bays make every previously blank wall intentionally designed.
+  for(const z of [-4.445,4.445]){
+    denseBox(scene,'curatedWallBase',new B.Vector3(0,.48,z),new B.Vector3(9.25,.76,.035),wood,L);
+    fusionStrip(scene,'curatedWallBaseGlow',new B.Vector3(0,.91,z+(z<0?.035:-.035)),new B.Vector3(8.55,.018,.018),warm,L,.28);
+    for(const x of [-4.2,-2.1,0,2.1,4.2]){
+      denseBox(scene,'curatedWallBay',new B.Vector3(x,2.45,z),new B.Vector3(1.66,2.55,.028),ink,L);
+      fusionStrip(scene,'curatedWallBayTop',new B.Vector3(x,3.66,z+(z<0?.038:-.038)),new B.Vector3(.70,.022,.016),x===0?cool:warm,L,.32);
+    }
+  }
+  for(const x of [-5.03,5.03]){
+    denseBox(scene,'curatedSideBase',new B.Vector3(x,.48,0),new B.Vector3(.035,.76,7.2),wood,L);
+    for(const z of [-2.8,0,2.8]){
+      denseBox(scene,'curatedSideBay',new B.Vector3(x,2.35,z),new B.Vector3(.028,2.25,1.82),ink,L);
+      fusionStrip(scene,'curatedSideStatus',new B.Vector3(x+(x<0?.038:-.038),3.39,z),new B.Vector3(.016,.022,.72),z===0?cool:warm,L,.30);
+    }
+  }
+  // Three clean ceiling features create depth while keeping the center readable and performant.
+  for(const z of [-2.75,0,2.75]){
+    denseBox(scene,'curatedCeilingRaft',new B.Vector3(0,4.03,z),new B.Vector3(3.0,.08,.68),'#252b31',L);
+    fusionStrip(scene,'curatedCeilingWarm',new B.Vector3(0,3.94,z),new B.Vector3(2.15,.018,.18),'#ffe0ad',L,.52);
+    fusionPointLight(scene,'curatedCeilingLight'+z,new B.Vector3(0,3.67,z),'#ffd8a2',.10,4.1,L);
+  }
+  // Curated model zones: workstation, lounge, storage. No random scatter in the walking lane.
+  const kenney=[
+    ['desk',-4.18,0,-3.08,.48,Math.PI/2],['computerScreen',-4.03,.79,-3.06,.51,Math.PI/2],['computerKeyboard',-3.90,.72,-2.78,.52,Math.PI/2],['computerMouse',-3.68,.72,-2.78,.58,Math.PI/2],
+    ['chairDesk',-3.55,0,-2.56,.48,-Math.PI/2],['bookcaseClosedWide',4.72,0,1.35,.47,-Math.PI/2],['books',4.50,.68,1.35,.54,-Math.PI/2],
+    ['cardboardBoxClosed',4.32,.18,2.73,.48,.1],['cardboardBoxOpen',4.55,.18,3.15,.47,-.12],['coatRackStanding',4.42,0,-2.95,.50,0]
+  ];
+  for(const [file,x,y,z,s,ry] of kenney)remoteKenneyModel(scene,file,{name:'curatedHub_'+file,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:s,lowPriority:true,list:L});
+  const kay=[
+    ['furniture','couch_pillows',3.42,0,3.18,.50,Math.PI],['furniture','armchair_pillows',2.15,0,3.23,.50,2.7],['furniture','table_low',2.82,0,2.58,.48,0],
+    ['furniture','lamp_standing',4.35,0,3.38,.50,0],['furniture','rug_rectangle_stripes_A',2.95,.02,3.05,.62,0],['furniture','cactus_medium_B',1.68,0,3.63,.54,0],
+    ['furniture','cabinet_medium_decorated',-4.72,0,1.25,.47,Math.PI/2],['furniture','pictureframe_large_A',-4.84,1.85,.10,.52,Math.PI/2]
+  ];
+  for(const [pack,file,x,y,z,s,ry] of kay)remoteKayKitModel(scene,pack,file,{name:'curatedHubKay_'+file,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:s,lowPriority:true,list:L});
+  // A deliberate trophy wall instead of a dead brown rectangle.
+  const wall=denseBox(scene,'employeeFeatureWall',new B.Vector3(0,2.40,4.405),new B.Vector3(3.55,1.55,.04),'#171d23',L);
+  fusionStrip(scene,'employeeFeatureTop',new B.Vector3(0,3.16,4.35),new B.Vector3(1.75,.026,.018),cool,L,.58);
+  fusionStrip(scene,'employeeFeatureBottom',new B.Vector3(0,1.63,4.35),new B.Vector3(1.15,.022,.018),warm,L,.48);
+  fixedPanelText(scene,'EMPLOYEE OF THE MINUTE',wall,.24,'#f5f7fb',.35,-.052);
+  fixedPanelText(scene,'SURVIVE • SMASH • CLOCK OUT',wall,.15,'#9ddfff',-.05,-.052);
+  for(let i=0;i<3;i++){const medal=B.MeshBuilder.CreateTorus('employeeMedal',{diameter:.22+i*.03,thickness:.035,tessellation:18},scene);medal.parent=wall;medal.position=new B.Vector3((i-1)*.50,-.47,-.07);medal.rotation.x=Math.PI/2;medal.material=denseMaterial(scene,i===1?'#ffcf66':'#6e8194',.34);medal.isPickable=false;L.push(medal);}
+  // A few deliberately placed floor accents, never a debris carpet.
+  for(const [x,z,c] of [[-4.7,-.6,cool],[4.7,-.8,warm],[-4.7,3.25,warm],[4.7,3.55,cool]])fusionStrip(scene,'curatedFloorGuide',new B.Vector3(x,.025,z),new B.Vector3(.16,.012,.55),c,L,.23);
+  G.gauntletFusion.ideasApplied=(G.gauntletFusion.ideasApplied||0)+5;
+}
+function addCuratedArenaOverhaul(scene,map,t){
+  const L=G.arenaMeshes,accent=t.accent||'#7bd7ff',wall=t.wall||'#3b4148';
+  // Repeated architectural language makes the arena look authored rather than procedurally littered.
+  for(const [x,z] of [[-6.1,-6.1],[6.1,-6.1],[-6.1,6.1],[6.1,6.1]]){
+    denseBox(scene,'curArenaColumn',new B.Vector3(x,1.7,z),new B.Vector3(.22,3.25,.22),wall,L);
+    fusionStrip(scene,'curArenaColumnGlow',new B.Vector3(x,2.75,z),new B.Vector3(.12,.52,.12),accent,L,.45);
+  }
+  for(const z of [-5.98,5.98]){
+    for(const x of [-4,-2,0,2,4]){
+      denseBox(scene,'curArenaWallBay',new B.Vector3(x,2.08,z),new B.Vector3(1.42,2.50,.035),'#222932',L);
+      fusionStrip(scene,'curArenaBayLight',new B.Vector3(x,3.22,z+(z<0?.04:-.04)),new B.Vector3(.56,.022,.015),accent,L,.28);
+    }
+  }
+  // 4-6 coherent real models per map, selected to support the room's story.
+  const city=['PARKING','ROOFTOP'].includes(map),food=['BREAKROOM','CAFETERIA'].includes(map),tech=['SERVER','IT','ELEVATOR'].includes(map),storage=['WAREHOUSE','MAILROOM'].includes(map);
+  if(city){
+    remoteKayKitModel(scene,'city','car_sedan',{position:new B.Vector3(-4.3,0,3.5),rotation:new B.Vector3(0,.2,0),scale:.53,lowPriority:true,list:L});
+    remoteKayKitModel(scene,'city','streetlight',{position:new B.Vector3(4.7,0,3.8),scale:.50,lowPriority:true,list:L});
+    remoteKayKitModel(scene,'city','dumpster',{position:new B.Vector3(4.8,0,-3.5),rotation:new B.Vector3(0,-.3,0),scale:.50,lowPriority:true,list:L});
+    remoteKayKitModel(scene,'city','firehydrant',{position:new B.Vector3(-4.9,0,-3.8),scale:.48,lowPriority:true,list:L});
+  }else if(food){
+    for(const [file,x,z,ry] of [['crate_tomatoes',-4.7,3.6,.1],['crate_buns',-4.15,3.55,-.1],['crate_potatoes',4.6,-3.6,.12],['dishrack_plates',4.35,3.7,-.2]])remoteKayKitModel(scene,'restaurant',file,{position:new B.Vector3(x,.2,z),rotation:new B.Vector3(0,ry,0),scale:.48,lowPriority:true,list:L});
+  }else if(tech||storage){
+    const files=tech?['cargo_A_packed','containers_A','lights','cargo_B_stacked']:['cargo_A_stacked','cargo_B_packed','containers_C','cargodepot_A'];
+    const pts=[[-4.6,3.7,.12],[4.6,3.7,-.15],[-4.6,-3.7,.05],[4.6,-3.7,-.08]];
+    files.forEach((file,i)=>remoteKayKitModel(scene,'space',file,{position:new B.Vector3(pts[i][0],.05,pts[i][1]),rotation:new B.Vector3(0,pts[i][2],0),scale:file==='lights'?.38:.44,lowPriority:true,list:L}));
+  }else{
+    for(const [file,x,z,ry] of [['bookcaseClosedWide',-4.8,3.6,Math.PI/2],['books',-4.55,3.6,Math.PI/2],['chairDesk',4.55,3.5,-.3]])remoteKenneyModel(scene,file,{position:new B.Vector3(x,0,z),rotation:new B.Vector3(0,ry,0),scale:.47,lowPriority:true,list:L});
+    remoteKayKitModel(scene,'furniture','lamp_standing',{position:new B.Vector3(4.75,0,-3.5),scale:.48,lowPriority:true,list:L});
+  }
+  // A clean map identity plaque on a wall; no floating labels in the center.
+  const plaque=denseBox(scene,'curatedMapPlaque',new B.Vector3(0,2.40,6.64),new B.Vector3(2.75,.75,.035),'#151b21',L);
+  fusionStrip(scene,'curatedMapPlaqueGlow',new B.Vector3(0,2.85,6.59),new B.Vector3(1.25,.024,.014),accent,L,.55);
+  for(const tx of [[map,.28,'#ffffff',.08],['NIGHT SHIFT // CHAOS ZONE',.13,accent,-.26]]){const tp=fixedPanelText(scene,tx[0],plaque,tx[1],tx[2],tx[3],-.052);const li=G.lobbyMeshes.indexOf(tp);if(li>=0)G.lobbyMeshes.splice(li,1);L.push(tp);}
+  G.gauntletFusion.ideasApplied=(G.gauntletFusion.ideasApplied||0)+3;
+}
+
 function addDenseHubPass(scene){
   const L=G.lobbyMeshes;
   // wood wall trims + ceiling cove strips
@@ -9003,6 +9230,26 @@ function noiseBurst(dur=.05,gain=.03,low=400,high=2200){
 }
 
 
+// 4.8 extra CC0 Kenney Interface Sounds — 100-sound source pack, selectively mapped for richer feedback.
+const KENNEY_INTERFACE_LICENSE='CC0-1.0';
+const KENNEY_INTERFACE_ROOTS=[
+  'https://raw.githubusercontent.com/Calinou/kenney-interface-sounds/master/addons/kenney_interface_sounds/',
+  'https://cdn.jsdelivr.net/gh/Calinou/kenney-interface-sounds@master/addons/kenney_interface_sounds/'
+];
+const KENNEY_INTERFACE_SFX={
+  hover:'select_001.wav',hover2:'select_004.wav',press:'click_003.wav',press2:'click_005.wav',switch:'switch_003.wav',toggle:'toggle_002.wav',
+  confirm:'confirmation_003.wav',confirm2:'confirmation_001.wav',deny:'error_004.wav',deny2:'error_008.wav',open:'open_002.wav',close:'close_002.wav',
+  reward:'maximize_006.wav',drop:'drop_003.wav',glitch:'glitch_002.wav',scroll:'scroll_003.wav',tick:'tick_002.wav',question:'question_002.wav'
+};
+const INTERFACE_SFX_CACHE=new Map(),INTERFACE_SFX_INFLIGHT=new Map();
+async function loadInterfaceSfx(key){
+  if(!audio||!KENNEY_INTERFACE_SFX[key])return null;if(INTERFACE_SFX_CACHE.has(key))return INTERFACE_SFX_CACHE.get(key);if(INTERFACE_SFX_INFLIGHT.has(key))return INTERFACE_SFX_INFLIGHT.get(key);
+  const p=(async()=>{let last=null;for(const root of KENNEY_INTERFACE_ROOTS){try{const r=await fetch(root+KENNEY_INTERFACE_SFX[key],{cache:'force-cache'});if(!r.ok)throw new Error('HTTP '+r.status);const ab=await r.arrayBuffer(),buf=await audio.decodeAudioData(ab.slice(0));INTERFACE_SFX_CACHE.set(key,buf);return buf;}catch(e){last=e;}}throw last||new Error('interface SFX load failed');})();
+  INTERFACE_SFX_INFLIGHT.set(key,p);try{return await p;}finally{INTERFACE_SFX_INFLIGHT.delete(key);}
+}
+function playInterfaceSfx(key,gain=.22,rate=1){const buf=INTERFACE_SFX_CACHE.get(key);if(!audio||!buf||!audioVoiceEnter(gain*.06))return false;try{if(audio.state==='suspended')audio.resume().catch(()=>{});const src=audio.createBufferSource(),g=audio.createGain();src.buffer=buf;src.playbackRate.value=rate;g.gain.value=Math.min(.58,gain);src.connect(g).connect(audio.destination);src.onended=audioVoiceLeave;src.start();return true;}catch{audioVoiceLeave();return false;}}
+function preloadInterfaceSfx(){for(const k of Object.keys(KENNEY_INTERFACE_SFX))loadInterfaceSfx(k).catch(()=>{});}setTimeout(preloadInterfaceSfx,520);
+
 // 4.3 REAL CC0 KENNEY SFX — downloaded/decode-cached once, procedural audio remains the instant fallback.
 const KENNEY_SFX_LICENSE='CC0-1.0';
 const KENNEY_SFX_ROOTS=[
@@ -9028,15 +9275,17 @@ function playRemoteSfx(key,gain=.35,rate=1){
 }
 function preloadKenneySfx(){for(const k of Object.keys(KENNEY_SFX))loadRemoteSfx(k).catch(()=>{});}setTimeout(preloadKenneySfx,350);
 function randomRemoteSfx(keys,gain=.3,rate=1){const k=keys[Math.floor(Math.random()*keys.length)];return playRemoteSfx(k,gain,rate);}
-function uiHoverSound(){ if(playRemoteSfx('uiHover',.15,.98+Math.random()*.05))return; tone(760,.024,'triangle',.012,-120); }
+function uiHoverSound(){ if(playInterfaceSfx(Math.random()<.5?'hover':'hover2',.13,.98+Math.random()*.04))return;if(playRemoteSfx('uiHover',.15,.98+Math.random()*.05))return; tone(760,.024,'triangle',.012,-120); }
 function uiClickSound(kind='press'){
-  if(kind==='deny'){if(playRemoteSfx('uiError',.24,.96))return;tone(150,.05,'square',.02,-40);setTimeout(()=>tone(102,.08,'sine',.014,-20),22);return;}
+  if(kind==='deny'){if(playInterfaceSfx(Math.random()<.5?'deny':'deny2',.22,.96))return;if(playRemoteSfx('uiError',.24,.96))return;tone(150,.05,'square',.02,-40);setTimeout(()=>tone(102,.08,'sine',.014,-20),22);return;}
+  const ik=kind==='switch'?'switch':(Math.random()<.5?'press':'press2');if(playInterfaceSfx(ik,.18,.98+Math.random()*.035))return;
   if(playRemoteSfx(kind==='switch'?'uiSwitch':'uiClick',.22,.98+Math.random()*.04))return;tone(240,.032,'sine',.02,-25);setTimeout(()=>tone(420,.05,'triangle',.012,40),15);
 }
 function whooshSound(power=1){
   power=Math.max(.25,Math.min(1.4,power));if(playRemoteSfx('whoosh',.10+.12*power,.88+Math.random()*.22))return;noiseBurst(.028+.018*power,.012+.01*power,280,1600);tone(240+power*120,.024,'triangle',.008*power,120);
 }
 function rewardSound(kind='reward'){
+  if(playInterfaceSfx(kind==='complete'?'confirm':kind==='challenge'?'confirm2':'reward',.18,.98+Math.random()*.03))return;
   if(kind==='crate'){ tone(330,.08,'triangle',.024,180); setTimeout(()=>tone(494,.09,'triangle',.026,120),70); setTimeout(()=>tone(659,.13,'triangle',.028,80),145); }
   else if(kind==='challenge'){ tone(294,.07,'triangle',.02,140); setTimeout(()=>tone(392,.08,'triangle',.024,110),70); setTimeout(()=>tone(587,.12,'triangle',.026,80),145); }
   else if(kind==='complete'){ tone(520,.08,'triangle',.022,140); setTimeout(()=>tone(780,.12,'triangle',.026,150),90); }
@@ -9053,6 +9302,7 @@ function impactSound(material='wood',power=1){
 
 function stopLobbyAudio(){
   if(!G.lobbyAudio)return;
+  try{G.lobbyAudio.stop?.();}catch{}
   try{G.lobbyAudio.nodes?.forEach(n=>{try{n.stop?.()}catch{} try{n.disconnect?.()}catch{}});}catch{}
   G.lobbyAudio=null;
 }
@@ -9090,7 +9340,17 @@ function startLobbyAudio(){
       if(Math.random()<.72){tone(920+Math.random()*1250,.018+Math.random()*.025,'triangle',.004+Math.random()*.006,-500);}
       if(!cancelled)setTimeout(emberPop,260+Math.random()*900);
     }
-    crack();emberPop();
+    function officeLife(){
+      if(cancelled||G.state!=='hub'||G.meta.settings?.music===false)return;
+      const r=Math.random();
+      if(r<.25)playRemoteSfx('book',.055,.94+Math.random()*.10);
+      else if(r<.50)playRemoteSfx('latch',.050,.88+Math.random()*.12);
+      else if(r<.67)waterCoolerBubbleSound();
+      else if(r<.82)clockTickSound();
+      else keyboardBurstSound();
+      if(!cancelled)setTimeout(officeLife,9000+Math.random()*15000);
+    }
+    crack();emberPop();setTimeout(officeLife,4500+Math.random()*4500);
     G.lobbyAudio={nodes,stop:()=>{cancelled=true;}};
   }catch(e){console.warn('Lobby ambience unavailable',e);}
 }
@@ -9625,8 +9885,8 @@ function buildHub(scene){
   addModelCollider(scene,couch,'couchCollider',.005);addModelCollider(scene,table,'tableCollider',.003);addModelCollider(scene,shelf,'bookshelfCollider',.004);
   addModelCollider(scene,plantTall,'plantTallCollider',.002);addModelCollider(scene,plantSmall,'plantSmallCollider',.002);addModelCollider(scene,floorLamp,'floorLampCollider',.002);addModelCollider(scene,trash,'trashCollider',.002);
   addKayKitHubModels(scene);
-  addDenseHubPass(scene);
-  addUltraDenseHubPass(scene);
+  addCuratedHubOverhaul(scene);
+  addFusionHubPass(scene);
 
   // Fireplace rebuilt cleanly: no imported clipping.
   const fpRoot=new B.TransformNode('fireplaceRebuilt',scene);fpRoot.position=new B.Vector3(2.55,0,4.12);G.lobbyMeshes.push(fpRoot);
@@ -9649,56 +9909,60 @@ function buildHub(scene){
   const fpCollider=box(scene,'fireplaceCollider',new B.Vector3(2.55,1.05,4.04),new B.Vector3(2.34,2.10,.76),'#000');fpCollider.isVisible=false;addBlocker(fpCollider,0);G.lobbyMeshes.push(fpCollider);
   const fireLight=new B.PointLight('fireLight',new B.Vector3(2.55,.88,4.10),scene);fireLight.diffuse=B.Color3.FromHexString('#ffad61');fireLight.intensity=.68;fireLight.range=6;G.lobbyMeshes.push({dispose:()=>{try{fireLight.dispose()}catch{}}});
 
-  // 4.4 FIREPLACE: 100,000 tiny particles, tall layered fire instead of a flat spark carpet.
-  // GPU particles are used when available so this density is practical; CPU fallback keeps the same 100K capacity.
-  const fireTex=new B.DynamicTexture('tinyFireTexture',{width:48,height:96},scene,true);fireTex.hasAlpha=true;
+  // 4.6 FIRE REBUILD: layered flame cards + controlled embers/smoke.
+  // The old 100K-particle wall could look like a flat/tall spark column and was unnecessarily expensive.
+  // This version uses animated emissive flame geometry for a continuous fire body, then particles only for fine detail.
+  const fireTex=new B.DynamicTexture('fireFlameTexture',{width:96,height:160},scene,true);fireTex.hasAlpha=true;
   {
-    const c=fireTex.getContext();c.clearRect(0,0,48,96);
-    const g=c.createLinearGradient(24,88,24,4);
-    g.addColorStop(0,'rgba(255,255,210,0)');
-    g.addColorStop(.10,'rgba(255,244,150,.94)');
-    g.addColorStop(.34,'rgba(255,177,44,.98)');
-    g.addColorStop(.66,'rgba(255,71,8,.78)');
-    g.addColorStop(1,'rgba(255,15,0,0)');
-    c.fillStyle=g;c.beginPath();
-    c.moveTo(24,3);c.bezierCurveTo(12,20,5,47,13,75);c.bezierCurveTo(17,91,31,91,36,75);c.bezierCurveTo(45,48,36,23,24,3);c.closePath();c.fill();
+    const c=fireTex.getContext();c.clearRect(0,0,96,160);
+    // Outer red/orange flame silhouette.
+    const outer=c.createLinearGradient(48,154,48,4);
+    outer.addColorStop(0,'rgba(255,226,115,0)');outer.addColorStop(.10,'rgba(255,226,115,.95)');outer.addColorStop(.36,'rgba(255,132,20,.98)');outer.addColorStop(.72,'rgba(245,46,4,.74)');outer.addColorStop(1,'rgba(120,0,0,0)');
+    c.fillStyle=outer;c.beginPath();c.moveTo(48,4);c.bezierCurveTo(25,32,18,54,27,79);c.bezierCurveTo(9,100,15,137,35,151);c.bezierCurveTo(45,159,62,156,70,143);c.bezierCurveTo(88,114,76,83,68,68);c.bezierCurveTo(70,42,60,22,48,4);c.closePath();c.fill();
+    // Bright inner tongue so the flame has a hot core instead of one flat orange sprite.
+    const inner=c.createLinearGradient(48,145,48,45);inner.addColorStop(0,'rgba(255,255,225,0)');inner.addColorStop(.12,'rgba(255,252,190,.98)');inner.addColorStop(.52,'rgba(255,196,55,.94)');inner.addColorStop(1,'rgba(255,78,8,0)');
+    c.fillStyle=inner;c.beginPath();c.moveTo(48,43);c.bezierCurveTo(35,67,38,80,30,98);c.bezierCurveTo(24,116,32,143,48,148);c.bezierCurveTo(64,141,68,119,61,102);c.bezierCurveTo(55,88,62,68,48,43);c.closePath();c.fill();
     fireTex.update();
   }
-  const useGPU=!!(B.GPUParticleSystem&&B.GPUParticleSystem.IsSupported);
-  const tinyFire=useGPU
-    ? new B.GPUParticleSystem('fireplace100000TallFlames',{capacity:FIRE_PARTICLE_CAPACITY},scene)
-    : new B.ParticleSystem('fireplace100000TallFlames',FIRE_PARTICLE_CAPACITY,scene);
-  tinyFire.particleTexture=fireTex;
-  // Emit from a thin bed DEEP inside the fireplace; height comes from velocity/lifetime, not from a tall emitter box.
-  tinyFire.emitter=new B.Vector3(2.55,.25,4.13);
-  tinyFire.minEmitBox=new B.Vector3(-.42,0,-.045);tinyFire.maxEmitBox=new B.Vector3(.42,.10,.055);
-  tinyFire.color1=new B.Color4(1,.24,.012,.98);tinyFire.color2=new B.Color4(1,.78,.10,.96);tinyFire.colorDead=new B.Color4(.45,.018,0,0);
-  tinyFire.minSize=.008;tinyFire.maxSize=.038;
-  tinyFire.minLifeTime=.72;tinyFire.maxLifeTime=1.42;
-  // At ~100K/sec and ~1 sec average lifetime, the 100K system becomes visibly saturated.
-  tinyFire.emitRate=100000;
-  tinyFire.blendMode=B.ParticleSystem.BLENDMODE_ADD;
-  // Strong upward movement + modest sideways drift gives a tapered, dancing flame column instead of a flat layer.
-  tinyFire.direction1=new B.Vector3(-.18,1.30,-.025);tinyFire.direction2=new B.Vector3(.18,2.55,.035);
-  tinyFire.minEmitPower=.34;tinyFire.maxEmitPower=.78;tinyFire.updateSpeed=.008;
-  tinyFire.minAngularSpeed=-2.2;tinyFire.maxAngularSpeed=2.2;
-  tinyFire.gravity=new B.Vector3(0,.38,0);
-  if(typeof tinyFire.addColorGradient==='function'){
-    tinyFire.addColorGradient(0,new B.Color4(1,.96,.52,.96));
-    tinyFire.addColorGradient(.22,new B.Color4(1,.58,.07,.98));
-    tinyFire.addColorGradient(.62,new B.Color4(1,.16,.01,.82));
-    tinyFire.addColorGradient(1,new B.Color4(.28,.005,0,0));
+  const flameMat=new B.StandardMaterial('fireFlameMat',scene);flameMat.diffuseTexture=fireTex;flameMat.opacityTexture=fireTex;flameMat.emissiveTexture=fireTex;flameMat.emissiveColor=new B.Color3(1,.43,.07);flameMat.disableLighting=true;flameMat.backFaceCulling=false;flameMat.alpha=.94;if(B.Material?.MATERIAL_ALPHABLEND!==undefined)flameMat.transparencyMode=B.Material.MATERIAL_ALPHABLEND;
+  const coreMat=flameMat.clone('fireCoreMat');coreMat.emissiveColor=new B.Color3(1,.72,.20);coreMat.alpha=.78;
+  const fireFlameCards=[];
+  const flameSpecs=[
+    [-.31,.64,4.085,.38,.98,-.08,0],[-.13,.76,4.105,.46,1.25,.05,1.2],[.06,.68,4.095,.42,1.05,-.04,2.3],[.25,.74,4.11,.44,1.18,.07,3.5],[.37,.57,4.085,.32,.82,-.05,4.4],
+    [-.04,.55,4.065,.32,.82,.03,5.3],[.17,.50,4.055,.28,.70,-.03,6.1]
+  ];
+  for(let i=0;i<flameSpecs.length;i++){
+    const [x,y,z,w,h,r,phase]=flameSpecs[i];
+    const card=B.MeshBuilder.CreatePlane('fireFlameCard'+i,{width:w,height:h,sideOrientation:B.Mesh.DOUBLESIDE},scene);
+    card.position=new B.Vector3(2.55+x,y,z);card.rotation.z=r;card.billboardMode=B.Mesh.BILLBOARDMODE_Y;card.material=i>=5?coreMat:flameMat;card.renderingGroupId=2;
+    card.metadata={baseY:y,baseX:2.55+x,baseSX:1,baseSY:1,phase};fireFlameCards.push(card);G.lobbyMeshes.push(card);
   }
-  if(typeof tinyFire.addSizeGradient==='function'){
-    tinyFire.addSizeGradient(0,.34);tinyFire.addSizeGradient(.18,1.0);tinyFire.addSizeGradient(.64,.72);tinyFire.addSizeGradient(1,.08);
-  }
-  // CPU ParticleSystem can prewarm; GPU version fills extremely quickly because emitRate is 100K.
-  if(!useGPU){tinyFire.preWarmCycles=45;tinyFire.preWarmStepOffset=.016;}
-  tinyFire.start();
-  G.lobbyMeshes.push({dispose:()=>{try{tinyFire.stop();tinyFire.dispose();fireTex.dispose();}catch{}}});
+  // Hot glow just above the logs prevents a visible gap below the flame cards.
+  const hotCore=B.MeshBuilder.CreateSphere('fireHotCore',{diameter:.62,segments:12},scene);hotCore.position=new B.Vector3(2.55,.34,4.10);hotCore.scaling=new B.Vector3(1.15,.42,.42);hotCore.material=mat(scene,'fireHotCoreMat','#ff6c13',.55);hotCore.material.emissiveColor=B.Color3.FromHexString('#ff5a0b').scale(1.15);G.lobbyMeshes.push(hotCore);
+
+  // Fine ember particles. This is intentionally a small system: cards make the body of the fire, particles make it feel alive.
+  const emberTex=new B.DynamicTexture('fireEmberTexture',{width:32,height:32},scene,true);emberTex.hasAlpha=true;
+  {const c=emberTex.getContext();c.clearRect(0,0,32,32);const g=c.createRadialGradient(16,16,1,16,16,15);g.addColorStop(0,'rgba(255,255,220,1)');g.addColorStop(.24,'rgba(255,195,58,.96)');g.addColorStop(.62,'rgba(255,72,8,.58)');g.addColorStop(1,'rgba(255,40,0,0)');c.fillStyle=g;c.fillRect(0,0,32,32);emberTex.update();}
+  const embers=new B.ParticleSystem('fireEmbers',FIRE_PARTICLE_CAPACITY,scene);embers.particleTexture=emberTex;embers.emitter=new B.Vector3(2.55,.28,4.09);
+  if(typeof embers.createBoxEmitter==='function')embers.createBoxEmitter(new B.Vector3(-.20,.75,-.04),new B.Vector3(.20,1.35,.04),new B.Vector3(-.42,0,-.04),new B.Vector3(.42,.08,.04));
+  else{embers.minEmitBox=new B.Vector3(-.42,0,-.04);embers.maxEmitBox=new B.Vector3(.42,.08,.04);embers.direction1=new B.Vector3(-.20,.75,-.04);embers.direction2=new B.Vector3(.20,1.35,.04);}
+  embers.color1=new B.Color4(1,.88,.28,.96);embers.color2=new B.Color4(1,.22,.02,.72);embers.colorDead=new B.Color4(.30,.02,0,0);embers.minSize=.012;embers.maxSize=.040;embers.minLifeTime=.34;embers.maxLifeTime=.92;embers.emitRate=220;embers.minEmitPower=.25;embers.maxEmitPower=.62;embers.updateSpeed=.012;embers.gravity=new B.Vector3(0,-.16,0);embers.blendMode=B.ParticleSystem.BLENDMODE_ADD;embers.start();
+  G.lobbyMeshes.push({dispose:()=>{try{embers.stop();embers.dispose();emberTex.dispose();}catch{}}});
+
+  // Very light smoke, kept deep in the cavity so it never becomes a grey cloud in front of the room.
+  const smokeTex=new B.DynamicTexture('fireSmokeTexture',{width:40,height:40},scene,true);smokeTex.hasAlpha=true;
+  {const c=smokeTex.getContext();c.clearRect(0,0,40,40);const g=c.createRadialGradient(20,20,2,20,20,19);g.addColorStop(0,'rgba(80,66,58,.30)');g.addColorStop(.55,'rgba(62,52,49,.13)');g.addColorStop(1,'rgba(45,40,40,0)');c.fillStyle=g;c.fillRect(0,0,40,40);smokeTex.update();}
+  const smoke=new B.ParticleSystem('fireSmoke',260,scene);smoke.particleTexture=smokeTex;smoke.emitter=new B.Vector3(2.55,1.04,4.16);
+  if(typeof smoke.createBoxEmitter==='function')smoke.createBoxEmitter(new B.Vector3(-.06,.55,-.02),new B.Vector3(.06,.90,.02),new B.Vector3(-.24,0,-.02),new B.Vector3(.24,.08,.02));
+  smoke.color1=new B.Color4(.22,.18,.17,.14);smoke.color2=new B.Color4(.10,.09,.09,.08);smoke.colorDead=new B.Color4(.08,.08,.08,0);smoke.minSize=.14;smoke.maxSize=.34;smoke.minLifeTime=1.2;smoke.maxLifeTime=2.3;smoke.emitRate=16;smoke.minEmitPower=.12;smoke.maxEmitPower=.28;smoke.updateSpeed=.016;smoke.gravity=new B.Vector3(0,.10,0);smoke.start();
+  G.lobbyMeshes.push({dispose:()=>{try{smoke.stop();smoke.dispose();smokeTex.dispose();}catch{}}});
+
+  // Animate every flame independently so the fire dances rather than scaling as one rigid object.
+  let fireAnimT=0;const fireObs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;const dt=Math.min(.05,engine.getDeltaTime()/1000);fireAnimT+=dt;for(let i=0;i<fireFlameCards.length;i++){const f=fireFlameCards[i],m=f.metadata||{},p=fireAnimT*(4.4+i*.23)+(m.phase||0);f.scaling.y=.90+Math.sin(p)*.10+Math.sin(p*1.71)*.045;f.scaling.x=.92+Math.cos(p*.83)*.055;f.position.y=(m.baseY||f.position.y)+Math.sin(p*1.27)*.018;f.position.x=(m.baseX||f.position.x)+Math.sin(p*.72)*.012;f.rotation.z=Math.sin(p*.68)*.045;}});
+  G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(fireObs);fireTex.dispose();flameMat.dispose();coreMat.dispose();}catch{}}});
 
   // A soft orange core light follows the vertical flame body and makes the cavity read as deep fire.
-  const fireCoreLight=new B.PointLight('fireCoreLight',new B.Vector3(2.55,.72,4.12),scene);fireCoreLight.diffuse=B.Color3.FromHexString('#ff7c25');fireCoreLight.intensity=.48;fireCoreLight.range=3.8;G.lobbyMeshes.push({dispose:()=>{try{fireCoreLight.dispose()}catch{}}});
+  const fireCoreLight=new B.PointLight('fireCoreLight',new B.Vector3(2.55,.70,4.10),scene);fireCoreLight.diffuse=B.Color3.FromHexString('#ff7420');fireCoreLight.intensity=.62;fireCoreLight.range=4.1;G.lobbyMeshes.push({dispose:()=>{try{fireCoreLight.dispose()}catch{}}});
 
   // Ember bed + logs are also recessed so the fire reads as being IN the stove, never in front of it.
   const emberBed=B.MeshBuilder.CreateBox('emberBed',{width:.91,height:.055,depth:.25},scene);emberBed.position=new B.Vector3(2.55,.19,4.10);emberBed.material=mat(scene,'emberBedMat','#5b180d',.55);emberBed.material.emissiveColor=B.Color3.FromHexString('#ff3e10').scale(.58);G.lobbyMeshes.push(emberBed);
@@ -9718,44 +9982,59 @@ for(const x of [2.27,2.83]){const candle=B.MeshBuilder.CreateCylinder('mantleCan
 
   // Physical, organized controls.
   function consolePanel(name,title,pos,width=2.25,height=2.45){
-    const root=new B.TransformNode(name+'Root',scene);root.position.copyFrom(pos);G.lobbyMeshes.push(root);
-    const back=box(scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.16),'#292522',root);back.material.metallic=.10;back.material.roughness=.52;G.lobbyMeshes.push(back);
-    G.lobbyMeshes.push(box(scene,name+'Trim',new B.Vector3(0,.02,-.09),new B.Vector3(width-.10,height-.10,.035),'#6a523c',root));
-    G.lobbyMeshes.push(box(scene,name+'Face',new B.Vector3(0,-.02,-.13),new B.Vector3(width-.22,height-.35,.035),'#34302d',root));
-    fixedPanelText(scene,title,root,.31,'#ffdcb2',height*.34,-.19);return root;
+    const root=new B.TransformNode(name+'Root',scene);root.position.copyFrom(pos);
+    // Panels on the front wall must face +Z (toward the room); panels on the back wall face -Z.
+    // 4.5 fixes the old reversed layer stack that made the nice button faces hide behind their bases.
+    const faceSign=pos.z<0?1:-1;root.metadata={...(root.metadata||{}),faceSign};G.lobbyMeshes.push(root);
+    const back=box(scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.16),'#17191d',root);back.material.metallic=.22;back.material.roughness=.38;G.lobbyMeshes.push(back);
+    const trim=box(scene,name+'Trim',new B.Vector3(0,.02,faceSign*.095),new B.Vector3(width-.10,height-.10,.040),'#8d765c',root);trim.material.metallic=.52;trim.material.roughness=.20;trim.material.emissiveColor=B.Color3.FromHexString('#bfa57c').scale(.08);G.lobbyMeshes.push(trim);
+    const face=box(scene,name+'Face',new B.Vector3(0,-.02,faceSign*.142),new B.Vector3(width-.22,height-.35,.040),'#22272e',root);face.material.metallic=.20;face.material.roughness=.25;G.lobbyMeshes.push(face);
+    const header=box(scene,name+'HeaderGlow',new B.Vector3(0,height*.28,faceSign*.172),new B.Vector3(width*.72,.045,.018),'#ffd69a',root);header.material.emissiveColor=B.Color3.FromHexString('#ffd69a').scale(.55);header.material.alpha=.92;header.isPickable=false;G.lobbyMeshes.push(header);
+    for(const sx of [-1,1])for(const sy of [-1,1]){const bolt=B.MeshBuilder.CreateCylinder(name+'Bolt',{height:.018,diameter:.065,tessellation:10},scene);bolt.parent=root;bolt.rotation.x=Math.PI/2;bolt.position=new B.Vector3(sx*(width*.43),sy*(height*.42),faceSign*.181);bolt.material=mat(scene,name+'BoltMat','#d7e1eb',.15);bolt.material.metallic=.85;bolt.isPickable=false;G.lobbyMeshes.push(bolt);}
+    fixedPanelText(scene,title,root,.31,'#fff0d5',height*.34,faceSign*.195);return root;
   }
   function physicalButton(name,text,parent,x,y,color,meta,w=.86,h=.42){
-    const root=new B.TransformNode(name+'Root',scene);root.parent=parent;root.position=new B.Vector3(x,y,-.22);G.lobbyMeshes.push(root);
+    const faceSign=parent?.metadata?.faceSign||-1;
+    const root=new B.TransformNode(name+'Root',scene);root.parent=parent;root.position=new B.Vector3(x,y,faceSign*.22);root.metadata={faceSign};G.lobbyMeshes.push(root);
 
-    const shadow=box(scene,name+'Shadow',new B.Vector3(0,-.03,-.02),new B.Vector3(w+.22,h+.20,.06),'#050505',root);
-    shadow.material.alpha=.55;shadow.isPickable=false;G.lobbyMeshes.push(shadow);
+    const shadow=box(scene,name+'Shadow',new B.Vector3(0,-.03,-faceSign*.025),new B.Vector3(w+.24,h+.22,.06),'#020305',root);
+    shadow.material.alpha=.60;shadow.isPickable=false;G.lobbyMeshes.push(shadow);
 
-    const base=box(scene,name+'Base',B.Vector3.Zero(),new B.Vector3(w+.14,h+.14,.13),'#121212',root);
-    base.material.metallic=.38;base.material.roughness=.32;G.lobbyMeshes.push(base);
+    const base=box(scene,name+'Base',B.Vector3.Zero(),new B.Vector3(w+.16,h+.16,.13),'#0b0e13',root);
+    base.material.metallic=.56;base.material.roughness=.24;G.lobbyMeshes.push(base);
 
-    const rim=box(scene,name+'Rim',new B.Vector3(0,0,-.06),new B.Vector3(w+.05,h+.05,.07),'#bfc8d4',root);
-    rim.material.metallic=.55;rim.material.roughness=.18;rim.material.emissiveColor=B.Color3.FromHexString('#4e535b').scale(.06);G.lobbyMeshes.push(rim);
+    const rim=box(scene,name+'Rim',new B.Vector3(0,0,faceSign*.065),new B.Vector3(w+.07,h+.07,.075),'#cfd9e7',root);
+    rim.material.metallic=.78;rim.material.roughness=.11;rim.material.emissiveColor=B.Color3.FromHexString('#8ea0b8').scale(.11);G.lobbyMeshes.push(rim);
 
-    const b=box(scene,name,new B.Vector3(0,0,-.09),new B.Vector3(w,h,.13),color,root);
-    b.material.metallic=.18;b.material.roughness=.28;b.material.emissiveColor=B.Color3.FromHexString(color).scale(.07);G.lobbyMeshes.push(b);
+    const b=box(scene,name,new B.Vector3(0,0,faceSign*.105),new B.Vector3(w,h,.13),color,root);
+    b.material.metallic=.28;b.material.roughness=.20;b.material.emissiveColor=B.Color3.FromHexString(color).scale(.16);G.lobbyMeshes.push(b);
 
-    const inset=box(scene,name+'Inset',new B.Vector3(0,-.015,-.135),new B.Vector3(w*.90,h*.88,.016),'#0f0f10',root);
-    inset.material.alpha=.16;inset.isPickable=false;G.lobbyMeshes.push(inset);
+    const inset=box(scene,name+'Inset',new B.Vector3(0,-.015,faceSign*.174),new B.Vector3(w*.90,h*.86,.016),'#0c1118',root);
+    inset.material.alpha=.18;inset.isPickable=false;G.lobbyMeshes.push(inset);
 
-    const gloss=box(scene,name+'Gloss',new B.Vector3(0,h*.22,-.168),new B.Vector3(w*.74,.035,.012),'#ffffff',root);
-    gloss.material.alpha=.16;gloss.material.emissiveColor=B.Color3.FromHexString('#ffffff').scale(.10);gloss.isPickable=false;G.lobbyMeshes.push(gloss);
+    const gloss=box(scene,name+'Gloss',new B.Vector3(0,h*.23,faceSign*.190),new B.Vector3(w*.72,.042,.012),'#ffffff',root);
+    gloss.material.alpha=.22;gloss.material.emissiveColor=B.Color3.FromHexString('#ffffff').scale(.18);gloss.isPickable=false;G.lobbyMeshes.push(gloss);
 
-    const led=B.MeshBuilder.CreateSphere(name+'Led',{diameter:Math.min(.075,h*.18),segments:8},scene);
-    led.parent=root;led.position=new B.Vector3(-w*.39,h*.24,-.17);
-    led.material=mat(scene,name+'LedMat','#dff7ff',.14);led.material.emissiveColor=B.Color3.FromHexString('#dff7ff').scale(.45);led.isPickable=false;G.lobbyMeshes.push(led);
+    // Accent rails make every control read as a designed VR object rather than a flat rectangle.
+    for(const sx of [-1,1]){const rail=box(scene,name+'Rail',new B.Vector3(sx*w*.455,0,faceSign*.193),new B.Vector3(.025,h*.66,.015),color,root);rail.material.emissiveColor=B.Color3.FromHexString(color).scale(.72);rail.material.alpha=.95;rail.isPickable=false;G.lobbyMeshes.push(rail);}
+    for(const sx of [-1,1])for(const sy of [-1,1]){const corner=box(scene,name+'Corner',new B.Vector3(sx*w*.46,sy*h*.40,faceSign*.198),new B.Vector3(.055,.055,.020),'#dce6ef',root);corner.material.metallic=.72;corner.material.roughness=.12;corner.material.emissiveColor=B.Color3.FromHexString(color).scale(.24);corner.isPickable=false;G.lobbyMeshes.push(corner);}
+    const statusRail=box(scene,name+'StatusRail',new B.Vector3(0,-h*.39,faceSign*.200),new B.Vector3(w*.46,.020,.015),color,root);statusRail.material.emissiveColor=B.Color3.FromHexString(color).scale(.90);statusRail.isPickable=false;G.lobbyMeshes.push(statusRail);
 
-    const glow=box(scene,name+'HoverGlow',new B.Vector3(0,0,-.175),new B.Vector3(w+.13,h+.13,.022),'#fff1a6',root);
-    glow.material.alpha=.68;glow.material.metallic=.02;glow.material.roughness=.08;glow.material.emissiveColor=B.Color3.FromHexString('#fff2a9').scale(.95);glow.isPickable=false;glow.setEnabled(false);G.lobbyMeshes.push(glow);
+    const led=B.MeshBuilder.CreateSphere(name+'Led',{diameter:Math.min(.08,h*.19),segments:10},scene);
+    led.parent=root;led.position=new B.Vector3(-w*.39,h*.24,faceSign*.202);
+    led.material=mat(scene,name+'LedMat','#e9fbff',.10);led.material.emissiveColor=B.Color3.FromHexString('#dff7ff').scale(.85);led.isPickable=false;G.lobbyMeshes.push(led);
 
-    b.metadata={...meta,baseColor:color,hoverGlow:glow,faceMesh:b,rimMesh:rim,glossMesh:gloss};
+    // 4.8 exaggerated design pass: chamfer-like side wings and a 3-dot status language visible even before hover.
+    for(const sx of [-1,1]){const wing=box(scene,name+'Wing',new B.Vector3(sx*(w*.56),0,faceSign*.185),new B.Vector3(.075,h*.46,.035),'#1b232d',root);wing.rotation.z=sx*.15;wing.material.metallic=.64;wing.material.roughness=.14;wing.material.emissiveColor=B.Color3.FromHexString(color).scale(.18);wing.isPickable=false;G.lobbyMeshes.push(wing);}
+    for(let i=0;i<3;i++){const dot=B.MeshBuilder.CreateSphere(name+'StatusDot',{diameter:.032,segments:8},scene);dot.parent=root;dot.position=new B.Vector3(w*.28+i*.06,-h*.31,faceSign*.205);dot.material=mat(scene,name+'StatusDotMat'+i,i===0?'#ffffff':color,.12);dot.material.emissiveColor=B.Color3.FromHexString(i===0?'#ffffff':color).scale(i===0?.55:.85);dot.isPickable=false;G.lobbyMeshes.push(dot);}
+
+    const glow=box(scene,name+'HoverGlow',new B.Vector3(0,0,faceSign*.210),new B.Vector3(w+.15,h+.15,.022),'#ffffff',root);
+    glow.material.alpha=.72;glow.material.metallic=.02;glow.material.roughness=.06;glow.material.emissiveColor=B.Color3.FromHexString(color).scale(1.15);glow.isPickable=false;glow.setEnabled(false);G.lobbyMeshes.push(glow);
+
+    b.metadata={...meta,baseColor:color,hoverGlow:glow,faceMesh:b,rimMesh:rim,glossMesh:gloss,faceSign,buttonRoot:root};
     G.hubButtons.push(b);
 
-    fixedPanelText(scene,text,root,.23,'#ffffff',0,-.178);
+    fixedPanelText(scene,text,root,.23,'#ffffff',0,faceSign*.218);
     return b;
   }
   function selectedReadout(parent,text,y=-.50,width=1.80){
@@ -9797,7 +10076,7 @@ for(const x of [2.27,2.83]){const candle=B.MeshBuilder.CreateCylinder('mantleCan
   const warmLamp=new B.PointLight('warmLobbyLamp',new B.Vector3(-2.1,2.25,-.1),scene);warmLamp.diffuse=B.Color3.FromHexString('#ffd0a0');warmLamp.intensity=.28;warmLamp.range=5;G.lobbyMeshes.push({dispose:()=>{try{warmLamp.dispose()}catch{}}});
 
   let hubAnimT=0;const hubObs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;updateHubButtonHover(scene);const dt=Math.min(.05,engine.getDeltaTime()/1000);hubAnimT+=dt;
-    fireLight.intensity=.62+Math.sin(hubAnimT*7.2)*.07+Math.sin(hubAnimT*13.7)*.025;cosOrb.rotation.y+=dt*.45;
+    fireLight.intensity=.66+Math.sin(hubAnimT*7.2)*.075+Math.sin(hubAnimT*13.7)*.03;fireCoreLight.intensity=.57+Math.sin(hubAnimT*8.8+1.1)*.09+Math.sin(hubAnimT*17.3)*.035;cosOrb.rotation.y+=dt*.45;
   });G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(hubObs)}catch{}}});
 
   startLobbyAudio();rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);
@@ -10099,8 +10378,8 @@ function buildArena(scene){
   addMapPolish(scene,map,t);
   add2_4MapDetails(scene,map,t);
   addKayKitArenaModels(scene,map);
-  addDenseArenaPass(scene,map,t);
-  addUltraDenseArenaPass(scene,map,t);
+  addCuratedArenaOverhaul(scene,map,t);
+  addFusionArenaPass(scene,map,t);
   // 2.4 map-aware melee props: keeps each location visually distinct
   
 const propSets={
@@ -10252,14 +10531,25 @@ class NPC{
     const body=capsule(scene,'npcBody',new B.Vector3(0,1.08,0),.95*scaleBody,.24*scaleBody,pal.shirt,this.root);body.scaling.z=.78;
     const hips=B.MeshBuilder.CreateSphere('npcHips',{diameter:.46*scaleBody,segments:10},scene);hips.position=new B.Vector3(0,.56,0);hips.scaling=new B.Vector3(1.15,.62,.82);hips.material=mat(scene,'npcHipsMat',type==='boss'?'#351219':'#20242c',.88);hips.parent=this.root;
     const head=B.MeshBuilder.CreateSphere('npcHead',{diameter:(type==='boss'?.52:.44),segments:12},scene); head.position=new B.Vector3(0,type==='boss'?1.88:1.76,0); head.material=mat(scene,'skin',pal.skin,.95); head.parent=this.root;
-    const eyeMat=mat(scene,'npcEyeMat','#14161b',.8);for(const ex of [-.075,.075]){const eye=B.MeshBuilder.CreateSphere('npcEye',{diameter:.045,segments:6},scene);eye.parent=head;eye.position=new B.Vector3(ex,.035,.205);eye.material=eyeMat;}
+    // 4.8 face-design pass: readable whites/pupils, brows, nose, mouth, ears and a strong hair silhouette.
+    const eyeWhite=mat(scene,'npcEyeWhiteMat','#f7f7f2',.96),pupilMat=mat(scene,'npcPupilMat','#11151a',.72),browMat=mat(scene,'npcBrowMat','#342b29',.82);
+    this.brows=[];for(const ex of [-.078,.078]){const eye=B.MeshBuilder.CreateSphere('npcEyeWhite',{diameter:.075,segments:8},scene);eye.parent=head;eye.position=new B.Vector3(ex,.035,.205);eye.scaling.y=1.12;eye.material=eyeWhite;const pupil=B.MeshBuilder.CreateSphere('npcPupil',{diameter:.032,segments:7},scene);pupil.parent=head;pupil.position=new B.Vector3(ex,.035,.241);pupil.material=pupilMat;const brow=box(scene,'npcBrow',new B.Vector3(ex,.105,.218),new B.Vector3(.075,.018,.018),'#342b29',head);brow.rotation.z=ex<0?.10:-.10;brow.material=browMat;this.brows.push(brow);}
+    const nose=B.MeshBuilder.CreateSphere('npcNose',{diameter:.052,segments:7},scene);nose.parent=head;nose.position=new B.Vector3(0,-.015,.232);nose.scaling=new B.Vector3(.75,1.0,.8);nose.material=head.material;
+    const mouth=box(scene,'npcMouth',new B.Vector3(0,-.085,.224),new B.Vector3(.085,.018,.014),'#5b2929',head);mouth.rotation.x=.03;this.mouth=mouth;
+    for(const ex of [-1,1]){const ear=B.MeshBuilder.CreateSphere('npcEar',{diameter:.075,segments:7},scene);ear.parent=head;ear.position=new B.Vector3(ex*.225,0,0);ear.scaling.x=.55;ear.material=head.material;}
+    const hairColors=['#25212a','#5d3525','#9b6b32','#2b3544','#7a2635','#3b5c44'],hairColor=hairColors[Math.floor(Math.random()*hairColors.length)],hairMat=mat(scene,'npcHairMat'+Math.random(),hairColor,.82);
+    const hair=B.MeshBuilder.CreateSphere('npcHairCap',{diameter:(type==='boss'?.54:.46),segments:10},scene);hair.parent=head;hair.position=new B.Vector3(0,.135,-.015);hair.scaling=new B.Vector3(1.01,.46,1.02);hair.material=hairMat;this.hair=hair;
+    for(let i=0;i<3;i++){const tuft=B.MeshBuilder.CreateCylinder('npcHairTuft',{height:.12,diameterTop:0,diameterBottom:.085,tessellation:7},scene);tuft.parent=head;tuft.position=new B.Vector3((i-1)*.09,.265,.02+(i%2)*.02);tuft.rotation.z=(i-1)*.18;tuft.material=hairMat;}
+    const collarL=box(scene,'npcCollarL',new B.Vector3(-.08,1.42,-.24),new B.Vector3(.12,.08,.022),'#eef1f3',this.root);collarL.rotation.z=-.28;const collarR=box(scene,'npcCollarR',new B.Vector3(.08,1.42,-.24),new B.Vector3(.12,.08,.022),'#eef1f3',this.root);collarR.rotation.z=.28;
     const tie=box(scene,'npcTie',new B.Vector3(0,1.12,-.245),new B.Vector3(.065,.34,.028),pal.accent,this.root);
     const armL=capsule(scene,'npcArmL',new B.Vector3(-.34,1.12,0),.58,.07,pal.shirt,this.root); armL.rotation.z=.22;
     const armR=capsule(scene,'npcArmR',new B.Vector3(.34,1.12,0),.58,.07,pal.shirt,this.root); armR.rotation.z=-.22;
     const legL=capsule(scene,'npcLegL',new B.Vector3(-.13,.23,0),.55,.075,'#252933',this.root);
     const legR=capsule(scene,'npcLegR',new B.Vector3(.13,.23,0),.55,.075,'#252933',this.root);
+    const belt=box(scene,'npcBelt',new B.Vector3(0,.64,-.02),new B.Vector3(.34,.055,.25),'#171a1f',this.root);belt.material.metallic=.24;
+    const shoeL=box(scene,'npcShoeL',new B.Vector3(-.13,.065,-.055),new B.Vector3(.16,.08,.28),'#14171b',this.root),shoeR=box(scene,'npcShoeR',new B.Vector3(.13,.065,-.055),new B.Vector3(.16,.08,.28),'#14171b',this.root);
     this.armL=armL;this.armR=armR;this.legL=legL;this.legR=legR;this.bodyVisual=body;this.head=head;
-    this.hitMeshes=[body,hips,head,tie,armL,armR,legL,legR];
+    this.hitMeshes=[body,hips,head,tie,armL,armR,legL,legR,shoeL,shoeR];
 
 this.hitMeshes.forEach(m=>m.metadata={npc:this});
 const accMat=mat(scene,'npcAccessoryMat'+Math.random(),pal.accent,.34);accMat.metallic=.24;
@@ -10296,6 +10586,7 @@ if(this.type==='boss'){
     if(this.armL)this.armL.rotation.z=.22+flop*.8;if(this.armR)this.armR.rotation.z=-.22-flop*.9;
     if(this.legL)this.legL.rotation.x=flop*.65;if(this.legR)this.legR.rotation.x=-flop*.72;}return;}this.t+=dt;this.attackT=Math.max(0,this.attackT-dt);this.weaponSeekT-=dt;if(this.burnT>0){this.burnT-=dt;this.hp-=this.burnDps*dt;}if(this.poisonT>0){this.poisonT-=dt;this.hp-=this.poisonDps*dt;}if(this.slowT>0)this.slowT-=dt;if(this.hp<=0){this.die(new B.Vector3(0,0,-1));return;}this.refreshHpBar();
     this.chatterT-=dt;if(this.chatterT<=0&&this.type!=='boss'){this.chatterT=4+Math.random()*6;if(Math.random()<.38){npcVoice(Math.random()<.25?'throw':'hit');const lines=this.personality==='coward'?['TOO MUCH!','I QUIT!','NOPE']:this.personality==='hothead'?['COME ON!','MY DESK!','HEY!']:['MEETING?','SERIOUSLY?','HR?!'];npcBubble(this,lines[Math.floor(Math.random()*lines.length)],this.personality==='hothead'?'#ffbbbb':'#ffffff');}}
+    if(this.brows){const angry=this.personality==='hothead'||this.windup>0;this.brows[0].rotation.z+=( (angry?-.22:.10)-this.brows[0].rotation.z)*Math.min(1,dt*9);this.brows[1].rotation.z+=( (angry?.22:-.10)-this.brows[1].rotation.z)*Math.min(1,dt*9);}if(this.mouth)this.mouth.scaling.x=.9+Math.abs(Math.sin(this.t*2.4))*.16;
     if(this.hesitate>0){this.hesitate-=dt;if(this.armL)this.armL.rotation.z=.45+Math.sin(this.t*10)*.12;if(this.hesitate>0)return;}
     if(this.panicT>0){this.panicT-=dt;const away=this.root.position.subtract(playerPos);away.y=0;if(away.lengthSquared()>.001){away.normalize();moveNpcWithCollision(this,away.scale(this.speed*.85*dt));}return;}
     const dx=playerPos.x-this.root.position.x,dz=playerPos.z-this.root.position.z,dist=Math.hypot(dx,dz),dir=new B.Vector3(dx,0,dz).normalize();this.root.rotation.y=Math.atan2(dir.x,dir.z);const walk=Math.sin(this.t*8)*.35;if(this.legL){this.legL.rotation.x=walk;this.legR.rotation.x=-walk;}this.stepT-=dt;if(dist>1.22&&dist<4.4&&this.stepT<=0){this.stepT=(this.role==='brawler'?.46:.38)+Math.random()*.12;const stepNow=performance.now();if(stepNow-(G.lastNpcStepAt||0)>105){G.lastNpcStepAt=stepNow;footstepSound(this.role==='brawler'?1.2:.8);}}
@@ -10325,7 +10616,7 @@ function incident(scene){
   const mapEvents={
     'SERVER':['POWER SURGE','LIGHTS OUT'],'COPY':['COPY JAM','PAPER BURST'],'PARKING':['CAR ALARM','LIGHTS OUT'],'ROOFTOP':['ROOF WIND','FIRE DRILL'],'ELEVATOR':['LIFT FAULT','LIGHTS OUT'],'WAREHOUSE':['FORKLIFT BEEP','FIRE DRILL'],'BREAKROOM':['COFFEE RUSH','FIRE DRILL'],'CAFETERIA':['COFFEE RUSH','FIRE DRILL'],'MAILROOM':['MAIL EXPLOSION','FIRE DRILL'],'LEGAL':['OBJECTION','LIGHTS OUT']
   };
-  const pool=(mapEvents[map]||['LIGHTS OUT','PRINTER PANIC','COFFEE RUSH','FIRE DRILL']).filter(x=>x!==G.lastIncident);const x=pool[Math.floor(Math.random()*pool.length)];G.lastIncident=x;
+  const pool=(mapEvents[map]||['LIGHTS OUT','PRINTER PANIC','COFFEE RUSH','FIRE DRILL','SECURITY LOCKDOWN','SUPPLY DROP','OVERTIME SURGE']).concat(Math.random()<.35?['SECURITY LOCKDOWN','SUPPLY DROP','OVERTIME SURGE']:[]).filter(x=>x!==G.lastIncident);const x=pool[Math.floor(Math.random()*pool.length)];G.lastIncident=x;
   announce(x,x==='COFFEE RUSH'?'good':'danger');incidentSound(x);
   if(x==='PRINTER PANIC'||x==='COPY JAM'||x==='PAPER BURST'){G.chaos=Math.min(100,G.chaos+12);tone(380,.08,'square',.025,-120);}
   if(x==='COFFEE RUSH'){G.attackGrace=Math.max(G.attackGrace,1.1);G.chaos=Math.min(100,G.chaos+8);}
@@ -10336,6 +10627,10 @@ function incident(scene){
   if(x==='MAIL EXPLOSION'){for(let i=0;i<8&&G.props.length<55;i++){const p=makeProp(scene,i%3?'folder':'paperball',new B.Vector3((Math.random()-.5)*5,1.5+Math.random()*1.5,(Math.random()-.5)*5),{material:'paper',mass:.35,damage:7,size:[.32,.05,.24]});p.vel=new B.Vector3((Math.random()-.5)*5,1.4+Math.random()*1.2,(Math.random()-.5)*5);}G.chaos=Math.min(100,G.chaos+14);}
   if(x==='OBJECTION'){for(const n of G.npcs)if(!n.dead){n.hesitate=Math.max(n.hesitate,.65+Math.random()*.35);}G.attackGrace=Math.max(G.attackGrace,.9);tone(300,.08,'square',.03,-110);}
   if(x==='LIGHTS OUT'){const l=scene.getLightByName('hemi');if(l){const old=l.intensity;l.intensity=.18;setTimeout(()=>{const ll=scene.getLightByName('hemi');if(ll)ll.intensity=old;},3200);}}
+  if(x==='SECURITY LOCKDOWN'){G.attackGrace=Math.max(G.attackGrace,1.1);G.chaos=Math.min(100,G.chaos+10);for(const n of G.npcs)if(!n.dead)n.hesitate=Math.max(n.hesitate,.45);tone(95,.18,'square',.035,50);setTimeout(()=>tone(190,.08,'square',.02,-30),180);}
+  if(x==='SUPPLY DROP'){for(let i=0;i<4&&G.props.length<50;i++){const p=makeProp(scene,i%2?'box':'folder',new B.Vector3((i-1.5)*1.25,2.6,(i%2?.9:-.9)),{material:i%2?'wood':'paper',mass:i%2?2.6:.5,damage:i%2?18:8,size:i%2?[.42,.42,.42]:[.34,.05,.25]});p.vel=new B.Vector3((Math.random()-.5)*1.2,-.3,(Math.random()-.5)*1.2);}G.attackGrace=Math.max(G.attackGrace,.8);if(!playInterfaceSfx('drop',.20,.96))tone(220,.12,'triangle',.03,-80);}
+  if(x==='OVERTIME SURGE'){G.attackGrace=Math.max(G.attackGrace,.65);G.chaos=Math.min(100,G.chaos+18);for(const n of G.npcs)if(!n.dead)n.speed=Math.min(n.speed*1.06,2.4);if(!playInterfaceSfx('glitch',.16,.95))tone(520,.11,'sawtooth',.025,160);}
+
 }
 
 function damagePlayer(v,why='HIT'){ if((skinAbility()==='Dodge'&&Math.random()<.12)||(skinAbility()==='Phase'&&Math.random()<.16)){announce(skinAbility()==='Phase'?'PHASED':'DODGE','good');tone(720,.05,'triangle',.025,-160);return;} 
@@ -10407,8 +10702,17 @@ function applyCombatAbility(n,dir){
   if(a==='BOUNCE'){moveNpcWithCollision(n,dir.scale(n.type==='boss'?.34:.92));n.attackT=Math.max(n.attackT,.65);}
   if(a==='SCORE'||sa==='Bonus Score')G.score+=20;
 }
+function npcHitProbe(n,p){
+  let best=null,bestD=1e9;
+  for(const m of (n.hitMeshes||[])){
+    if(!m||m.isDisposed?.())continue;
+    try{m.computeWorldMatrix(true);const bs=m.getBoundingInfo().boundingSphere,c=bs.centerWorld,r=Math.max(.09,bs.radiusWorld);const d=B.Vector3.Distance(p,c);if(d<=r+.14&&d<bestD){const nm=(m.name||'').toLowerCase(),zone=nm.includes('head')?'head':nm.includes('body')||nm.includes('hips')||nm.includes('tie')?'torso':nm.includes('arm')?'arm':'leg';best={mesh:m,zone,center:c,radius:r,distance:d};bestD=d;}}catch{}
+  }
+  return best;
+}
 function updateBatCombat(scene,dt){
-  if(G.bat.broken||!G.batMesh||!G.right)return; const st=G.handState.get('right'); if(!st)return; const p=(G.batTip||G.batMesh).getAbsolutePosition();const now=performance.now();let worldHit=isBlockedPoint(p.x,p.y,p.z,.07);try{const wm=G.batMesh.getWorldMatrix();for(const yy of [.22,.44,.68]){const q=B.Vector3.TransformCoordinates(new B.Vector3(0,yy,0),wm);if(isBlockedPoint(q.x,q.y,q.z,.06)){worldHit=true;break;}}}catch{}if(worldHit){if(now-(G.batMesh.metadata.lastWorldHit||0)>160){G.batMesh.metadata.lastWorldHit=now;impactSound('wood',1.05);tone(105,.05,'square',.03,-35);haptic(G.right,.72,48);}G.batMesh.position.z+=(0.10-G.batMesh.position.z)*.45;st.prevBat=p.clone();return;}else{G.batMesh.position.z+=(-.08-G.batMesh.position.z)*.25;} if(!st.prevBat)st.prevBat=p.clone(); const vel=p.subtract(st.prevBat).scale(1/Math.max(dt,.008)); st.prevBat.copyFrom(p); const speed=vel.length(); if(speed>2.8&&now-(st.lastWhooshT||0)>135){st.lastWhooshT=now;whooshSound(Math.min(1.25,speed/7));} if(speed<1.9)return; for(const n of G.npcs){if(n.dead)continue; if(performance.now()-n.lastBatHit<330)continue; const center=n.root.position.add(new B.Vector3(0,1.1,0)); if(B.Vector3.Distance(p,center)<.95){n.lastBatHit=performance.now(); const dmg=(12+speed*5.5)*G.upgrade.power; n.hit(dmg,vel.normalize(),'bat'); applyCombatAbility(n,vel.normalize()); spawnAbilityFX(scene,p,selectedBatDef().ability); bodyHitSound(Math.min(1.25,speed/7));abilityHitSound(selectedBatDef().ability,Math.min(1.3,speed/7));spawnHitFX(scene,p,Math.min(1.4,speed/6));haptic(G.right,Math.min(1,.38+speed*.075),55);}}
+  if(G.bat.broken||!G.batMesh||!G.right)return; const st=G.handState.get('right'); if(!st)return; const p=(G.batTip||G.batMesh).getAbsolutePosition();const now=performance.now();let worldHit=isBlockedPoint(p.x,p.y,p.z,.07);try{const wm=G.batMesh.getWorldMatrix();for(const yy of [.22,.44,.68]){const q=B.Vector3.TransformCoordinates(new B.Vector3(0,yy,0),wm);if(isBlockedPoint(q.x,q.y,q.z,.06)){worldHit=true;break;}}}catch{}if(worldHit){if(now-(G.batMesh.metadata.lastWorldHit||0)>160){G.batMesh.metadata.lastWorldHit=now;impactSound('wood',1.05);tone(105,.05,'square',.03,-35);haptic(G.right,.72,48);}G.batMesh.position.z+=(0.10-G.batMesh.position.z)*.45;st.prevBat=p.clone();return;}else{G.batMesh.position.z+=(-.08-G.batMesh.position.z)*.25;} if(!st.prevBat)st.prevBat=p.clone(); const vel=p.subtract(st.prevBat).scale(1/Math.max(dt,.008)); st.prevBat.copyFrom(p); const speed=vel.length(); if(speed>2.8&&now-(st.lastWhooshT||0)>135){st.lastWhooshT=now;whooshSound(Math.min(1.25,speed/7));} if(speed<1.9)return;
+  for(const n of G.npcs){if(n.dead||performance.now()-n.lastBatHit<330)continue;const hit=npcHitProbe(n,p);if(!hit)continue;n.lastBatHit=performance.now();const zoneMul=hit.zone==='head'?1.18:hit.zone==='torso'?1:hit.zone==='arm'?.90:.86;const dmg=(12+speed*5.5)*G.upgrade.power*zoneMul;n.hit(dmg,vel.normalize(),'bat');applyCombatAbility(n,vel.normalize());spawnAbilityFX(scene,hit.center,selectedBatDef().ability);bodyHitSound(Math.min(1.25,speed/7)*(hit.zone==='head'?1.05:1));abilityHitSound(selectedBatDef().ability,Math.min(1.3,speed/7));spawnHitFX(scene,hit.center,Math.min(1.4,speed/6));haptic(G.right,Math.min(1,.38+speed*.075),55);if(hit.zone==='head'&&Math.random()<.28){tone(770,.032,'triangle',.018,-180);npcBubble(n,'OW—MY HEAD!','#ffd8c9');}}
 }
 
 async function setupXR(scene){
@@ -10455,7 +10759,7 @@ function setHubButtonHover(mesh,on){
   if(glow)glow.setEnabled(!!on);
   if(face?.material){
     try{
-      face.position.z = on ? -0.105 : -0.09;
+      const f=md.faceSign||-1; face.position.z = f*(on ? .118 : .105);
       face.material.emissiveColor = B.Color3.FromHexString(md.baseColor||'#777777').scale(on ? .18 : .07);
       face.material.roughness = on ? .20 : .28;
       face.material.metallic = on ? .28 : .18;
@@ -10479,8 +10783,9 @@ function pressHubButton(mesh,ctrl,callback){
   const root=mesh.parent;
   const originalZ=root?.position?.z ?? 0;
   try{
-    if(root)root.position.z=originalZ-.045;
-    if(md.faceMesh)md.faceMesh.position.z=-.072;
+    const f=md.faceSign||-1;
+    if(root)root.position.z=originalZ-f*.045;
+    if(md.faceMesh)md.faceMesh.position.z=f*.080;
     if(md.hoverGlow){
       md.hoverGlow.setEnabled(true);
       md.hoverGlow.material.alpha=.95;
@@ -10493,8 +10798,9 @@ function pressHubButton(mesh,ctrl,callback){
   }catch{}
   setTimeout(()=>{
     try{
+      const f=md.faceSign||-1;
       if(root)root.position.z=originalZ;
-      if(md.faceMesh)md.faceMesh.position.z=-.09;
+      if(md.faceMesh)md.faceMesh.position.z=f*.105;
       if(md.hoverGlow){
         md.hoverGlow.material.alpha=.68;
         md.hoverGlow.material.emissiveColor=B.Color3.FromHexString('#fff2a9').scale(.95);
@@ -10572,7 +10878,7 @@ function runSelfChecks(){
 function gauntletSelfCheck(){
   const issues=[];const ids=(arr)=>arr.map(x=>x.id);
   for(const [name,arr] of Object.entries({bats:CATALOG.bats,skins:CATALOG.skins,maps:CATALOG.maps})){const a=ids(arr);if(new Set(a).size!==a.length)issues.push(name+' duplicate id');if(!arr.length)issues.push(name+' empty');}
-  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY!=='undefined'&&FIRE_PARTICLE_CAPACITY!==100000)issues.push('fire capacity is not exactly 100000');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');
+  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY==='undefined'||FIRE_PARTICLE_CAPACITY>5000)issues.push('fire particle budget too high');if(typeof FIRE_VISUAL_VERSION==='undefined'||!String(FIRE_VISUAL_VERSION).includes('LAYERED-FLAME'))issues.push('layered fire rebuild missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');if((G.hubButtons||[]).some(b=>![1,-1].includes(b.metadata?.faceSign)))issues.push('hub button face direction missing');if((G.hubButtons||[]).some(b=>{const f=b.metadata?.faceSign||0,r=b.metadata?.buttonRoot;return !r||Math.sign(r.position.z)!==f||Math.sign(b.position.z)!==f;}))issues.push('hub button visual layers reversed/hidden');if(typeof GAUNTLET_FUSION_VERSION==='undefined'||!String(GAUNTLET_FUSION_VERSION).includes('GAUNTLET-KAAL'))issues.push('gauntlet kaal overhaul missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<16)issues.push('specialist agent roster too small');if(typeof GAUNTLET_CRITIC_ROSTER==='undefined'||GAUNTLET_CRITIC_ROSTER.length!==GAUNTLET_AGENT_ROSTER.length)issues.push('paired critic roster mismatch');if(typeof runKaalAuditAndFill!=='function'||typeof addFusionHubPass!=='function'||typeof addFusionArenaPass!=='function')issues.push('kaal audit/fusion passes missing');if(typeof KAAL_AUDIT_SAMPLES==='undefined'||KAAL_AUDIT_SAMPLES<1000)issues.push('kaal audit samples below 1000');if(typeof addCuratedHubOverhaul!=='function'||typeof addCuratedArenaOverhaul!=='function')issues.push('curated design overhaul missing');if(!G.gauntletFusion?.curatedMode)issues.push('curated mode disabled');if(typeof KENNEY_INTERFACE_SFX==='undefined'||Object.keys(KENNEY_INTERFACE_SFX).length<16)issues.push('interface SFX palette too small');if(typeof KENNEY_INTERFACE_LICENSE==='undefined'||KENNEY_INTERFACE_LICENSE!=='CC0-1.0')issues.push('interface SFX license metadata missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||!KAYKIT_MODEL_CATALOG.space||KAYKIT_MODEL_CATALOG.space.length<30)issues.push('space model pack missing');if(typeof npcHitProbe!=='function')issues.push('per-mesh NPC hitbox probe missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<36)issues.push('curated specialist roster too small');
   const badUnlock=[...(G.meta.unlockedBats||[]).filter(id=>!CATALOG.bats.some(x=>x.id===id)),...(G.meta.unlockedSkins||[]).filter(id=>!CATALOG.skins.some(x=>x.id===id)),...(G.meta.unlockedMaps||[]).filter(id=>!CATALOG.maps.some(x=>x.id===id))];if(badUnlock.length)issues.push('stale unlock ids');
   console[issues.length?'warn':'info']('GAUNTLET SELF CHECK',issues.length?issues:`OK • ${CATALOG.maps.length} maps • ${CATALOG.bats.length} bats • ${CATALOG.skins.length} skins • ${CATALOG.props.length} prop models`);return issues;
 }
@@ -10588,6 +10894,6 @@ ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style
 window.addEventListener('keydown',e=>{ if(!G.desktop)return; if(e.code==='KeyR')buildHub(scene); if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SURVIVAL');if((e.code==='Digit2'||e.code==='Enter')&&G.state==='hub')startShift(scene,'LEVELS'); });
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 4.4 ready • 100K tall GPU fireplace';
+ui.status.textContent='Reborn 4.7 ready • GAUNTLET × KAAL FUSION';
 window.__CRAZY_OFFICE_READY=true; window.dispatchEvent(new Event('crazy-office-ready'));
 updateHUD();
