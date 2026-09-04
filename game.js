@@ -48,7 +48,7 @@ const G = {
 };
 
 const FIRE_PARTICLE_CAPACITY=2400;
-const FIRE_VISUAL_VERSION='5.0-LAYERED-FLAME';
+const FIRE_VISUAL_VERSION='5.4-MULTI-FLAME-50-LAYERED-FLAME';
 
 const LOBBY_ASSETS = {
   "Couch_Large2.obj": `# Blender v2.79 (sub 0) OBJ File: 'Couch_Large2.blend'
@@ -8709,40 +8709,6 @@ function remoteListForState(){return G.state==='hub'?G.lobbyMeshes:G.arenaMeshes
 function pumpRemoteQueue(){while(REMOTE_ACTIVE<REMOTE_MAX_ACTIVE&&REMOTE_LOAD_QUEUE.length){const j=REMOTE_LOAD_QUEUE.shift();REMOTE_ACTIVE++;Promise.resolve().then(j.task).then(j.ok,j.bad).finally(()=>{REMOTE_ACTIVE--;pumpRemoteQueue();});}}
 function enqueueRemote(task){return new Promise((ok,bad)=>{REMOTE_LOAD_QUEUE.push({task,ok,bad});pumpRemoteQueue();});}
 async function loadKayKitTemplate(scene,pack,file){const key=pack+'/'+file;if(REMOTE_TEMPLATE_CACHE.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_CACHE.get(key);}if(REMOTE_TEMPLATE_INFLIGHT.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_INFLIGHT.get(key);}const p=enqueueRemote(async()=>{if(!window.__CRAZY_REMOTE_MODEL_LOADER||!B.SceneLoader?.ImportMeshAsync)throw new Error('GLTF loader unavailable');if(!KAYKIT_MODEL_CATALOG[pack]?.includes(file))throw new Error('model not in CC0 catalog');let result=null,last=null;for(const root of (KAYKIT_ROOTS[pack]||[])){try{result=await B.SceneLoader.ImportMeshAsync('',root,file+'.gltf',scene);break;}catch(e){last=e;}}if(!result)throw last||new Error('all model CDNs failed');const t=new B.TransformNode('remoteTemplate_'+pack+'_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));for(const n of tops)try{n.parent=t}catch{}for(const m of result.meshes||[]){m.isPickable=false;m.receiveShadows=true;}t.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,t);G.remoteModels.uniqueLoaded++;return t;});REMOTE_TEMPLATE_INFLIGHT.set(key,p);try{return await p;}finally{REMOTE_TEMPLATE_INFLIGHT.delete(key);}}
-function cloneRemoteTemplateInto(t,h,opt={}){for(const n of (t.getChildren?.()||[]))try{n.clone(h.name+'_'+n.name,h,false)?.setEnabled?.(true)}catch{}for(const m of (h.getChildMeshes?.()||[])){m.isPickable=!!opt.pickable;if(opt.receiveShadows!==false)m.receiveShadows=true;try{m.freezeWorldMatrix();}catch{}}}
-function remoteKayKitModel(scene,pack,file,opt={}){const h=new B.TransformNode(opt.name||`kaykit_${pack}_${file}`,scene);h.position.copyFrom(opt.position||B.Vector3.Zero());h.rotation.copyFrom(opt.rotation||B.Vector3.Zero());const sc=opt.scale instanceof B.Vector3?opt.scale:new B.Vector3(opt.scale||1,opt.scale||1,opt.scale||1);h.scaling.copyFrom(sc);h.metadata={kind:'remoteModel',source:'KayKit',pack,file,license:KAYKIT_LICENSE,lowPriority:!!opt.lowPriority};(opt.list||remoteListForState()).push(h);G.remoteModels.requested++;if(opt.lowPriority)G.remoteDecor.push(h);loadKayKitTemplate(scene,pack,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);normalizeRemotePlacement(h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.004,opt.minHeight||0);}catch(e){console.warn('KayKit collider skipped',file,e);}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,pack,file,opt);console.warn('KayKit fallback',pack,file,e?.message||e);});return h;}
-function setRemoteDecorReduced(reduced){G.remoteDecor=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());if(G.remoteDecorReduced===reduced)return;G.remoteDecorReduced=reduced;let i=0;for(const h of G.remoteDecor)try{h.setEnabled(!reduced||(i++%2===0));}catch{}}
-
-// Kenney Furniture Kit — CC0 second provider. Restored as a hard startup dependency for all curated hub/arena model calls.
-const KENNEY_LICENSE='CC0-1.0';
-const KENNEY_FURNITURE_ROOTS=[
-  'https://raw.githubusercontent.com/Phazorknight/Cogito/main/addons/cogito/Assets/Models/Kenney/Furniture/GLTF%20format/',
-  'https://cdn.jsdelivr.net/gh/Phazorknight/Cogito@main/addons/cogito/Assets/Models/Kenney/Furniture/GLTF%20format/'
-];
-const KENNEY_FURNITURE_CATALOG=[
-  'bathroomCabinet','bathroomCabinetDrawer','bathroomMirror','bathroomSink','bathroomSinkSquare',
-  'bench','benchCushion','benchCushionLow','bookcaseClosed','bookcaseClosedDoors','bookcaseClosedWide','bookcaseOpen','bookcaseOpenLow','books',
-  'cabinetTelevision','cabinetTelevisionDoors','cardboardBoxClosed','cardboardBoxOpen','ceilingFan',
-  'chair','chairCushion','chairDesk','chairModernCushion','chairModernFrameCushion','chairRounded',
-  'coatRack','coatRackStanding','computerKeyboard','computerMouse','computerScreen','desk','deskCorner','doorway'
-];
-async function loadKenneyTemplate(scene,file){
-  const key='kenney/furniture/'+file;
-  if(REMOTE_TEMPLATE_CACHE.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_CACHE.get(key);}
-  if(REMOTE_TEMPLATE_INFLIGHT.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_INFLIGHT.get(key);}
-  const p=enqueueRemote(async()=>{
-    if(!window.__CRAZY_REMOTE_MODEL_LOADER||!B.SceneLoader?.ImportMeshAsync)throw new Error('GLTF loader unavailable');
-    if(!KENNEY_FURNITURE_CATALOG.includes(file))throw new Error('Kenney model not in CC0 whitelist');
-    let result=null,last=null;
-    for(const root of KENNEY_FURNITURE_ROOTS){try{result=await B.SceneLoader.ImportMeshAsync('',root,file+'.glb',scene);break;}catch(e){last=e;}}
-    if(!result)throw last||new Error('Kenney model CDNs failed');
-    const t=new B.TransformNode('kenneyTemplate_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));
-    for(const n of tops)try{n.parent=t}catch{}
-    for(const m of result.meshes||[]){m.isPickable=false;m.receiveShadows=true;}
-    t.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,t);G.remoteModels.uniqueLoaded++;return t;
-  });
-  REMOTE_TEMPLATE_INFLIGHT.set(key,p);try{return await p;}finally{REMOTE_TEMPLATE_INFLIGHT.delete(key);}
-}
 function makeRemoteFallback(scene,h,pack,file,opt={}){
   const add=(n,p,sc,c)=>{const m=box(scene,n,p,sc,c,h);m.isPickable=false;return m;},f=file.toLowerCase(),wood='#765a43',metal='#596672',fabric='#66798d',screen='#243846';
   if(f.includes('chair')||f.includes('armchair')){add('fbSeat',new B.Vector3(0,.34,0),new B.Vector3(.58,.16,.58),fabric);add('fbBack',new B.Vector3(0,.76,.25),new B.Vector3(.58,.64,.14),fabric);for(const x of [-.22,.22])for(const z of [-.20,.20])add('fbChairLeg',new B.Vector3(x,.16,z),new B.Vector3(.05,.32,.05),metal);}
@@ -8773,17 +8739,17 @@ function remoteKenneyModel(scene,file,opt={}){
 
 
 
-// 5.2 AUTONOMOUS GAUNTLET × KAAL 10000X ---------------------------------------
+// 5.5 AUTONOMOUS GAUNTLET × KAAL 50X + DEEP VISUAL / PLACEMENT REVIEW ---------------------------------------
 // Permanent design-director pipeline: broad specialist passes + paired critics. The runtime
 // audit is deliberately strict, but curatedMode prevents the old mistake of solving emptiness
 // by spraying random boxes everywhere.
-const GAUNTLET_FUSION_VERSION='5.2-AUTONOMOUS-GAUNTLET-KAAL-10000X';
-const GAUNTLET_MAIN_LOOP_PASSES=10000;
+const GAUNTLET_FUSION_VERSION='5.5-AUTONOMOUS-GAUNTLET-KAAL-50X-DEEP-REVIEW';
+const GAUNTLET_MAIN_LOOP_PASSES=50;
 const GAUNTLET_AGENT_PASS_BUDGET=5000;
 const GAUNTLET_CRITIC_PASS_BUDGET=5000;
 const GAUNTLET_TESTER_PASS_BUDGET=5000;
 const GAUNTLET_TESTER_STRICTNESS=100;
-const GAUNTLET_LOOP_SENTINEL_RESTARTS=10000;
+const GAUNTLET_LOOP_SENTINEL_RESTARTS=50;
 
 const GAUNTLET_AGENT_ROSTER=[
   'LEAD_DIRECTOR','AUTO_DISCOVERY_DIRECTOR','COMPLETION_DIRECTOR','NO_EARLY_EXIT_DIRECTOR','LOOP_SENTINEL','WHOLE_GAME_ART_DIRECTOR',
@@ -8803,7 +8769,8 @@ const GAUNTLET_AGENT_ROSTER=[
 const GAUNTLET_CRITIC_ROSTER=GAUNTLET_AGENT_ROSTER.map(x=>x+'_CRITIC');
 const GAUNTLET_TESTER_ROSTER=[
   'PLAYTESTER','CHAOS_TESTER','BEGINNER_TESTER','EXPERT_TESTER','VR_COMFORT_TESTER','PERFORMANCE_TESTER','VISUAL_TESTER','AUDIO_TESTER',
-  'PHYSICS_TORTURE_TESTER','BUTTON_MASH_TESTER','EXPLOIT_TESTER','LONG_SESSION_TESTER','MAP_COMPLETION_TESTER','NPC_COMBAT_TESTER','SAVE_LOAD_TESTER','RELEASE_TESTER'
+  'PHYSICS_TORTURE_TESTER','BUTTON_MASH_TESTER','EXPLOIT_TESTER','LONG_SESSION_TESTER','MAP_COMPLETION_TESTER','NPC_COMBAT_TESTER','SAVE_LOAD_TESTER','RELEASE_TESTER',
+  'BLACKOUT_TESTER','CLUTTER_LAYOUT_TESTER','BUTTON_VISUAL_TESTER','FIRE_REALISM_TESTER','MODEL_LOAD_FAILURE_TESTER','SPAWN_VISIBILITY_TESTER'
 ];
 const GAUNTLET_TESTER_CRITIC_ROSTER=GAUNTLET_TESTER_ROSTER.map(x=>x+'_CRITIC');
 
@@ -8814,7 +8781,7 @@ const GAUNTLET_META_AGENT_ROSTER=[
   'AGENT_TESTER_FACTORY','AGENT_COMPLETION_GUARD','AGENT_LOOP_GUARD','AGENT_FINAL_SUPERVISOR'
 ];
 const GAUNTLET_META_CRITIC_ROSTER=GAUNTLET_META_AGENT_ROSTER.map(x=>x+'_CRITIC');
-const GENERATED_AGENT_LIMIT=64;
+const GENERATED_AGENT_LIMIT=80;
 
 function cleanAgentId(v){return String(v||'').toUpperCase().replace(/[^A-Z0-9_]+/g,'_').replace(/^_+|_+$/g,'').slice(0,64)||'SPECIALIST';}
 function makeGeneratedAgent(id,purpose,tasks=[],priority=5,source='AUTO'){
@@ -8886,7 +8853,7 @@ G.gauntletFusion=G.gauntletFusion||{version:GAUNTLET_FUSION_VERSION,hubFills:0,a
 G.gauntletFusion.version=GAUNTLET_FUSION_VERSION;G.gauntletFusion.curatedMode=true;
 
 
-const DESIGN_MEMORY_KEY='crazyOfficeDesignMemoryV50';
+const DESIGN_MEMORY_KEY='crazyOfficeDesignMemoryV55';
 const FLOOR_PROP_RE=/chair|couch|bench|table|desk|cabinet|bookcase|shelf|plant|trash|crate|box|lamp|pedestal|rack|computer|keyboard|mouse|coat/i;
 const QUALITY_SKIP_RE=/collider|floor|ceil|wall|sky|label|text|glow|rail|strip|bolt|status|light|beam|wainscot/i;
 function loadDesignMemory(){try{return JSON.parse(localStorage.getItem(DESIGN_MEMORY_KEY)||'{}')||{};}catch{return {};}}
@@ -8898,7 +8865,10 @@ function meshBoundsSafe(m){try{m.computeWorldMatrix(true);const bb=m.getBounding
 function inspectSceneQuality(scene,mode='hub'){
   const issues=[],objects=[];let visible=0,genericFallback=0,floating=0,sunk=0,giantSlabs=0,overlapHints=0;
   for(const m of scene.meshes){if(!m||m.isDisposed?.()||m.isVisible===false)continue;visible++;const name=m.name||'';if(/fbGeneric|kaalSmartBase|kaalSmartTop/i.test(name)){genericFallback++;issues.push('generic fallback '+name);}if(/curatedWallBay|curatedSideBay|fusionConsoleHalo/i.test(name)){giantSlabs++;issues.push('giant slab '+name);}if(QUALITY_SKIP_RE.test(name))continue;const b=meshBoundsSafe(m);if(!b)continue;const size={x:b.max.x-b.min.x,y:b.max.y-b.min.y,z:b.max.z-b.min.z};const floorish=FLOOR_PROP_RE.test(name)&&!/(wall|panel|button|frame|picture)/i.test(name);if(floorish&&size.y>.10){if(b.min.y>.14){floating++;issues.push('floating '+name);}if(b.min.y<-.18){sunk++;issues.push('sunk '+name);}}
-    const maxExtent=Math.max(size.x,size.y,size.z);let score=100;if(maxExtent>4.2&&/(panel|console|bay|screen)/i.test(name))score-=38;if(/fbGeneric/i.test(name))score-=55;if(floorish&&b.min.y>.14)score-=28;if(floorish&&b.min.y<-.18)score-=24;objects.push({name,score,maxExtent,center:b.center});
+    const maxExtent=Math.max(size.x,size.y,size.z),minExtent=Math.min(size.x,size.y,size.z);let score=100;if(maxExtent>4.2&&/(panel|console|bay|screen)/i.test(name))score-=38;if(/fbGeneric/i.test(name))score-=55;if(floorish&&b.min.y>.14)score-=28;if(floorish&&b.min.y<-.18)score-=24;
+    const flatPanelLike=maxExtent>1.65&&minExtent<.18&&/(panel|console|button|face|screen|feature)/i.test(name);
+    if(flatPanelLike&&m.material){const lum=materialLuminance(m.material)+emissiveLuminance(m.material)*.7;if(lum<.13&&!/readout|shadow|hoverGlow/i.test(name)){score-=32;giantSlabs++;issues.push('dark unreadable panel '+name);}}
+    objects.push({name,score,maxExtent,center:b.center});
   }
   // Remote decor overlap/placement hints are checked on roots to avoid child-mesh false positives.
   const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.()&&h.isEnabled?.()!==false);for(let i=0;i<roots.length;i++){const a=roots[i],pa=a.getAbsolutePosition?.()||a.position;if(!pa)continue;for(let j=i+1;j<roots.length;j++){const b=roots[j],pb=b.getAbsolutePosition?.()||b.position;if(!pb)continue;const dx=pa.x-pb.x,dz=pa.z-pb.z;if(dx*dx+dz*dz<.38*.38){overlapHints++;issues.push('decor overlap '+a.name+' '+b.name);}}}
@@ -8906,7 +8876,7 @@ function inspectSceneQuality(scene,mode='hub'){
   if(genericFallback)rememberDesign('generic cube fallback','reject');if(giantSlabs)rememberDesign('giant dark slab','reject');if(floating)rememberDesign('floating furniture','reject');if(overlapHints)rememberDesign('random overlapping clutter','reject');
   return {mode,quality,visible,objects:objects.slice(0,120),issues:issues.slice(0,80),genericFallback,floating,sunk,giantSlabs,overlapHints};
 }
-const GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED=10000;
+const GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED=50;
 const GAUNTLET_RENDERED_PLAYTHROUGHS_EXECUTED_IN_RUNTIME=0; // only increment after a real rendered end-to-end run
 function gauntletCoverageManifest(){return {
   requestedRenderedPlaythroughs:GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED,
@@ -8919,11 +8889,11 @@ function runGauntlet5000Audit(scene,context={}){
   const mode=context.mode||'hub',snapshot=inspectSceneQuality(scene,mode),baseIssues=snapshot.issues.length;
   const agents=[...GAUNTLET_AGENT_ROSTER,...(G.gauntletFusion.dynamicAgents||[]).map(a=>a.id)];const critics=[...GAUNTLET_CRITIC_ROSTER,...(G.gauntletFusion.dynamicCritics||[]).map(a=>a.id),...GAUNTLET_TESTER_CRITIC_ROSTER];
   const testerRuns=GAUNTLET_TESTER_ROSTER.map((id,k)=>runBudgetLoop(id,GAUNTLET_TESTER_PASS_BUDGET,baseIssues+(k%4)));
-  // 10000 lightweight audit probes requested by the Gauntlet budget. These are NOT counted as rendered playthroughs; rendered/end-to-end tests are tracked separately.
+  // 50 main Gauntlet review passes requested for this build. These are scene/code audits; rendered end-to-end playthroughs are tracked separately and never faked.
   const main=runBudgetLoop('GAUNTLET_X_KAAL_MAIN',GAUNTLET_MAIN_LOOP_PASSES,baseIssues);
   let agentRejects=0,criticRejects=0;for(let i=0;i<agents.length;i++)agentRejects+=runBudgetLoop(agents[i],GAUNTLET_AGENT_PASS_BUDGET,baseIssues+(i%5)).rejects;for(let i=0;i<critics.length;i++)criticRejects+=runBudgetLoop(critics[i],GAUNTLET_CRITIC_PASS_BUDGET,baseIssues+(i%7)+1).rejects;
   const report={version:GAUNTLET_FUSION_VERSION,coverage:gauntletCoverageManifest(),mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,strictness:GAUNTLET_TESTER_STRICTNESS,loopSentinel:GAUNTLET_LOOP_SENTINEL_RESTARTS,agents:agents.length,critics:critics.length,testers:GAUNTLET_TESTER_ROSTER.length,snapshot,main,agentRejects,criticRejects,testerRejects:testerRuns.reduce((n,r)=>n+r.rejects,0),completedAt:Date.now()};
-  G.gauntletFusion.deepAudit=report;console.info('GAUNTLET × KAAL 10000X AUDIT',report);return report;
+  G.gauntletFusion.deepAudit=report;console.info('GAUNTLET × KAAL 50X AUDIT',report);return report;
 }
 function normalizeRemotePlacement(root,opt={}){
   if(!root||root.isDisposed?.())return;let meshes=[];try{meshes=root.getChildMeshes?.()||[]}catch{}if(!meshes.length)return;let minY=Infinity,maxY=-Infinity,minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;for(const m of meshes){const b=meshBoundsSafe(m);if(!b)continue;minY=Math.min(minY,b.min.y);maxY=Math.max(maxY,b.max.y);minX=Math.min(minX,b.min.x);maxX=Math.max(maxX,b.max.x);minZ=Math.min(minZ,b.min.z);maxZ=Math.max(maxZ,b.max.z);}if(!Number.isFinite(minY))return;
@@ -8948,6 +8918,8 @@ function scoreObjectPlacement(root,mode='hub'){
     if(bounds.minY<-.22){score-=30;reasons.push('sunk into floor');}
     if(bounds.extent>3.1&&meta.lowPriority){score-=30;reasons.push('low-priority asset dominates room');}
   }
+  // Too many decorative roots in one small patch is clutter, even if every individual model is good.
+  if(meta.lowPriority&&Array.isArray(G.remoteDecor)){let near=0;for(const other of G.remoteDecor){if(!other||other===root||other.isDisposed?.()||other.isEnabled?.()===false)continue;const op=other.getAbsolutePosition?.()||other.position;if(op&&Math.hypot(op.x-p.x,op.z-p.z)<1.35)near++;}if(near>=4){score-=18;reasons.push('overcrowded local cluster');}}
   if(/fallback|generic/i.test(root.name||'')||meta.fallback){score-=48;reasons.push('fallback/prototype visual');}
   return {score:Math.max(0,score),reasons,position:{x:p.x,y:p.y,z:p.z},extent:bounds?.extent||0};
 }
@@ -8958,7 +8930,7 @@ function runStrictPlacementDirector(scene,mode='hub'){
     const q=scoreObjectPlacement(h,mode);let duplicate=false;const p=h.getAbsolutePosition?.()||h.position;
     for(const a of accepted){const ap=a.getAbsolutePosition?.()||a.position;if(!ap||!p)continue;const same=(a.metadata?.file&&h.metadata?.file&&a.metadata.file===h.metadata.file);const d=Math.hypot(ap.x-p.x,ap.z-p.z);if((same&&d<1.25)||d<.52){duplicate=true;break;}}
     if(duplicate){q.score-=28;q.reasons.push('duplicate/overcrowded placement');}
-    if(q.score<72&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;rememberDesign('auto removed bad/overcrowded decor','approve');}catch{}}
+    if(q.score<76&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;rememberDesign('auto removed bad/overcrowded decor','approve');}catch{}}
     else accepted.push(h);
     report.push({name:h.name,score:Math.max(0,q.score),reasons:q.reasons});
   }
@@ -8974,8 +8946,70 @@ function calculateRoomQuality(scene,mode='hub'){
   G.gauntletFusion.roomQuality=G.gauntletFusion.roomQuality||{};G.gauntletFusion.roomQuality[mode]=result;return result;
 }
 function runArenaClutterPlacementCleanup(scene){if(G.state!=='shift')return {disabled:0,checked:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=arenaReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.56){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}const strict=runStrictPlacementDirector(scene,'arena');const result={disabled:disabled+strict.disabled,checked:roots.length,strict};G.gauntletFusion.lastArenaPlacementCleanup=result;return result;}
-function scheduleArenaQualityRecheck(scene,map){const timers=[];for(const ms of [1100,3000,6500,12000]){const t=setTimeout(()=>{if(G.state!=='shift')return;runArenaClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'arena',map});},ms);timers.push(t);}G.arenaMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
-function scheduleAutonomousQualityRecheck(scene){const timers=[];for(const ms of [900,2600,6000,11500]){const t=setTimeout(()=>{if(G.state!=='hub')return;runHubClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'hub'});},ms);timers.push(t);}G.lobbyMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
+function scheduleArenaQualityRecheck(scene,map){runGauntlet50SceneReview(scene,'arena',map);const timers=[];for(const ms of [1100,3000,6500,12000]){const t=setTimeout(()=>{if(G.state!=='shift')return;runArenaClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'arena',map});},ms);timers.push(t);}G.arenaMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
+function materialLuminance(m){
+  try{const c=m?.albedoColor||m?.diffuseColor;if(!c)return .5;return c.r*.2126+c.g*.7152+c.b*.0722;}catch{return .5;}
+}
+function emissiveLuminance(m){
+  try{const c=m?.emissiveColor;if(!c)return 0;return c.r*.2126+c.g*.7152+c.b*.0722;}catch{return 0;}
+}
+function runVisualBlackoutGuard(scene){
+  if(!scene||G.state!=='hub')return {fixed:0,risks:0};
+  // A lobby that technically renders but is visually black is a hard GAUNTLET × KAAL failure.
+  scene.clearColor=new B.Color4(.055,.065,.085,1);
+  scene.ambientColor=new B.Color3(.34,.31,.28);
+  const hemi=scene.getLightByName?.('hemi');if(hemi){hemi.intensity=Math.max(hemi.intensity||0,1.02);hemi.diffuse=new B.Color3(1,.94,.86);hemi.groundColor=new B.Color3(.24,.29,.36);}
+  const key=scene.getLightByName?.('key');if(key)key.intensity=Math.max(key.intensity||0,1.18);
+  let fill=scene.getLightByName?.('hubViewFill');
+  if(!fill){
+    fill=new B.PointLight('hubViewFill',new B.Vector3(0,1.8,-2.4),scene);fill.diffuse=B.Color3.FromHexString('#ffe4c4');fill.specular=B.Color3.FromHexString('#dceaff');fill.range=9.5;fill.intensity=.48;
+    const obs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;const cam=G.xr?.baseExperience?.camera||scene.activeCamera;if(cam){const cp=cam.globalPosition||cam.position;fill.position.copyFrom(cp);fill.position.y+=.18;}});
+    G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(obs)}catch{}try{fill.dispose()}catch{}}});
+  }else fill.intensity=Math.max(fill.intensity||0,.48);
+  // Two soft ceiling fills stop one-sided PBR lighting from turning whole walls/panels black on mobile GPUs.
+  for(const [name,x,z] of [['hubCeilingFillA',-2.7,-.3],['hubCeilingFillB',2.7,1.8]]){
+    let l=scene.getLightByName?.(name);if(!l){l=new B.PointLight(name,new B.Vector3(x,3.45,z),scene);l.diffuse=B.Color3.FromHexString('#ffd7ad');l.range=7.2;l.intensity=.30;G.lobbyMeshes.push({dispose:()=>{try{l.dispose()}catch{}}});}else l.intensity=.30;
+  }
+  let fixed=0,risks=0;
+  for(const m of scene.meshes){
+    if(!m||m.isDisposed?.()||m.isVisible===false||!m.material)continue;
+    const name=m.name||'',b=meshBoundsSafe(m);if(!b)continue;
+    const sx=b.max.x-b.min.x,sy=b.max.y-b.min.y,sz=b.max.z-b.min.z,maxExtent=Math.max(sx,sy,sz);
+    if(maxExtent<1.15)continue;
+    const base=materialLuminance(m.material),em=emissiveLuminance(m.material),effective=base+em*.75;
+    const isArchitectural=/home|back|cos(Far|Front|Back|Ceil)|curated|console|panel|frame|wainscot|feature/i.test(name);
+    const thin=Math.min(sx,sy,sz),panelLike=maxExtent>1.55&&thin<.20&&/(button|face|panel|console|screen|feature)/i.test(name);
+    const intentionallyDark=/fpBack|windowSky|shadow|readout|hoverGlow/i.test(name);
+    if((isArchitectural||panelLike)&&!intentionallyDark&&effective<.22){
+      risks++;
+      const c=m.material.albedoColor||m.material.diffuseColor||new B.Color3(.22,.27,.33);
+      if(m.material.albedoColor&&base<.105)m.material.albedoColor=new B.Color3(Math.max(c.r,.16),Math.max(c.g,.19),Math.max(c.b,.23));
+      if(m.material.diffuseColor&&base<.105)m.material.diffuseColor=new B.Color3(Math.max(c.r,.16),Math.max(c.g,.19),Math.max(c.b,.23));
+      const src=m.material.albedoColor||m.material.diffuseColor||c;
+      const boost=/console|panel|frame/i.test(name)?.17:.11;
+      m.material.emissiveColor=new B.Color3(Math.max(m.material.emissiveColor?.r||0,src.r*boost),Math.max(m.material.emissiveColor?.g||0,src.g*boost),Math.max(m.material.emissiveColor?.b||0,src.b*boost));
+      fixed++;
+    }
+  }
+  const report={fixed,risks,at:Date.now()};G.gauntletFusion.lastBlackoutGuard=report;if(risks)rememberDesign('black/unreadable large surface','reject');return report;
+}
+function runGauntlet50SceneReview(scene,mode='hub',map=''){
+  // Real repeated scene-data reviews: 50 passes over current meshes, placement and lighting.
+  // These are NOT claimed as 50 rendered VR playthroughs.
+  const state={mode,map,requested:50,completed:0,minQuality:100,maxIssues:0,placementFixes:0,blackoutFixes:0,startedAt:Date.now(),done:false};
+  const ownerList=mode==='hub'?G.lobbyMeshes:G.arenaMeshes;
+  const timer=setInterval(()=>{
+    if((mode==='hub'&&G.state!=='hub')||(mode==='arena'&&G.state!=='shift')){clearInterval(timer);state.done=true;return;}
+    const snap=inspectSceneQuality(scene,mode);state.completed++;state.minQuality=Math.min(state.minQuality,snap.quality);state.maxIssues=Math.max(state.maxIssues,snap.issues.length);
+    if(state.completed%5===0){const pl=mode==='hub'?runHubClutterPlacementCleanup(scene):runArenaClutterPlacementCleanup(scene);state.placementFixes+=pl?.disabled||0;}
+    if(mode==='hub'&&state.completed%3===0){const bo=runVisualBlackoutGuard(scene);state.blackoutFixes+=bo?.fixed||0;}
+    if(state.completed%10===0)runAgentFactory({mode,map,issues:snap.issues,minDensity:0,sparseSamples:0});
+    if(state.completed>=50){clearInterval(timer);state.done=true;state.finishedAt=Date.now();G.gauntletFusion.last50SceneReview=state;console.info('GAUNTLET × KAAL 50X SCENE REVIEW COMPLETE',state);}
+  },120);
+  ownerList.push({dispose:()=>{try{clearInterval(timer)}catch{}}});
+  G.gauntletFusion.last50SceneReview=state;return state;
+}
+function scheduleAutonomousQualityRecheck(scene){runGauntlet50SceneReview(scene,'hub','COZY HOME');const timers=[];for(const ms of [120,900,2600,6000,11500]){const t=setTimeout(()=>{if(G.state!=='hub')return;runVisualBlackoutGuard(scene);runHubClutterPlacementCleanup(scene);runGauntlet5000Audit(scene,{mode:'hub'});},ms);timers.push(t);}G.lobbyMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
 function fusionPointLight(scene,name,pos,color,intensity=.18,range=3.6,list=G.lobbyMeshes){
   const l=new B.PointLight(name,pos,scene);l.diffuse=B.Color3.FromHexString(color);l.intensity=intensity;l.range=range;
   (list||G.lobbyMeshes).push({dispose:()=>{try{l.dispose()}catch{}}});return l;
@@ -10091,20 +10125,36 @@ function buildHub(scene){
     fireTex.update();
   }
   const flameMat=new B.StandardMaterial('fireFlameMat',scene);flameMat.diffuseTexture=fireTex;flameMat.opacityTexture=fireTex;flameMat.emissiveTexture=fireTex;flameMat.emissiveColor=new B.Color3(1,.43,.07);flameMat.disableLighting=true;flameMat.backFaceCulling=false;flameMat.alpha=.94;if(B.Material?.MATERIAL_ALPHABLEND!==undefined)flameMat.transparencyMode=B.Material.MATERIAL_ALPHABLEND;
-  const coreMat=flameMat.clone('fireCoreMat');coreMat.emissiveColor=new B.Color3(1,.72,.20);coreMat.alpha=.78;
+  const coreMat=flameMat.clone('fireCoreMat');coreMat.emissiveColor=new B.Color3(1,.72,.20);coreMat.alpha=.82;
+  const tipMat=flameMat.clone('fireTipMat');tipMat.emissiveColor=new B.Color3(1,.90,.52);tipMat.alpha=.70;
   const fireFlameCards=[];
-  const flameSpecs=[
-    [-.31,.64,4.085,.38,.98,-.08,0],[-.13,.76,4.105,.46,1.25,.05,1.2],[.06,.68,4.095,.42,1.05,-.04,2.3],[.25,.74,4.11,.44,1.18,.07,3.5],[.37,.57,4.085,.32,.82,-.05,4.4],
-    [-.04,.55,4.065,.32,.82,.03,5.3],[.17,.50,4.055,.28,.70,-.03,6.1]
-  ];
-  for(let i=0;i<flameSpecs.length;i++){
-    const [x,y,z,w,h,r,phase]=flameSpecs[i];
+  const FIRE_SMALL_FLAME_COUNT=50;
+  // 5.4 FIRE MICRO-CLUSTER: build the fireplace out of 50 smaller flames instead of a few large cards.
+  // The cards are distributed in a clustered bed so the fire keeps a believable body while reading as many distinct tongues.
+  function flameRand(i){const s=Math.sin(i*127.1+17.7)*43758.5453123;return s-Math.floor(s);}
+  for(let i=0;i<FIRE_SMALL_FLAME_COUNT;i++){
+    const lane=(i%10)-4.5;
+    const row=Math.floor(i/10);
+    const jitterX=(flameRand(i)-.5)*.07;
+    const jitterZ=(flameRand(i+50)-.5)*.06;
+    const jitterH=(flameRand(i+100)-.5)*.05;
+    const edge=Math.min(1,Math.abs(lane)/4.5);
+    const centerBoost=1-edge*.48;
+    const h=.22+row*.05+centerBoost*.15+flameRand(i+150)*.08+jitterH;
+    const w=Math.max(.07,Math.min(.17,h*(.34+flameRand(i+200)*.10)));
+    const x=lane*.072+jitterX;
+    const z=4.085+row*.012+jitterZ;
+    const y=.28+h*.46+row*.012+(1-centerBoost)*.008;
+    const r=(flameRand(i+250)-.5)*.22;
+    const phase=flameRand(i+300)*Math.PI*2;
     const card=B.MeshBuilder.CreatePlane('fireFlameCard'+i,{width:w,height:h,sideOrientation:B.Mesh.DOUBLESIDE},scene);
-    card.position=new B.Vector3(2.55+x,y,z);card.rotation.z=r;card.billboardMode=B.Mesh.BILLBOARDMODE_Y;card.material=i>=5?coreMat:flameMat;card.renderingGroupId=2;
-    card.metadata={baseY:y,baseX:2.55+x,baseSX:1,baseSY:1,phase};fireFlameCards.push(card);G.lobbyMeshes.push(card);
+    card.position=new B.Vector3(2.55+x,y,z);card.rotation.z=r;card.billboardMode=B.Mesh.BILLBOARDMODE_Y;
+    card.material=i<8?tipMat:(i<24?coreMat:flameMat);card.renderingGroupId=2;
+    card.metadata={baseY:y,baseX:2.55+x,baseZ:z,baseSX:1,baseSY:1,phase,row,edge,h};
+    fireFlameCards.push(card);G.lobbyMeshes.push(card);
   }
-  // Hot glow just above the logs prevents a visible gap below the flame cards.
-  const hotCore=B.MeshBuilder.CreateSphere('fireHotCore',{diameter:.62,segments:12},scene);hotCore.position=new B.Vector3(2.55,.34,4.10);hotCore.scaling=new B.Vector3(1.15,.42,.42);hotCore.material=mat(scene,'fireHotCoreMat','#ff6c13',.55);hotCore.material.emissiveColor=B.Color3.FromHexString('#ff5a0b').scale(1.15);G.lobbyMeshes.push(hotCore);
+  // Hot glow just above the logs prevents a visible gap below the micro-flames.
+  const hotCore=B.MeshBuilder.CreateSphere('fireHotCore',{diameter:.66,segments:14},scene);hotCore.position=new B.Vector3(2.55,.31,4.10);hotCore.scaling=new B.Vector3(1.24,.33,.50);hotCore.material=mat(scene,'fireHotCoreMat','#ff6c13',.50);hotCore.material.emissiveColor=B.Color3.FromHexString('#ff5a0b').scale(1.10);G.lobbyMeshes.push(hotCore);
 
   // Fine ember particles. This is intentionally a small system: cards make the body of the fire, particles make it feel alive.
   const emberTex=new B.DynamicTexture('fireEmberTexture',{width:32,height:32},scene,true);emberTex.hasAlpha=true;
@@ -10123,12 +10173,12 @@ function buildHub(scene){
   smoke.color1=new B.Color4(.22,.18,.17,.14);smoke.color2=new B.Color4(.10,.09,.09,.08);smoke.colorDead=new B.Color4(.08,.08,.08,0);smoke.minSize=.14;smoke.maxSize=.34;smoke.minLifeTime=1.2;smoke.maxLifeTime=2.3;smoke.emitRate=16;smoke.minEmitPower=.12;smoke.maxEmitPower=.28;smoke.updateSpeed=.016;smoke.gravity=new B.Vector3(0,.10,0);smoke.start();
   G.lobbyMeshes.push({dispose:()=>{try{smoke.stop();smoke.dispose();smokeTex.dispose();}catch{}}});
 
-  // Animate every flame independently so the fire dances rather than scaling as one rigid object.
-  let fireAnimT=0;const fireObs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;const dt=Math.min(.05,engine.getDeltaTime()/1000);fireAnimT+=dt;for(let i=0;i<fireFlameCards.length;i++){const f=fireFlameCards[i],m=f.metadata||{},p=fireAnimT*(4.4+i*.23)+(m.phase||0);f.scaling.y=.90+Math.sin(p)*.10+Math.sin(p*1.71)*.045;f.scaling.x=.92+Math.cos(p*.83)*.055;f.position.y=(m.baseY||f.position.y)+Math.sin(p*1.27)*.018;f.position.x=(m.baseX||f.position.x)+Math.sin(p*.72)*.012;f.rotation.z=Math.sin(p*.68)*.045;}});
-  G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(fireObs);fireTex.dispose();flameMat.dispose();coreMat.dispose();}catch{}}});
+  // Animate every flame independently so the fire reads as many small tongues instead of one rigid blob.
+  let fireAnimT=0;const fireObs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;const dt=Math.min(.05,engine.getDeltaTime()/1000);fireAnimT+=dt;for(let i=0;i<fireFlameCards.length;i++){const f=fireFlameCards[i],m=f.metadata||{},p=fireAnimT*(4.8+i*.13)+(m.phase||0),edge=(m.edge||0),row=(m.row||0);const centerBoost=1-edge*.42;f.scaling.y=.88+centerBoost*.16+Math.sin(p)*.11+Math.sin(p*1.91)*.05;f.scaling.x=.84+centerBoost*.10+Math.cos(p*.77)*.08;f.position.y=(m.baseY||f.position.y)+Math.sin(p*1.21)*(.010+centerBoost*.008)+row*.0015;f.position.x=(m.baseX||f.position.x)+Math.sin(p*.69)*(.006+centerBoost*.006);f.position.z=(m.baseZ||f.position.z)+Math.cos(p*.58)*.010;f.rotation.z=(Math.sin(p*.74)*.06)+((edge-.5)*.04);}});
+  G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(fireObs);fireTex.dispose();flameMat.dispose();coreMat.dispose();tipMat.dispose();}catch{}}});
 
-  // A soft orange core light follows the vertical flame body and makes the cavity read as deep fire.
-  const fireCoreLight=new B.PointLight('fireCoreLight',new B.Vector3(2.55,.70,4.10),scene);fireCoreLight.diffuse=B.Color3.FromHexString('#ff7420');fireCoreLight.intensity=.62;fireCoreLight.range=4.1;G.lobbyMeshes.push({dispose:()=>{try{fireCoreLight.dispose()}catch{}}});
+  // A soft orange core light follows the denser flame body and makes the cavity read as deep fire.
+  const fireCoreLight=new B.PointLight('fireCoreLight',new B.Vector3(2.55,.66,4.10),scene);fireCoreLight.diffuse=B.Color3.FromHexString('#ff7420');fireCoreLight.intensity=.64;fireCoreLight.range=4.3;G.lobbyMeshes.push({dispose:()=>{try{fireCoreLight.dispose()}catch{}}});
 
   // Ember bed + logs are also recessed so the fire reads as being IN the stove, never in front of it.
   const emberBed=B.MeshBuilder.CreateBox('emberBed',{width:.91,height:.055,depth:.25},scene);emberBed.position=new B.Vector3(2.55,.19,4.10);emberBed.material=mat(scene,'emberBedMat','#5b180d',.55);emberBed.material.emissiveColor=B.Color3.FromHexString('#ff3e10').scale(.58);G.lobbyMeshes.push(emberBed);
@@ -10150,10 +10200,10 @@ for(const x of [2.27,2.83]){const candle=B.MeshBuilder.CreateCylinder('mantleCan
   function consolePanel(name,title,pos,width=2.25,height=2.45){
     const root=new B.TransformNode(name+'Root',scene);root.position.copyFrom(pos);
     const faceSign=pos.z<0?1:-1,accent=name.includes('play')?'#55c9ff':name.includes('map')?'#ffad55':name.includes('bat')?'#9ee85e':name.includes('style')?'#bd82ff':'#71d8c8';root.metadata={...(root.metadata||{}),faceSign,accent};G.lobbyMeshes.push(root);
-    const shadow=box(scene,name+'Shadow',new B.Vector3(0,-.035,-faceSign*.045),new B.Vector3(width+.12,height+.12,.10),'#05070a',root);shadow.material.alpha=.48;G.lobbyMeshes.push(shadow);
-    const back=box(scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.13),'#12171d',root);back.material.metallic=.48;back.material.roughness=.24;G.lobbyMeshes.push(back);
-    const frame=box(scene,name+'Frame',new B.Vector3(0,.01,faceSign*.078),new B.Vector3(width-.08,height-.08,.035),'#303944',root);frame.material.metallic=.72;frame.material.roughness=.16;frame.material.emissiveColor=B.Color3.FromHexString(accent).scale(.06);G.lobbyMeshes.push(frame);
-    const face=box(scene,name+'Face',new B.Vector3(0,-.02,faceSign*.120),new B.Vector3(width-.22,height-.28,.032),'#171d24',root);face.material.metallic=.22;face.material.roughness=.20;G.lobbyMeshes.push(face);
+    const shadow=box(scene,name+'Shadow',new B.Vector3(0,-.035,-faceSign*.045),new B.Vector3(width+.12,height+.12,.10),'#0b1118',root);shadow.material.alpha=.30;G.lobbyMeshes.push(shadow);
+    const back=box(scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.13),'#263342',root);back.material.metallic=.38;back.material.roughness=.30;back.material.emissiveColor=B.Color3.FromHexString(accent).scale(.055);G.lobbyMeshes.push(back);
+    const frame=box(scene,name+'Frame',new B.Vector3(0,.01,faceSign*.078),new B.Vector3(width-.08,height-.08,.035),'#52657a',root);frame.material.metallic=.64;frame.material.roughness=.18;frame.material.emissiveColor=B.Color3.FromHexString(accent).scale(.12);G.lobbyMeshes.push(frame);
+    const face=box(scene,name+'Face',new B.Vector3(0,-.02,faceSign*.120),new B.Vector3(width-.22,height-.28,.032),'#202c39',root);face.material.metallic=.16;face.material.roughness=.27;face.material.emissiveColor=B.Color3.FromHexString('#7fa0bb').scale(.035);G.lobbyMeshes.push(face);
     for(const sx of [-1,1]){const rail=box(scene,name+'OuterRail',new B.Vector3(sx*(width*.46),0,faceSign*.146),new B.Vector3(.026,height*.73,.014),accent,root);rail.material.emissiveColor=B.Color3.FromHexString(accent).scale(.82);rail.isPickable=false;G.lobbyMeshes.push(rail);}
     for(const sy of [-1,1]){const rail=box(scene,name+'OuterRailH',new B.Vector3(0,sy*(height*.43),faceSign*.146),new B.Vector3(width*.72,.024,.014),accent,root);rail.material.emissiveColor=B.Color3.FromHexString(accent).scale(sy>0?.72:.42);rail.isPickable=false;G.lobbyMeshes.push(rail);}
     const header=box(scene,name+'HeaderGlow',new B.Vector3(0,height*.28,faceSign*.154),new B.Vector3(width*.54,.040,.015),accent,root);header.material.emissiveColor=B.Color3.FromHexString(accent).scale(.88);header.material.alpha=.96;header.isPickable=false;G.lobbyMeshes.push(header);
@@ -10247,7 +10297,7 @@ for(const x of [2.27,2.83]){const candle=B.MeshBuilder.CreateCylinder('mantleCan
     fireLight.intensity=.66+Math.sin(hubAnimT*7.2)*.075+Math.sin(hubAnimT*13.7)*.03;fireCoreLight.intensity=.57+Math.sin(hubAnimT*8.8+1.1)*.09+Math.sin(hubAnimT*17.3)*.035;cosOrb.rotation.y+=dt*.45;
   });G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(hubObs)}catch{}}});
 
-  startLobbyAudio();rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);scheduleAutonomousQualityRecheck(scene);
+  startLobbyAudio();rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);runVisualBlackoutGuard(scene);scheduleAutonomousQualityRecheck(scene);
   if(G.desktop){try{scene.activeCamera.setTarget(new B.Vector3(0,2.0,-4.35));}catch{}}
 }
 
@@ -11047,7 +11097,7 @@ function runSelfChecks(){
 function gauntletSelfCheck(){
   const issues=[];const ids=(arr)=>arr.map(x=>x.id);
   for(const [name,arr] of Object.entries({bats:CATALOG.bats,skins:CATALOG.skins,maps:CATALOG.maps})){const a=ids(arr);if(new Set(a).size!==a.length)issues.push(name+' duplicate id');if(!arr.length)issues.push(name+' empty');}
-  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY==='undefined'||FIRE_PARTICLE_CAPACITY>5000)issues.push('fire particle budget too high');if(typeof FIRE_VISUAL_VERSION==='undefined'||!String(FIRE_VISUAL_VERSION).includes('LAYERED-FLAME'))issues.push('layered fire rebuild missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');if((G.hubButtons||[]).some(b=>![1,-1].includes(b.metadata?.faceSign)))issues.push('hub button face direction missing');if((G.hubButtons||[]).some(b=>{const f=b.metadata?.faceSign||0,r=b.metadata?.buttonRoot;return !r||Math.sign(r.position.z)!==f||Math.sign(b.position.z)!==f;}))issues.push('hub button visual layers reversed/hidden');if(typeof GAUNTLET_FUSION_VERSION==='undefined'||!String(GAUNTLET_FUSION_VERSION).includes('GAUNTLET-KAAL'))issues.push('gauntlet kaal overhaul missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<16)issues.push('specialist agent roster too small');if(typeof GAUNTLET_CRITIC_ROSTER==='undefined'||GAUNTLET_CRITIC_ROSTER.length!==GAUNTLET_AGENT_ROSTER.length)issues.push('paired critic roster mismatch');if(typeof runKaalAuditAndFill!=='function'||typeof addFusionHubPass!=='function'||typeof addFusionArenaPass!=='function')issues.push('kaal audit/fusion passes missing');if(typeof KAAL_AUDIT_SAMPLES==='undefined'||KAAL_AUDIT_SAMPLES<1000)issues.push('kaal audit samples below 1000');if(typeof addCuratedHubOverhaul!=='function'||typeof addCuratedArenaOverhaul!=='function')issues.push('curated design overhaul missing');if(!G.gauntletFusion?.curatedMode)issues.push('curated mode disabled');if(typeof KENNEY_INTERFACE_SFX==='undefined'||Object.keys(KENNEY_INTERFACE_SFX).length<16)issues.push('interface SFX palette too small');if(typeof KENNEY_INTERFACE_LICENSE==='undefined'||KENNEY_INTERFACE_LICENSE!=='CC0-1.0')issues.push('interface SFX license metadata missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||!KAYKIT_MODEL_CATALOG.space||KAYKIT_MODEL_CATALOG.space.length<30)issues.push('space model pack missing');if(typeof npcHitProbe!=='function')issues.push('per-mesh NPC hitbox probe missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<36)issues.push('curated specialist roster too small');if(typeof GAUNTLET_META_AGENT_ROSTER==='undefined'||GAUNTLET_META_AGENT_ROSTER.length<10)issues.push('meta-agent factory roster too small');if(typeof GAUNTLET_META_CRITIC_ROSTER==='undefined'||GAUNTLET_META_CRITIC_ROSTER.length!==GAUNTLET_META_AGENT_ROSTER.length)issues.push('meta-agent critic mismatch');if(typeof runAgentFactory!=='function'||typeof validateGeneratedAgent!=='function'||typeof makeGeneratedAgent!=='function')issues.push('agent factory functions missing');if((G.gauntletFusion?.dynamicAgents||[]).some(a=>!a.critic||a.critic.id!==a.id+'_CRITIC'))issues.push('generated agent missing paired critic');if(typeof GAUNTLET_MAIN_LOOP_PASSES==='undefined'||GAUNTLET_MAIN_LOOP_PASSES!==10000)issues.push('main gauntlet loop is not 10000');if(typeof GAUNTLET_AGENT_PASS_BUDGET==='undefined'||GAUNTLET_AGENT_PASS_BUDGET!==5000)issues.push('agent pass budget is not 5000');if(typeof GAUNTLET_CRITIC_PASS_BUDGET==='undefined'||GAUNTLET_CRITIC_PASS_BUDGET!==5000)issues.push('critic pass budget is not 5000');if(typeof GAUNTLET_TESTER_ROSTER==='undefined'||GAUNTLET_TESTER_ROSTER.length<12)issues.push('tester roster too small');if(typeof inspectSceneQuality!=='function'||typeof runHubClutterPlacementCleanup!=='function'||typeof runGauntlet5000Audit!=='function')issues.push('autonomous quality director missing');if(typeof runStrictPlacementDirector!=='function'||typeof scoreObjectPlacement!=='function'||typeof calculateRoomQuality!=='function')issues.push('strict per-object/room placement director missing');if(typeof GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED==='undefined'||GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED!==10000)issues.push('10000 rendered-playthrough request not registered');
+  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY==='undefined'||FIRE_PARTICLE_CAPACITY>5000)issues.push('fire particle budget too high');if(typeof FIRE_SMALL_FLAME_COUNT==='undefined'||FIRE_SMALL_FLAME_COUNT!==50)issues.push('small flame count is not 50');if(typeof FIRE_VISUAL_VERSION==='undefined'||!String(FIRE_VISUAL_VERSION).includes('LAYERED-FLAME'))issues.push('layered fire rebuild missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');if((G.hubButtons||[]).some(b=>![1,-1].includes(b.metadata?.faceSign)))issues.push('hub button face direction missing');if((G.hubButtons||[]).some(b=>{const f=b.metadata?.faceSign||0,r=b.metadata?.buttonRoot;return !r||Math.sign(r.position.z)!==f||Math.sign(b.position.z)!==f;}))issues.push('hub button visual layers reversed/hidden');if(typeof GAUNTLET_FUSION_VERSION==='undefined'||!String(GAUNTLET_FUSION_VERSION).includes('GAUNTLET-KAAL'))issues.push('gauntlet kaal overhaul missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<16)issues.push('specialist agent roster too small');if(typeof GAUNTLET_CRITIC_ROSTER==='undefined'||GAUNTLET_CRITIC_ROSTER.length!==GAUNTLET_AGENT_ROSTER.length)issues.push('paired critic roster mismatch');if(typeof runKaalAuditAndFill!=='function'||typeof addFusionHubPass!=='function'||typeof addFusionArenaPass!=='function')issues.push('kaal audit/fusion passes missing');if(typeof KAAL_AUDIT_SAMPLES==='undefined'||KAAL_AUDIT_SAMPLES<1000)issues.push('kaal audit samples below 1000');if(typeof addCuratedHubOverhaul!=='function'||typeof addCuratedArenaOverhaul!=='function')issues.push('curated design overhaul missing');if(!G.gauntletFusion?.curatedMode)issues.push('curated mode disabled');if(typeof KENNEY_INTERFACE_SFX==='undefined'||Object.keys(KENNEY_INTERFACE_SFX).length<16)issues.push('interface SFX palette too small');if(typeof KENNEY_INTERFACE_LICENSE==='undefined'||KENNEY_INTERFACE_LICENSE!=='CC0-1.0')issues.push('interface SFX license metadata missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||!KAYKIT_MODEL_CATALOG.space||KAYKIT_MODEL_CATALOG.space.length<30)issues.push('space model pack missing');if(typeof npcHitProbe!=='function')issues.push('per-mesh NPC hitbox probe missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<36)issues.push('curated specialist roster too small');if(typeof GAUNTLET_META_AGENT_ROSTER==='undefined'||GAUNTLET_META_AGENT_ROSTER.length<10)issues.push('meta-agent factory roster too small');if(typeof GAUNTLET_META_CRITIC_ROSTER==='undefined'||GAUNTLET_META_CRITIC_ROSTER.length!==GAUNTLET_META_AGENT_ROSTER.length)issues.push('meta-agent critic mismatch');if(typeof runAgentFactory!=='function'||typeof validateGeneratedAgent!=='function'||typeof makeGeneratedAgent!=='function')issues.push('agent factory functions missing');if((G.gauntletFusion?.dynamicAgents||[]).some(a=>!a.critic||a.critic.id!==a.id+'_CRITIC'))issues.push('generated agent missing paired critic');if(typeof GAUNTLET_MAIN_LOOP_PASSES==='undefined'||GAUNTLET_MAIN_LOOP_PASSES!==50)issues.push('main gauntlet loop is not 50');if(typeof GAUNTLET_AGENT_PASS_BUDGET==='undefined'||GAUNTLET_AGENT_PASS_BUDGET!==5000)issues.push('agent pass budget is not 5000');if(typeof GAUNTLET_CRITIC_PASS_BUDGET==='undefined'||GAUNTLET_CRITIC_PASS_BUDGET!==5000)issues.push('critic pass budget is not 5000');if(typeof GAUNTLET_TESTER_ROSTER==='undefined'||GAUNTLET_TESTER_ROSTER.length<12)issues.push('tester roster too small');if(typeof inspectSceneQuality!=='function'||typeof runHubClutterPlacementCleanup!=='function'||typeof runGauntlet5000Audit!=='function')issues.push('autonomous quality director missing');if(typeof runStrictPlacementDirector!=='function'||typeof scoreObjectPlacement!=='function'||typeof calculateRoomQuality!=='function')issues.push('strict per-object/room placement director missing');if(typeof GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED==='undefined'||GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED!==50)issues.push('50 rendered-playthrough request not registered');if(typeof runVisualBlackoutGuard!=='function')issues.push('visual blackout guard missing');if(typeof runGauntlet50SceneReview!=='function')issues.push('50x scene review missing');if(GAUNTLET_TESTER_ROSTER.length<20)issues.push('strict tester roster too small');
   const badUnlock=[...(G.meta.unlockedBats||[]).filter(id=>!CATALOG.bats.some(x=>x.id===id)),...(G.meta.unlockedSkins||[]).filter(id=>!CATALOG.skins.some(x=>x.id===id)),...(G.meta.unlockedMaps||[]).filter(id=>!CATALOG.maps.some(x=>x.id===id))];if(badUnlock.length)issues.push('stale unlock ids');
   console[issues.length?'warn':'info']('GAUNTLET SELF CHECK',issues.length?issues:`OK • ${CATALOG.maps.length} maps • ${CATALOG.bats.length} bats • ${CATALOG.skins.length} skins • ${CATALOG.props.length} prop models`);return issues;
 }
