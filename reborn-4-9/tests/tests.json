@@ -1,0 +1,99 @@
+[
+  {
+    "name": "Enter Crazy Office desktop lobby",
+    "sanity": true,
+    "viewport": "desktop",
+    "covers": [
+      "Babylon boot",
+      "lobby",
+      "desktop preview",
+      "HP and score HUD"
+    ],
+    "description": "Validate that desktop preview renders the original 3D lobby and gameplay HUD.",
+    "steps": [
+      "Wait for Desktop Preview to enable",
+      "Click Desktop Preview",
+      "Inspect the 3D lobby and HP HUD"
+    ],
+    "expected": "The boot overlay closes, the lobby is rendered and HP and score UI are visible without a startup error."
+  },
+  {
+    "name": "Survival displays office mayhem checklist",
+    "viewport": "desktop",
+    "covers": [
+      "Survival mode",
+      "wave gameplay",
+      "office mayhem checklist",
+      "paper ball and coffee challenges",
+      "stapler sniper task"
+    ],
+    "description": "New office micro-missions appear in a real combat shift.",
+    "steps": [
+      "Click Desktop Preview when available",
+      "Press 1 to start Survival",
+      "Read the yellow Office Mayhem panel"
+    ],
+    "expected": "The HUD shows Survival and four Office Mayhem tasks: PANIC BUTTON, OFFICE BASKETBALL, COFFEE BREAK and STAPLER SNIPER."
+  },
+  {
+    "name": "Campaign Levels starts independently",
+    "viewport": "desktop",
+    "covers": [
+      "Levels campaign",
+      "selection",
+      "new office challenge targets",
+      "arena scene",
+      "themed map identity",
+      "six mapped boss archetypes",
+      "telegraphed boss specials",
+      "weak point bonus damage",
+      "boss health HUD",
+      "visible weak point window",
+      "physical hit recoil",
+      "stagger reactions",
+      "breakable props"
+    ],
+    "description": "Campaign arena retains its boss encounters while physical hit reactions and breakable office props add feedback.",
+    "steps": [
+      "Click Desktop Preview",
+      "Press 2 to begin Levels",
+      "Play until the fifth wave",
+      "Observe the boss name, warning and combat behavior",
+      "During actual VR play, hit a coworker with a bat and throw a fragile office item into furniture"
+    ],
+    "expected": "A themed boss spawns with a visible boss health bar. Its attack shows a warning, then triggers its map-specific effect; the weak point lights up afterward for bonus damage. In VR interaction testing, coworkers recoil and a fragile prop can shatter with visible fragments under sufficient impact."
+  },
+  {
+    "name": "Reset to hub clears shift objectives",
+    "viewport": "desktop",
+    "covers": [
+      "return-to-lobby",
+      "task panel cleanup",
+      "state transition guardrail"
+    ],
+    "description": "Shift-only UI must disappear when the player returns to the hub.",
+    "steps": [
+      "Click Desktop Preview",
+      "Press 1 to start a shift",
+      "Press R to return to lobby"
+    ],
+    "expected": "The mode returns to the cozy lobby and the shift-only Office Mayhem panel is hidden."
+  },
+  {
+    "name": "Mobile game entry without VR headset",
+    "viewport": "mobile",
+    "covers": [
+      "mobile viewport",
+      "desktop preview fallback",
+      "WebXR not required",
+      "responsive presentation"
+    ],
+    "description": "Mobile users can enter the 3D preview even without an XR headset.",
+    "steps": [
+      "Open the game on a mobile browser viewport",
+      "Wait until Desktop Preview is enabled",
+      "Tap Desktop Preview"
+    ],
+    "expected": "The boot panel closes and the HUD is visible; no headset connection is required for Desktop Preview."
+  }
+]

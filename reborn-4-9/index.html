@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+<meta name="theme-color" content="#0d1017" />
+<title>Crazy Office: Night Shift — Reborn 4.9 · REALISTIC FIRE & CHARACTERS</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#070910;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#fff}#game{width:100%;height:100%;touch-action:none;display:block}#boot{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#20263a 0,#0b0e16 42%,#05070b 100%);z-index:20;gap:10px}.brand{font-weight:1000;letter-spacing:.08em;font-size:clamp(44px,10vw,90px);transform:skew(-5deg);text-shadow:0 8px 30px #000}.subtitle{letter-spacing:.5em;font-size:14px;opacity:.7;margin-bottom:20px}button{border:1px solid #ffffff33;background:#ffffff0d;color:#fff;font-weight:800;padding:13px 24px;border-radius:999px;min-width:220px;backdrop-filter:blur(12px)}button:hover{background:#ffffff1a}.note,#bootStatus{opacity:.62;font-size:12px;max-width:440px;text-align:center}.note{margin-top:14px}#hud{position:fixed;left:max(16px,env(safe-area-inset-left));top:max(16px,env(safe-area-inset-top));display:none;flex-direction:column;gap:8px;z-index:50;pointer-events:none;max-width:min(92vw,430px)}.pill,.meter{background:#05080eef;border:2px solid #ffffff32;border-radius:14px;padding:10px 12px;backdrop-filter:blur(12px);box-shadow:0 10px 30px #0005}.pill{display:flex;gap:8px;align-items:center;font-size:14px;white-space:nowrap;overflow:hidden}.pill span{opacity:.62}.pill.small{width:max-content}.meter{display:grid;grid-template-columns:64px minmax(170px,240px) 82px;align-items:center;gap:8px;font-size:14px;font-weight:900}.meter i{height:12px;border-radius:999px;background:#ffffff15;overflow:hidden}.meter i b{height:100%;display:block;width:100%;background:white;border-radius:999px;transition:width .15s}#toast{position:fixed;left:50%;bottom:12%;transform:translateX(-50%);font-weight:900;font-size:clamp(18px,3vw,30px);text-align:center;text-shadow:0 4px 20px #000;pointer-events:none;z-index:6;opacity:0;transition:opacity .18s}.show{opacity:1!important}
+
+
+/* Reference-board style: bright paper, ink outlines, sticker UI; contrast remains readable in VR preview. */
+#boot{background:radial-gradient(ellipse at 70% 15%,#b0503650,transparent 55%),linear-gradient(140deg,#121c2a,#08111c 58%,#2d2026);}
+#boot::before{content:'EVERY DAY IS CASUAL FRIDAY';position:absolute;top:8%;left:5%;color:#ffca44;letter-spacing:.13em;font-weight:1000;transform:rotate(-8deg);opacity:.85;pointer-events:none;}
+.brand{font-family:Impact,system-ui,sans-serif;font-size:clamp(55px,10vw,118px);line-height:.99;text-align:center;letter-spacing:.015em;color:#ffc13b;-webkit-text-stroke:2px #231b1d;text-shadow:4px 6px 0 #ea543d,8px 12px 0 #162f4f,12px 20px 18px #000;}
+.subtitle{letter-spacing:.28em;font-weight:900;color:#f2f0ec;}
+#desktopStart,#enterVR{background:#ffca39;color:#252329;border:3px solid #211c22;box-shadow:5px 6px 0 #151823;font-weight:1000;cursor:pointer;}
+#desktopStart:hover,#enterVR:hover{background:#f35d45;color:white;transform:translateY(-2px)}
+#bossHUD{position:fixed;left:50%;bottom:max(20px,env(safe-area-inset-bottom));transform:translateX(-50%);width:min(480px,72vw);padding:10px 14px;background:#151522ea;border:3px solid #e7a83d;border-radius:13px;color:#fff4cd;z-index:52;pointer-events:none;box-shadow:0 9px 25px #0008;display:none;text-align:center;font-weight:900;}#bossHUD .boss-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;}#bossHUD .boss-track{height:12px;border:2px solid #ffdf8a;border-radius:7px;background:#321e28;overflow:hidden;margin:7px 0;}#bossHUD .boss-track b{display:block;width:100%;height:100%;background:linear-gradient(90deg,#e53c58,#ffbe4b);transition:width .1s}#bossHint{font-size:11px;color:#aef7ec;letter-spacing:.03em}@media(max-width:700px){#bossHUD{bottom:8px;width:94vw;padding:7px 9px;border-width:2px}#bossHUD .boss-head{font-size:10px}#bossHint{font-size:9px}}
+#officeTasks{position:fixed;top:max(16px,env(safe-area-inset-top));right:max(16px,env(safe-area-inset-right));z-index:51;width:min(320px,37vw);background:#fff2bc;border:3px solid #242c39;border-radius:9px;box-shadow:6px 7px 0 #101725bc;transform:rotate(1deg);color:#252835;display:none;pointer-events:none;font-family:system-ui,-apple-system,sans-serif;}
+.task-head{display:flex;justify-content:space-between;gap:8px;background:#ffcb42;border-bottom:3px solid #252835;padding:9px 11px;font-weight:1000;font-size:13px;}
+.task-head b{font-size:10px;background:#252835;color:#fff0b5;border-radius:3px;padding:3px 5px;}
+.task-line{display:flex;align-items:start;gap:10px;padding:8px 11px;border-bottom:1px dashed #bca571;font-size:11px;line-height:1.2;}
+.task-line>span{font-size:19px;font-weight:900}.task-line strong{display:block;font-size:12px;letter-spacing:.025em}.task-line small{display:block;font-size:10px;opacity:.72;margin-top:2px}
+.task-line.finished{background:#d5e4ad;color:#42623f}.task-footer{text-align:center;font-size:9px;letter-spacing:.15em;font-weight:900;padding:7px;}
+@media(max-width:700px){#officeTasks{top:auto;bottom:max(16px,env(safe-area-inset-bottom));right:12px;width:min(255px,57vw);transform:none}.task-line{padding:4px 8px}.task-line strong{font-size:10px}.task-line small{font-size:9px}.task-footer{display:none}.task-head{padding:6px 8px;font-size:11px}#toast{bottom:32%}}
+</style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <div id="boot">
+    <div class="brand">CRAZY OFFICE</div>
+    <div class="subtitle">REBORN 4.9 · FIREPLACE & CARTOON COWORKERS</div>
+    <div id="bootStatus">Starting engine…</div>
+    <button id="enterVR" disabled>ENTER VR</button>
+    <button id="desktopStart" disabled>DESKTOP PREVIEW</button>
+    <div class="note">Left stick move · right stick snap-turn.<br>Explore the cozy lobby, walk into the cosmetics room, then choose SURVIVAL or LEVELS.</div>
+  </div>
+  <div id="hud">
+    <div class="pill"><b id="modeText">ELEVATOR HUB</b><span id="shiftText">Choose a shift</span></div>
+    <div class="meter" style="border-color:#ff5666aa;background:#12080bef"><span>HP</span><i><b id="hpBar"></b></i><strong id="hpText">100</strong></div>
+    <div class="meter"><span>BAT</span><i><b id="batBar"></b></i><strong id="batText">100%</strong></div>
+    <div class="meter"><span>CHAOS</span><i><b id="chaosBar"></b></i><strong id="chaosText">0%</strong></div>
+    <div class="pill small"><span>RANK</span><b id="rankText">D</b><span id="scoreText">0</span></div>
+  </div>
+  <aside id="bossHUD" aria-label="Current office boss"><div class="boss-head"><span id="bossName">OFFICE BOSS</span><span>WEAK SPOT BONUS x2.25</span></div><div class="boss-track"><b id="bossBar"></b></div><div id="bossHint">Watch for a glowing weak point after special attacks.</div></aside>
+  <aside id="officeTasks" aria-label="Office mayhem challenges"><div class="task-head"><span>📝 OFFICE MAYHEM</span><b>4 TASKS</b></div><div id="officeTaskBody"></div><div class="task-footer">MAKE TROUBLE. GET PROMOTED.</div></aside><div id="toast"></div>
+<script>
+(function(){
+  const status=document.getElementById('bootStatus'), enter=document.getElementById('enterVR'), preview=document.getElementById('desktopStart');
+  let finished=false;
+  const cdns=['https://cdn.babylonjs.com/babylon.js','https://cdn.jsdelivr.net/npm/babylonjs@7.54.3/babylon.js','https://unpkg.com/babylonjs@7.54.3/babylon.js'];
+  const loaderCdns=['https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js','https://cdn.jsdelivr.net/npm/babylonjs-loaders@7.54.3/babylonjs.loaders.min.js','https://unpkg.com/babylonjs-loaders@7.54.3/babylonjs.loaders.min.js'];
+  function fatal(msg){finished=true;status.textContent='LOAD ERROR • '+msg;enter.disabled=true;preview.disabled=true;}
+  window.addEventListener('error',e=>{ if(!finished){ console.error(e.error||e.message); status.textContent='LOAD ERROR • '+(e.message||'unknown error'); }});
+  window.addEventListener('unhandledrejection',e=>{ if(!finished){ console.error(e.reason); status.textContent='LOAD ERROR • '+(e.reason?.message||'startup failed'); }});
+  function loadClassic(url,timeout=8000){return new Promise((ok,bad)=>{let done=false;const s=document.createElement('script');const t=setTimeout(()=>{if(done)return;done=true;s.remove();bad(new Error('timeout'));},timeout);s.src=url;s.async=true;s.onload=()=>{if(done)return;done=true;clearTimeout(t);ok();};s.onerror=()=>{if(done)return;done=true;clearTimeout(t);s.remove();bad(new Error('script failed'));};document.head.appendChild(s);});}
+  async function loadGameRobust(){try{return await loadClassic('./game.js?build=49',9000);}catch(first){console.warn('Direct game.js load failed; trying text/blob fallback.',first);const r=await fetch('./game.js?build=49',{cache:'no-store'});if(!r.ok)throw new Error('game.js HTTP '+r.status);const code=await r.text();if(code.length<1000)throw new Error('game.js response was incomplete');const blob=URL.createObjectURL(new Blob([code],{type:'text/javascript'}));try{await loadClassic(blob,9000);}finally{URL.revokeObjectURL(blob);}}}
+  async function boot(){
+    for(let i=0;i<cdns.length&&!window.BABYLON;i++){
+      status.textContent='Loading 3D engine '+(i+1)+'/'+cdns.length+'…';
+      try{await loadClassic(cdns[i],7000);}catch(e){console.warn('Engine source failed',cdns[i],e);}
+    }
+    if(!window.BABYLON){fatal('3D engine unavailable. Check HTTPS/internet, then refresh.');return;}
+    status.textContent='Loading free model support…';
+    let loaderReady=false;
+    for(let i=0;i<loaderCdns.length&&!loaderReady;i++){
+      try{await loadClassic(loaderCdns[i],6500);loaderReady=true;}catch(e){console.warn('Model loader source failed',loaderCdns[i],e);}
+    }
+    window.__CRAZY_REMOTE_MODEL_LOADER=loaderReady;
+    status.textContent='Building Crazy Office…';
+    window.__CRAZY_OFFICE_READY=false;
+    try{await loadGameRobust();}catch(e){console.error(e);fatal('game.js could not load. Refresh to retry Crazy Office 4.9.');return;}
+    let waited=0,unlocked=false;
+    const unlock=()=>{
+      if(unlocked)return;
+      unlocked=true;finished=true;
+      const vr=!!navigator.xr&&window.isSecureContext;
+      status.textContent=vr?'Ready • PLAY GAME or ENTER VR':'Ready • PLAY GAME available';
+      enter.disabled=!vr;enter.textContent=vr?'ENTER VR':'VR UNAVAILABLE HERE';
+      preview.disabled=false;
+    };
+    if(window.__CRAZY_OFFICE_READY){unlock();return;}
+    window.addEventListener('crazy-office-ready',unlock,{once:true});
+    const verify=setInterval(()=>{
+      waited+=250;
+      if(window.__CRAZY_OFFICE_READY){clearInterval(verify);unlock();}
+      else if(waited>=45000){clearInterval(verify);status.textContent='Still loading. Refresh if this message stays.';}
+      else if(waited%5000===0)status.textContent='Loading 3D world… '+Math.round(waited/1000)+'s';
+    },250);
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
