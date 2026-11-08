@@ -17010,15 +17010,17 @@ function updateJoystickMovement(scene,dt){
       // may be a touchpad/trigger, not the movement thumbstick.
       const component=ctrl.motionController?.getComponent?.('xr-standard-thumbstick');
       const cx=component?.axes?.x,cy=component?.axes?.y;
-      if(Number.isFinite(cx)&&Number.isFinite(cy))
+      if(Number.isFinite(cx)&&Number.isFinite(cy)&&Math.hypot(cx,cy)>.025)
         return [Math.max(-1,Math.min(1,cx)),Math.max(-1,Math.min(1,cy))];
       const axes=source.gamepad?.axes;
-      if(!axes||axes.length<2)return null;
+      if(!axes||axes.length<2)
+        return Number.isFinite(cx)&&Number.isFinite(cy)?[cx,cy]:null;
       // Standard WebXR gamepads reserve axes 0/1 for a touchpad and 2/3
       // for the thumbstick. Two-axis controllers use axes 0/1 instead.
       const offset=axes.length>=4?2:0;
       const x=axes[offset],y=axes[offset+1];
-      if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+      if(!Number.isFinite(x)||!Number.isFinite(y))
+        return Number.isFinite(cx)&&Number.isFinite(cy)?[cx,cy]:null;
       return [Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
     }catch{return null;}
   };
@@ -17079,11 +17081,13 @@ function updateJoystickMovement(scene,dt){
       try{
         let rig=G.questLocomotionRig;
         if(!rig||rig.isDisposed?.()||cam.parent!==rig){
-          if(!cam.parent){
-            rig=new B.TransformNode('questLocomotionRig',scene);
-            cam.parent=rig;
-            G.questLocomotionRig=rig;
-          }else rig=null;
+          // Insert our rig under the existing XR camera parent, if any.
+          // Do not silently fall back to moving the tracked camera itself.
+          const previousParent=cam.parent;
+          rig=new B.TransformNode('questLocomotionRig',scene);
+          rig.parent=previousParent||null;
+          cam.parent=rig;
+          G.questLocomotionRig=rig;
         }
         if(rig&&cam.parent===rig){
           const world=cam.getAbsolutePosition();
