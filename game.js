@@ -42,8 +42,8 @@ const G = {
   objective: null, meta: loadMeta(), risers: [], joystick:new B.Vector2(0,0), turnAxis:0, turnLatch:false, stationInfo:null, waveTransition:false, waveToken:0, waveMod:null, waveStartT:0, threat:0, comboBank:0, hubButtons:[], hoveredHubButtons:new Set(), contract:null, contractStartKills:0, contractStartPropHits:0, contractStartWave:1, lastNpcChatter:0, shiftAudio:null, playerStepT:0, lastNpcStepAt:0
 };
 
-const FIRE_PARTICLE_CAPACITY=100000;
-const FIRE_CPU_FALLBACK_CAP=1800; // Quest/unsupported GPU: keep fire visible instead of locking the browser
+const FIRE_PARTICLE_CAPACITY=256;
+const FIRE_CPU_FALLBACK_CAP=128; // Quest/unsupported GPU: keep fire visible instead of locking the browser
 
 const LOBBY_ASSETS = {
   "Couch_Large2.obj": `# Blender v2.79 (sub 0) OBJ File: 'Couch_Large2.blend'
@@ -11528,7 +11528,7 @@ function makeScene(){
 // The particle system remains for embers; these ribbons provide the visible flame body.
 function buildSculptedFire(scene,fireRoot,light,coreLight,stillOwned=()=>G.state==='hub'){
   const flames=[];
-  const segmentCount=13;
+  const segmentCount=7;
   const material=new B.StandardMaterial('naturalFlameGradientMaterial',scene);
   material.disableLighting=true;
   material.diffuseColor=B.Color3.White();
@@ -11539,7 +11539,7 @@ function buildSculptedFire(scene,fireRoot,light,coreLight,stillOwned=()=>G.state
   material.alphaMode=B.Engine.ALPHA_ADD;
   // Six tongues, each formed from two intersecting translucent sheets.
   // These shapes have continuous edges, not individual spark circles.
-  for(let flame=0;flame<7;flame++){
+  for(let flame=0;flame<3;flame++){
     for(let side=0;side<2;side++){
       const seed=flame*1.77+side*.48;
       const xBase=-.39+flame*.13;
@@ -11608,7 +11608,7 @@ function buildSculptedFire(scene,fireRoot,light,coreLight,stillOwned=()=>G.state
     if(!stillOwned()){stopStale();return;}
     clock+=dt;elapsed+=dt;
     // 20-30 procedural shape updates per second save Quest GPU/CPU time.
-    const interval=(G.perfScale||1)>1.15?.055:.036;
+    const interval=(G.perfScale||1)>1.15?.20:.12;
     if(!stillOwned()){stopStale();return;}
     if(elapsed<interval)return;
     elapsed=0;
@@ -16995,6 +16995,21 @@ function updateJoystickMovement(scene,dt){
     G.vrSprint=false;
   }
   if(!xrGrabControllerLive('right',G.right))G.turnAxis=0;
+  // Read native Quest gamepad axes each frame as well as Babylon axis events.
+  // Some runtimes do not emit an initial thumbstick event or expose the named component.
+  // Only accept a currently connected XR controller, never a stale cached gamepad.
+  const readLiveStick=(hand,ctrl)=>{
+    if(!xrGrabControllerLive(hand,ctrl))return null;
+    const axes=ctrl.inputSource?.gamepad?.axes;
+    if(!axes||axes.length<2)return null;
+    const pair=axes.length>=4?[axes[2],axes[3]]:[axes[0],axes[1]];
+    if(!pair.every(Number.isFinite))return null;
+    return pair.map(v=>Math.max(-1,Math.min(1,v)));
+  };
+  const leftAxes=readLiveStick('left',G.left);
+  if(leftAxes){G.joystick.x=leftAxes[0];G.joystick.y=leftAxes[1];}
+  const rightAxes=readLiveStick('right',G.right);
+  if(rightAxes)G.turnAxis=rightAxes[0];
   if(!Number.isFinite(dt)||dt<=0)return;
   const step=Math.min(.05,dt),ax=safeMovementAxis(G.joystick?.x),ay=safeMovementAxis(G.joystick?.y);
   // CR4.9.561: radial deadzone removes stick drift without the abrupt
