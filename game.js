@@ -16990,31 +16990,44 @@ function updateJoystickMovement(scene,dt){
   G.vrMoveMagnitude=0;
   // CR4.9.603: native XR controllers can disconnect before Babylon emits removal.
   // Clear stale axes every frame; disconnected hands must not keep moving/turning.
-  if(!xrGrabControllerLive('left',G.left)){
-    try{G.joystick?.set?.(0,0);}catch{}
-    G.vrSprint=false;
-  }
-  if(!xrGrabControllerLive('right',G.right))G.turnAxis=0;
+  // Controller ownership for locomotion is independent of grabbing state.
+  // A missed grab-registration callback must not disable joystick movement.
+  if(!G.left){try{G.joystick?.set?.(0,0);}catch{} G.vrSprint=false;}
+  if(!G.right)G.turnAxis=0;
   // Read native Quest gamepad axes each frame as well as Babylon axis events.
   // Some runtimes do not emit an initial thumbstick event or expose the named component.
   // Only accept a currently connected XR controller, never a stale cached gamepad.
   const readLiveStick=(hand,ctrl)=>{
-    if(!xrGrabControllerLive(hand,ctrl))return null;
-    const axes=ctrl.inputSource?.gamepad?.axes;
-    if(!axes||axes.length<2)return null;
-    // WebXR layouts differ: the active thumbstick can occupy either axis pair.
-    const a=axes[0],b=axes[1],c=axes[2],d=axes[3];
-    const first=Number.isFinite(a)&&Number.isFinite(b);
-    const second=axes.length>=4&&Number.isFinite(c)&&Number.isFinite(d);
-    if(!first&&!second)return null;
-    const useSecond=second&&(!first||Math.hypot(c,d)>Math.hypot(a,b));
-    const x=useSecond?c:a,y=useSecond?d:b;
-    return [Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
+    try{
+      const manager=G.xr?.baseExperience?.sessionManager;
+      const source=ctrl?.inputSource,session=manager?.session;
+      if(!manager?.inXRSession||!source||source.handedness!==hand||
+         (hand==='left'?G.left:G.right)!==ctrl||!session?.inputSources)return null;
+      let present=false;
+      for(const item of session.inputSources){if(item===source){present=true;break;}}
+      if(!present||manager.session!==session||ctrl.inputSource!==source)return null;
+      // Read the XR-standard component when available: the first gamepad pair
+      // may be a touchpad/trigger, not the movement thumbstick.
+      const component=ctrl.motionController?.getComponent?.('xr-standard-thumbstick');
+      const cx=component?.axes?.x,cy=component?.axes?.y;
+      if(Number.isFinite(cx)&&Number.isFinite(cy))
+        return [Math.max(-1,Math.min(1,cx)),Math.max(-1,Math.min(1,cy))];
+      const axes=source.gamepad?.axes;
+      if(!axes||axes.length<2)return null;
+      // Standard WebXR gamepads reserve axes 0/1 for a touchpad and 2/3
+      // for the thumbstick. Two-axis controllers use axes 0/1 instead.
+      const offset=axes.length>=4?2:0;
+      const x=axes[offset],y=axes[offset+1];
+      if(!Number.isFinite(x)||!Number.isFinite(y))return null;
+      return [Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
+    }catch{return null;}
   };
   const leftAxes=readLiveStick('left',G.left);
   if(leftAxes){G.joystick.x=leftAxes[0];G.joystick.y=leftAxes[1];}
+  else{try{G.joystick?.set?.(0,0);}catch{} G.vrSprint=false;}
   const rightAxes=readLiveStick('right',G.right);
   if(rightAxes)G.turnAxis=rightAxes[0];
+  else G.turnAxis=0;
   if(!Number.isFinite(dt)||dt<=0)return;
   const step=Math.min(.05,dt),ax=safeMovementAxis(G.joystick?.x),ay=safeMovementAxis(G.joystick?.y);
   // CR4.9.561: radial deadzone removes stick drift without the abrupt
