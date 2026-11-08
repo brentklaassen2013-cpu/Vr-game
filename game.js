@@ -19308,7 +19308,7 @@ async function setupXR(scene){
       try{observeXR(controllerToken,ctrl.onMeshLoadedObservable,m=>m.setEnabled(false));if(ctrl.mesh)ctrl.mesh.setEnabled(false);}catch{}
       G.handState.set(handed,{ctrl,grabbing:null,prevPos:null,prevBat:null}); if(handed==='right'){G.right=ctrl;attachBatToController(ctrl);} if(handed==='left')G.left=ctrl; buildHandVisual(scene,handed,ctrl); refreshPlayerCosmetics();
       const grip=mc.getComponent('xr-standard-squeeze'); if(grip){ observeXR(controllerToken,grip.onButtonStateChangedObservable,()=>{ if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(grip.changes.pressed){ if(grip.pressed)tryGrab(scene,handed,ctrl); else releaseGrab(handed,ctrl); } }); }
-      const trig=mc.getComponent('xr-standard-trigger'); if(trig){ observeXR(controllerToken,trig.onButtonStateChangedObservable,()=>{if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(trig.changes.pressed&&trig.pressed)triggerInteract(scene,ctrl);}); }
+      const trig=mc.getComponent('xr-standard-trigger'); if(trig){ observeXR(controllerToken,trig.onButtonStateChangedObservable,()=>{if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(trig.changes.pressed&&trig.pressed){if(G.state==='hub')startShift(scene,handed==='left'?'SURVIVAL':'LEVELS');else triggerInteract(scene,ctrl);}}); }
       // CR4.9.601: thumbstick movement, sprint and prop reset require a
       // currently connected native XR input source, not only a stale controller token.
       const stick=mc.getComponent('xr-standard-thumbstick'); if(stick){
@@ -22666,7 +22666,7 @@ window.addEventListener('keydown',e=>{
 
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 4.9 ready • distinctive coworker outfits, performance and impact fixes';
+ui.status.textContent='Quest: linker trigger = START SURVIVAL; rechter trigger = START LEVELS. Linker joystick = lopen. Desktop: 1 = SURVIVAL, Enter = LEVELS.';
 // Screenshot collector for an external *real-browser* critic runner.
 // Deliberately stages scenes inside the existing game rather than creating mockup images.
 const qaLiveNpc=n=>!!(n&&!n.dead&&n.root&&!n.root.isDisposed?.()&&n.root.position&&Number.isFinite(n.root.position.x)&&Number.isFinite(n.root.position.y)&&Number.isFinite(n.root.position.z));
