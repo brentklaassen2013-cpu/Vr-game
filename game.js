@@ -17118,11 +17118,16 @@ function updateJoystickMovement(scene,dt){
     // CR4.9.564: a bad/stale quaternion must not abort the entire game tick.
     try{
       const a=safePlayerTurnSpeed()*turn*step*Math.PI/180;
-      const prior=cam.rotationQuaternion||B.Quaternion.Identity();
-      const next=B.Quaternion.RotationAxis(B.Axis.Y,a).multiply(prior);
-      if(next&&Number.isFinite(next.x)&&Number.isFinite(next.y)&&
-         Number.isFinite(next.z)&&Number.isFinite(next.w))
-        cam.rotationQuaternion=next;
+      // WebXR owns the tracked camera quaternion. Snap/smooth turning must
+      // rotate the locomotion rig instead or tracking will erase it.
+      const rig=G.questLocomotionRig;
+      const target=rig&&cam.parent===rig&&!rig.isDisposed?.()?rig:null;
+      if(target){
+        const prior=target.rotationQuaternion||B.Quaternion.Identity();
+        const rotated=B.Quaternion.RotationAxis(B.Axis.Y,a).multiply(prior);
+        if(rotated&&[rotated.x,rotated.y,rotated.z,rotated.w].every(Number.isFinite))
+          target.rotationQuaternion=rotated;
+      }
     }catch{}
   }
 }
