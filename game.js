@@ -6,62 +6,44 @@ const ui = {
   boot: document.getElementById('boot'), status: document.getElementById('bootStatus'), enter: document.getElementById('enterVR'), preview: document.getElementById('desktopStart'),
   hud: document.getElementById('hud'), toast: document.getElementById('toast'), hpBar: document.getElementById('hpBar'), hpText: document.getElementById('hpText'),
   batBar: document.getElementById('batBar'), batText: document.getElementById('batText'), chaosBar: document.getElementById('chaosBar'), chaosText: document.getElementById('chaosText'),
-  rank: document.getElementById('rankText'), score: document.getElementById('scoreText'), mode: document.getElementById('modeText'), shift: document.getElementById('shiftText')
+  rank: document.getElementById('rankText'), score: document.getElementById('scoreText'), mode: document.getElementById('modeText'), shift: document.getElementById('shiftText'), tasks: document.getElementById('officeTasks'), tasksBody:document.getElementById('officeTaskBody'), bossHud:document.getElementById('bossHUD'),bossName:document.getElementById('bossName'),bossBar:document.getElementById('bossBar'),bossHint:document.getElementById('bossHint')
 };
 
-let OWNER_MODE=(()=>{try{return localStorage.getItem('crazyOfficeOwnerMode')==='1';}catch{return false;}})();
-const OWNER_CODE_SHA256='4adc237debe13d1881f89e4def11bfde5a285c65ba4d2e1007648aa76f54f780';
-async function sha256Text(text){try{const b=new TextEncoder().encode(String(text||'')),d=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(d)].map(x=>x.toString(16).padStart(2,'0')).join('');}catch{return '';}}
-async function activateOwnerCode(){
-  if(OWNER_MODE){toast('OWNER MODE ALREADY ACTIVE',900);return;}
-  let code='';try{code=window.prompt('Enter Owner Code')||'';}catch{}
-  if((await sha256Text(code))!==OWNER_CODE_SHA256){toast('WRONG OWNER CODE',1000);tone(90,.08,'square',.03,-25);return;}
-  OWNER_MODE=true;try{localStorage.setItem('crazyOfficeOwnerMode','1');}catch{}
-  G.meta.unlockedBats=CATALOG.bats.map(x=>x.id);G.meta.unlockedSkins=CATALOG.skins.map(x=>x.id);G.meta.unlockedMaps=CATALOG.maps.map(x=>x.id);saveMeta();
-  toast('OWNER MODE ACTIVE • ALL FREE',1500);tone(440,.1,'triangle',.04,280);rebuildHubLabels?.();
-}
+let OWNER_MODE=false;
+// Public GitHub Pages edition: privileged owner unlocks must not be client-authorized.
+// The original client-side owner-code check is deliberately disabled.
+function activateOwnerCode(){toast('OWNER FEATURES NOT AVAILABLE ON PUBLIC PAGES',1500);}
 
-const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'5.7',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
+const DEFAULT_META = {level:1,survivalLevel:1,xp:0,coins:0,bestRank:'D',totalKOs:0,bestCombo:0,shifts:0,freeCrates:0,unlockedBats:['STANDARD'],unlockedSkins:['CLASSIC','POTATO'],unlockedMaps:['FLOOR 13'],selectedBat:'STANDARD',selectedSkin:'POTATO',selectedMap:'FLOOR 13',cameraMode:'OFFICE CAM',selectedColor:'#b9833d',survivalBestWave:0,contentVersion:'4.9',settings:{moveSpeed:2.2,smoothTurnSpeed:110,haptics:true,music:true}};
 function loadMeta(){
   try{
     const raw=localStorage.getItem('crazyOfficeNightShiftMeta');
     const parsed=raw?JSON.parse(raw):{};
-    const upgrading=parsed.contentVersion!=='5.7';
+    const upgrading=parsed.contentVersion!=='4.9';
     const merged={...DEFAULT_META,...parsed,settings:{...DEFAULT_META.settings,...(parsed.settings||{})}};
     merged.unlockedBats=Array.from(new Set(merged.unlockedBats||['STANDARD']));
     merged.unlockedSkins=Array.from(new Set(merged.unlockedSkins||['CLASSIC','POTATO']));
     merged.unlockedMaps=Array.from(new Set(merged.unlockedMaps||['FLOOR 13']));
-    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='5.7';
+    merged.survivalLevel=Math.max(1,Number(merged.survivalLevel||1));merged.contentVersion='4.9';
     if(upgrading)try{localStorage.setItem('crazyOfficeNightShiftMeta',JSON.stringify(merged));}catch{}
     return merged;
   }catch(e){console.warn('Meta save could not be read; using defaults.',e);return {...DEFAULT_META,settings:{...DEFAULT_META.settings}};}
 }
 
 
-const PLATFORM_PROFILE=(()=>{
-  const ua=(navigator.userAgent||'').toLowerCase();
-  const coarse=!!window.matchMedia?.('(pointer: coarse)')?.matches;
-  const touch=(navigator.maxTouchPoints||0)>0||coarse;
-  const mobile=touch&&(/iphone|ipad|ipod|android/.test(ua)||Math.min(innerWidth||9999,innerHeight||9999)<820);
-  const ios=/iphone|ipad|ipod/.test(ua);
-  const android=/android/.test(ua);
-  return {touch,mobile,ios,android,gamepad:!!navigator.getGamepads,xr:!!navigator.xr,quality:mobile?'MOBILE':'FULL'};
-})();
-
 const G = {
+  debrisBudget:0,
   state: 'hub', mode: 'LEVELS', hp: 100, maxHp: 100, score: 0, chaos: 0, combo: 0, comboT: 0, kills: 0, blocks: 0, perfectBlocks: 0, propHits: 0, bestCombo: 0,
   level: 1, xp: 0, coins: 0, promotionEvery: 3, nextPromotion: 3, difficulty: 1, wave: 0, shiftTime: 0, lastIncident: '', incidentT: 0,
   bat: { durability: 100, max: 100, broken: false, respawnT: 0, crack: 0 },
   upgrade: { power: 1, defense: 1, improvised: 1, durability: 1, recovery: 0 },
   props: [], npcs: [], hazards: [], fx: [], lobbyMeshes: [], arenaMeshes: [], blockers: [], xr: null, right: null, left: null, batMesh: null, batTip: null, handState: new Map(), handVisuals: {left:null,right:null}, playerBodyRoot:null, vrHudRoot:null, vrHudTex:null,
   desktop: false, lastT: performance.now(), directorT: 0, spawnT: 0, bossSpawned: false, boss: null, ended: false, endTimer: null, attackGrace: 0, damageFlashT: 0, perfT:0, perfFrames:0, perfScale:1, musicT: 0, lastMusicBand: '', lastRank: 'D',
-  objective: null, meta: loadMeta(), risers: [], joystick:new B.Vector2(0,0), turnAxis:0, turnLatch:false, stationInfo:null, waveTransition:false, waveToken:0, waveMod:null, waveStartT:0, threat:0, comboBank:0, hubButtons:[], hoveredHubButtons:new Set(), contract:null, contractStartKills:0, contractStartPropHits:0, contractStartWave:1, lastNpcChatter:0, shiftAudio:null, playerStepT:0, lastNpcStepAt:0, platform:PLATFORM_PROFILE, flatKeys:new Set(), flatInput:{moveX:0,moveY:0,lookX:0,lookY:0}, flatHeldProp:null, flatAttackCooldown:0, flatGamepadButtons:[], flatPointerLocked:false, flatBatSwing:0, flatPromptT:0,
-  net:{role:'solo',roomCode:'',peer:null,connections:new Map(),remotes:new Map(),lastSend:0,lastNpcSend:0,status:'OFFLINE',playerId:'',npcSeq:0,scene:null}
+  objective: null, meta: loadMeta(), risers: [], joystick:new B.Vector2(0,0), turnAxis:0, turnLatch:false, stationInfo:null, waveTransition:false, waveToken:0, waveMod:null, waveStartT:0, threat:0, comboBank:0, hubButtons:[], hoveredHubButtons:new Set(), contract:null, contractStartKills:0, contractStartPropHits:0, contractStartWave:1, lastNpcChatter:0, shiftAudio:null, playerStepT:0, lastNpcStepAt:0
 };
 
-const FIRE_PARTICLE_CAPACITY=2400;
-const FIRE_SMALL_FLAME_COUNT=50;
-const FIRE_VISUAL_VERSION='5.4-MULTI-FLAME-50-LAYERED-FLAME';
+const FIRE_PARTICLE_CAPACITY=100000;
+const FIRE_CPU_FALLBACK_CAP=1800; // Quest/unsupported GPU: keep fire visible instead of locking the browser
 
 const LOBBY_ASSETS = {
   "Couch_Large2.obj": `# Blender v2.79 (sub 0) OBJ File: 'Couch_Large2.blend'
@@ -8706,28 +8688,28 @@ function buildEmbeddedObj(scene,name,objText,mtlText,opt={}){
 const KAYKIT_ROOTS={
   furniture:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0/main/addons/kaykit_furniture_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-Furniture-Bits-1.0@main/addons/kaykit_furniture_bits/Assets/gltf/'],
   restaurant:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0/main/addons/kaykit_restaurant_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-Restaurant-Bits-1.0@main/addons/kaykit_restaurant_bits/Assets/gltf/'],
-  city:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0/main/addons/kaykit_city_builder_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0@main/addons/kaykit_city_builder_bits/Assets/gltf/'],
-  space:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-Space-Base-Bits-1.0/main/addons/kaykit_space_base_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-Space-Base-Bits-1.0@main/addons/kaykit_space_base_bits/Assets/gltf/']
+  city:['https://raw.githubusercontent.com/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0/main/addons/kaykit_city_builder_bits/Assets/gltf/','https://cdn.jsdelivr.net/gh/KayKit-Game-Assets/KayKit-City-Builder-Bits-1.0@main/addons/kaykit_city_builder_bits/Assets/gltf/']
 };
 const KAYKIT_LICENSE='CC0-1.0';
 const KAYKIT_MODEL_CATALOG={
   furniture:['armchair','armchair_pillows','cabinet_medium','cabinet_medium_decorated','cabinet_small','cabinet_small_decorated','cactus_medium_A','cactus_medium_B','cactus_small_A','cactus_small_B','chair_A','chair_A_wood','chair_B','chair_B_wood','chair_C','chair_stool','chair_stool_wood','couch','couch_pillows','lamp_standing','lamp_table','pictureframe_large_A','pictureframe_large_B','pictureframe_medium','pictureframe_small_A','pictureframe_small_B','pictureframe_small_C','pictureframe_standing_A','pictureframe_standing_B','pillow_A','pillow_B','rug_oval_A','rug_oval_B','rug_rectangle_A','rug_rectangle_B','rug_rectangle_stripes_A','rug_rectangle_stripes_B','shelf_A_big','shelf_A_small','shelf_B_large','shelf_B_large_decorated','shelf_B_small','shelf_B_small_decorated','table_low'],
   restaurant:['bowl','bowl_dirty','bowl_small','chair_A','chair_B','chair_stool','crate','crate_buns','crate_carrots','crate_cheese','crate_ham','crate_lettuce','crate_lid','crate_onions','crate_potatoes','crate_steak','crate_tomatoes','cuttingboard','dishrack','dishrack_plates','door_A','door_B','extractorhood','food_burger','food_dinner','food_ingredient_bun','food_ingredient_bun_bottom','food_ingredient_bun_top','food_ingredient_burger_cooked','food_ingredient_burger_uncooked','food_ingredient_carrot','food_ingredient_carrot_chopped','food_ingredient_cheese','food_ingredient_cheese_slice','food_ingredient_ham','food_ingredient_ham_cooked','food_ingredient_lettuce','food_ingredient_onion','food_ingredient_onion_rings','food_ingredient_potato','food_ingredient_potato_chopped'],
-  city:['base','bench','box_A','box_B','building_A','building_A_withoutBase','building_B','building_B_withoutBase','building_C','building_C_withoutBase','building_D','building_D_withoutBase','building_E','building_E_withoutBase','building_F','building_F_withoutBase','building_G','building_G_withoutBase','building_H','building_H_withoutBase','bush','car_hatchback','car_police','car_sedan','car_stationwagon','car_taxi','dumpster','firehydrant','road_corner','road_corner_curved','road_junction','road_straight','road_straight_crossing','road_tsplit','streetlight','trafficlight_A','trafficlight_B','trafficlight_C','trash_A','trash_B','watertower'],
-  space:['basemodule_A','basemodule_B','basemodule_C','basemodule_D','basemodule_E','basemodule_garage','cargo_A','cargo_A_packed','cargo_A_stacked','cargo_B','cargo_B_packed','cargo_B_stacked','cargodepot_A','cargodepot_B','cargodepot_C','containers_A','containers_B','containers_C','containers_D','drill_structure','lander_A','lander_B','lander_base','landingpad_large','landingpad_small','lights','rock_A','rock_B','rocks_A','rocks_B','roofmodule_base','roofmodule_cargo_A','roofmodule_cargo_B','roofmodule_cargo_C','roofmodule_solarpanels','solarpanel','spacetruck','spacetruck_large','spacetruck_trailer','structure_low','structure_tall']
+  city:['base','bench','box_A','box_B','building_A','building_A_withoutBase','building_B','building_B_withoutBase','building_C','building_C_withoutBase','building_D','building_D_withoutBase','building_E','building_E_withoutBase','building_F','building_F_withoutBase','building_G','building_G_withoutBase','building_H','building_H_withoutBase','bush','car_hatchback','car_police','car_sedan','car_stationwagon','car_taxi','dumpster','firehydrant','road_corner','road_corner_curved','road_junction','road_straight','road_straight_crossing','road_tsplit','streetlight','trafficlight_A','trafficlight_B','trafficlight_C','trash_A','trash_B','watertower']
 };
-const REMOTE_MAX_ACTIVE=PLATFORM_PROFILE.mobile?2:4,REMOTE_TEMPLATE_CACHE=new Map(),REMOTE_TEMPLATE_INFLIGHT=new Map(),REMOTE_LOAD_QUEUE=[];let REMOTE_ACTIVE=0;
+const REMOTE_MAX_ACTIVE=4,REMOTE_TEMPLATE_CACHE=new Map(),REMOTE_TEMPLATE_INFLIGHT=new Map(),REMOTE_LOAD_QUEUE=[];let REMOTE_ACTIVE=0;
 G.remoteModels=G.remoteModels||{requested:0,loaded:0,failed:0,uniqueLoaded:0,cacheHits:0,fallbacks:0};G.remoteDecor=G.remoteDecor||[];
 function remoteListForState(){return G.state==='hub'?G.lobbyMeshes:G.arenaMeshes;}
 function pumpRemoteQueue(){while(REMOTE_ACTIVE<REMOTE_MAX_ACTIVE&&REMOTE_LOAD_QUEUE.length){const j=REMOTE_LOAD_QUEUE.shift();REMOTE_ACTIVE++;Promise.resolve().then(j.task).then(j.ok,j.bad).finally(()=>{REMOTE_ACTIVE--;pumpRemoteQueue();});}}
 function enqueueRemote(task){return new Promise((ok,bad)=>{REMOTE_LOAD_QUEUE.push({task,ok,bad});pumpRemoteQueue();});}
 async function loadKayKitTemplate(scene,pack,file){const key=pack+'/'+file;if(REMOTE_TEMPLATE_CACHE.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_CACHE.get(key);}if(REMOTE_TEMPLATE_INFLIGHT.has(key)){G.remoteModels.cacheHits++;return REMOTE_TEMPLATE_INFLIGHT.get(key);}const p=enqueueRemote(async()=>{if(!window.__CRAZY_REMOTE_MODEL_LOADER||!B.SceneLoader?.ImportMeshAsync)throw new Error('GLTF loader unavailable');if(!KAYKIT_MODEL_CATALOG[pack]?.includes(file))throw new Error('model not in CC0 catalog');let result=null,last=null;for(const root of (KAYKIT_ROOTS[pack]||[])){try{result=await B.SceneLoader.ImportMeshAsync('',root,file+'.gltf',scene);break;}catch(e){last=e;}}if(!result)throw last||new Error('all model CDNs failed');const t=new B.TransformNode('remoteTemplate_'+pack+'_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));for(const n of tops)try{n.parent=t}catch{}for(const m of result.meshes||[]){m.isPickable=false;m.receiveShadows=true;}t.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,t);G.remoteModels.uniqueLoaded++;return t;});REMOTE_TEMPLATE_INFLIGHT.set(key,p);try{return await p;}finally{REMOTE_TEMPLATE_INFLIGHT.delete(key);}}
+function makeRemoteFallback(scene,h,pack,file){const add=(n,p,s,c)=>{const m=box(scene,n,p,s,c,h);m.isPickable=false;return m;},f=file.toLowerCase();if(f.includes('chair')||f.includes('armchair')){add('fbSeat',new B.Vector3(0,.34,0),new B.Vector3(.58,.18,.58),'#5b6675');add('fbBack',new B.Vector3(0,.78,.24),new B.Vector3(.58,.70,.16),'#647283');}else if(f.includes('couch')){add('fbCouch',new B.Vector3(0,.4,0),new B.Vector3(1.25,.5,.55),'#59697c');add('fbCouchBack',new B.Vector3(0,.82,.24),new B.Vector3(1.25,.6,.16),'#65768a');}else if(f.includes('car_')){add('fbCarBody',new B.Vector3(0,.35,0),new B.Vector3(1.65,.45,.8),'#53677a');add('fbCarCab',new B.Vector3(0,.72,-.05),new B.Vector3(.9,.4,.68),'#718da6');}else if(f.includes('shelf')||f.includes('cabinet')){add('fbCab',new B.Vector3(0,.75,0),new B.Vector3(.72,1.5,.42),'#6d5b48');for(const y of [.3,.72,1.14])add('fbShelf',new B.Vector3(0,y,-.23),new B.Vector3(.66,.05,.38),'#8b7358');}else if(f.includes('lamp')){add('fbLampBase',new B.Vector3(0,.08,0),new B.Vector3(.34,.08,.34),'#4e5965');add('fbLampStem',new B.Vector3(0,.55,0),new B.Vector3(.06,.9,.06),'#66727d');add('fbLampShade',new B.Vector3(0,1.02,0),new B.Vector3(.4,.24,.4),'#dfc98a');}else if(f.includes('cactus')||f.includes('bush')){add('fbPlantPot',new B.Vector3(0,.16,0),new B.Vector3(.34,.32,.34),'#8a5b3c');const leaf=B.MeshBuilder.CreateSphere('fbPlant',{diameter:.62,segments:8},scene);leaf.parent=h;leaf.position.y=.62;leaf.scaling.y=1.35;leaf.material=mat(scene,'fbPlantMat','#4b985c',.9);leaf.isPickable=false;}else if(f.includes('crate')||f.includes('box_'))add('fbCrate',new B.Vector3(0,.28,0),new B.Vector3(.62,.56,.62),'#8c6946');else if(f.includes('pictureframe')){add('fbFrame',new B.Vector3(0,.72,0),new B.Vector3(.72,.52,.06),'#8b6438');add('fbPicture',new B.Vector3(0,.72,-.04),new B.Vector3(.58,.38,.02),'#b9c8d5');}else add('fbGeneric',new B.Vector3(0,.35,0),new B.Vector3(.65,.7,.65),pack==='city'?'#55636f':pack==='restaurant'?'#8b6a4f':'#6b7380');G.remoteModels.fallbacks++;h.metadata.fallback=true;}
 function cloneRemoteTemplateInto(t,h,opt={}){for(const n of (t.getChildren?.()||[]))try{n.clone(h.name+'_'+n.name,h,false)?.setEnabled?.(true)}catch{}for(const m of (h.getChildMeshes?.()||[])){m.isPickable=!!opt.pickable;if(opt.receiveShadows!==false)m.receiveShadows=true;try{m.freezeWorldMatrix();}catch{}}}
-function remoteKayKitModel(scene,pack,file,opt={}){const h=new B.TransformNode(opt.name||`kaykit_${pack}_${file}`,scene);h.position.copyFrom(opt.position||B.Vector3.Zero());h.rotation.copyFrom(opt.rotation||B.Vector3.Zero());const sc=opt.scale instanceof B.Vector3?opt.scale:new B.Vector3(opt.scale||1,opt.scale||1,opt.scale||1);h.scaling.copyFrom(sc);h.metadata={kind:'remoteModel',source:'KayKit',pack,file,license:KAYKIT_LICENSE,lowPriority:!!opt.lowPriority};(opt.list||remoteListForState()).push(h);G.remoteModels.requested++;if(opt.lowPriority)G.remoteDecor.push(h);loadKayKitTemplate(scene,pack,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);normalizeRemotePlacement(h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.004,opt.minHeight||0);}catch(e){console.warn('KayKit collider skipped',file,e);}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,pack,file,opt);console.warn('KayKit fallback',pack,file,e?.message||e);});return h;}
+function remoteKayKitModel(scene,pack,file,opt={}){const h=new B.TransformNode(opt.name||`kaykit_${pack}_${file}`,scene);h.position.copyFrom(opt.position||B.Vector3.Zero());h.rotation.copyFrom(opt.rotation||B.Vector3.Zero());const s=opt.scale instanceof B.Vector3?opt.scale:new B.Vector3(opt.scale||1,opt.scale||1,opt.scale||1);h.scaling.copyFrom(s);h.metadata={kind:'remoteModel',source:'KayKit',pack,file,license:KAYKIT_LICENSE,lowPriority:!!opt.lowPriority};(opt.list||remoteListForState()).push(h);G.remoteModels.requested++;if(opt.lowPriority)G.remoteDecor.push(h);loadKayKitTemplate(scene,pack,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.004,opt.minHeight||0);}catch(e){console.warn('KayKit collider skipped',file,e);}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,pack,file);console.warn('KayKit fallback',pack,file,e?.message||e);});return h;}
 function setRemoteDecorReduced(reduced){G.remoteDecor=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());if(G.remoteDecorReduced===reduced)return;G.remoteDecorReduced=reduced;let i=0;for(const h of G.remoteDecor)try{h.setEnabled(!reduced||(i++%2===0));}catch{}}
 
 
-// Kenney Furniture Kit — CC0 second provider. Required by curated hub/arena model calls.
+// 4.3 SECOND INTERNET MODEL PROVIDER — Kenney Furniture Kit (official pack is CC0).
+// GLB files are loaded from a public mirror with a jsDelivr fallback, then cached/cloned exactly like KayKit.
 const KENNEY_LICENSE='CC0-1.0';
 const KENNEY_FURNITURE_ROOTS=[
   'https://raw.githubusercontent.com/Phazorknight/Cogito/main/addons/cogito/Assets/Models/Kenney/Furniture/GLTF%20format/',
@@ -8750,414 +8732,21 @@ async function loadKenneyTemplate(scene,file){
     let result=null,last=null;
     for(const root of KENNEY_FURNITURE_ROOTS){try{result=await B.SceneLoader.ImportMeshAsync('',root,file+'.glb',scene);break;}catch(e){last=e;}}
     if(!result)throw last||new Error('Kenney model CDNs failed');
-    const tt=new B.TransformNode('kenneyTemplate_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));
-    for(const n of tops)try{n.parent=tt}catch{}
+    const t=new B.TransformNode('kenneyTemplate_'+file,scene),all=[...(result.meshes||[]),...(result.transformNodes||[])],set=new Set(all),tops=all.filter(n=>!n.parent||!set.has(n.parent));
+    for(const n of tops)try{n.parent=t}catch{}
     for(const m of result.meshes||[]){m.isPickable=false;m.receiveShadows=true;}
-    tt.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,tt);G.remoteModels.uniqueLoaded++;return tt;
+    t.setEnabled(false);REMOTE_TEMPLATE_CACHE.set(key,t);G.remoteModels.uniqueLoaded++;return t;
   });
   REMOTE_TEMPLATE_INFLIGHT.set(key,p);try{return await p;}finally{REMOTE_TEMPLATE_INFLIGHT.delete(key);}
-}
-function makeRemoteFallback(scene,h,pack,file,opt={}){
-  const add=(n,p,sc,c)=>{const m=box(scene,n,p,sc,c,h);m.isPickable=false;return m;},f=file.toLowerCase(),wood='#765a43',metal='#596672',fabric='#66798d',screen='#243846';
-  if(f.includes('chair')||f.includes('armchair')){add('fbSeat',new B.Vector3(0,.34,0),new B.Vector3(.58,.16,.58),fabric);add('fbBack',new B.Vector3(0,.76,.25),new B.Vector3(.58,.64,.14),fabric);for(const x of [-.22,.22])for(const z of [-.20,.20])add('fbChairLeg',new B.Vector3(x,.16,z),new B.Vector3(.05,.32,.05),metal);}
-  else if(f.includes('couch')||f.includes('bench')){add('fbCouch',new B.Vector3(0,.38,0),new B.Vector3(1.28,.42,.56),fabric);add('fbCouchBack',new B.Vector3(0,.76,.23),new B.Vector3(1.28,.52,.14),fabric);}
-  else if(f.includes('desk')||f.includes('table')){add('fbDeskTop',new B.Vector3(0,.72,0),new B.Vector3(1.20,.09,.64),wood);for(const x of [-.48,.48])for(const z of [-.24,.24])add('fbDeskLeg',new B.Vector3(x,.35,z),new B.Vector3(.07,.70,.07),metal);}
-  else if(f.includes('computerkeyboard')||f.includes('keyboard'))add('fbKeyboard',new B.Vector3(0,.04,0),new B.Vector3(.52,.07,.20),'#333a42');
-  else if(f.includes('computermouse')||f.includes('mouse')){const q=B.MeshBuilder.CreateSphere('fbMouse',{diameter:.16,segments:8},scene);q.parent=h;q.scaling=new B.Vector3(1,.55,1.35);q.position.y=.05;q.material=denseMaterial(scene,'#343a42',0);}
-  else if(f.includes('computerscreen')||f.includes('television')){add('fbMonitor',new B.Vector3(0,.48,0),new B.Vector3(.68,.46,.08),metal);const face=add('fbMonitorFace',new B.Vector3(0,.49,-.05),new B.Vector3(.58,.34,.025),screen);face.material.emissiveColor=B.Color3.FromHexString('#4ab7ff').scale(.18);add('fbMonitorStand',new B.Vector3(0,.20,0),new B.Vector3(.10,.30,.08),metal);}
-  else if(f.includes('shelf')||f.includes('cabinet')||f.includes('bookcase')){add('fbCab',new B.Vector3(0,.75,0),new B.Vector3(.76,1.50,.42),wood);for(const y of [.28,.72,1.16])add('fbShelf',new B.Vector3(0,y,-.23),new B.Vector3(.68,.045,.36),'#9a7757');}
-  else if(f.includes('lamp')){add('fbLampBase',new B.Vector3(0,.06,0),new B.Vector3(.34,.07,.34),metal);add('fbLampStem',new B.Vector3(0,.58,0),new B.Vector3(.055,1.04,.055),metal);add('fbLampShade',new B.Vector3(0,1.12,0),new B.Vector3(.42,.24,.42),'#dfc98a');}
-  else if(f.includes('cactus')||f.includes('bush')||f.includes('plant')){add('fbPlantPot',new B.Vector3(0,.16,0),new B.Vector3(.34,.32,.34),'#8a5b3c');const leaf=B.MeshBuilder.CreateSphere('fbPlant',{diameter:.62,segments:8},scene);leaf.parent=h;leaf.position.y=.62;leaf.scaling.y=1.35;leaf.material=mat(scene,'fbPlantMat','#4b985c',.9);leaf.isPickable=false;}
-  else if(f.includes('crate')||f.includes('box_')||f.includes('cardboard')){add('fbCrate',new B.Vector3(0,.28,0),new B.Vector3(.62,.56,.62),'#8c6946');for(const z of [-.25,.25])add('fbCrateBand',new B.Vector3(0,.28,z),new B.Vector3(.68,.07,.035),'#60472f');}
-  else if(f.includes('pictureframe')){add('fbFrame',new B.Vector3(0,.72,0),new B.Vector3(.72,.52,.06),'#8b6438');add('fbPicture',new B.Vector3(0,.72,-.04),new B.Vector3(.58,.38,.02),'#b9c8d5');}
-  else if(f.includes('coatrack')){add('fbRackStem',new B.Vector3(0,.78,0),new B.Vector3(.06,1.50,.06),metal);for(const x of [-.28,.28])add('fbRackArm',new B.Vector3(x*.5,1.35,0),new B.Vector3(.34,.045,.045),metal);}
-  else if(f.includes('doorway')||f.includes('door_')){for(const x of [-.52,.52])add('fbDoorSide',new B.Vector3(x,1.05,0),new B.Vector3(.10,2.10,.12),wood);add('fbDoorTop',new B.Vector3(0,2.05,0),new B.Vector3(1.14,.10,.12),wood);}
-  else if(f.includes('car_')){add('fbCarBody',new B.Vector3(0,.35,0),new B.Vector3(1.65,.45,.8),'#53677a');add('fbCarCab',new B.Vector3(0,.72,-.05),new B.Vector3(.9,.4,.68),'#718da6');}
-  else {if(opt.lowPriority!==false){h.metadata.skippedFallback=true;h.setEnabled(false);G.remoteModels.fallbacks++;return;}add('fbDesignedPedestal',new B.Vector3(0,.22,0),new B.Vector3(.54,.44,.54),'#3c4854');fusionStrip(scene,'fbDesignedAccent',new B.Vector3(0,.46,-.28),new B.Vector3(.32,.025,.015),'#72d8ff',remoteListForState(),.45);}
-  G.remoteModels.fallbacks++;h.metadata.fallback=true;normalizeRemotePlacement(h,opt);
 }
 function remoteKenneyModel(scene,file,opt={}){
   const h=new B.TransformNode(opt.name||`kenney_${file}`,scene);h.position.copyFrom(opt.position||B.Vector3.Zero());h.rotation.copyFrom(opt.rotation||B.Vector3.Zero());
   const s=opt.scale instanceof B.Vector3?opt.scale:new B.Vector3(opt.scale||1,opt.scale||1,opt.scale||1);h.scaling.copyFrom(s);
   h.metadata={kind:'remoteModel',source:'Kenney',pack:'Furniture Kit',file,license:KENNEY_LICENSE,lowPriority:opt.lowPriority!==false};
   (opt.list||remoteListForState()).push(h);G.remoteModels.requested++;if(opt.lowPriority!==false)G.remoteDecor.push(h);
-  loadKenneyTemplate(scene,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.003,opt.minHeight||0);}catch{}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,'furniture',file,opt);console.warn('Kenney fallback',file,e?.message||e);});
+  loadKenneyTemplate(scene,file).then(t=>{if(h.isDisposed?.())return;cloneRemoteTemplateInto(t,h,opt);G.remoteModels.loaded++;if(opt.collider)try{addModelCollider(scene,h,opt.colliderName||h.name+'Collider',opt.colliderPad??.003,opt.minHeight||0);}catch{}try{opt.onReady?.(h)}catch{}}).catch(e=>{if(h.isDisposed?.())return;G.remoteModels.failed++;makeRemoteFallback(scene,h,'furniture',file);console.warn('Kenney fallback',file,e?.message||e);});
   return h;
 }
-
-
-
-// 5.5 AUTONOMOUS GAUNTLET × KAAL 50X + DEEP VISUAL / PLACEMENT REVIEW ---------------------------------------
-// Permanent design-director pipeline: broad specialist passes + paired critics. The runtime
-// audit is deliberately strict, but curatedMode prevents the old mistake of solving emptiness
-// by spraying random boxes everywhere.
-const GAUNTLET_FUSION_VERSION='5.8-GAUNTLET-KAAL-ENTRY-RUNTIME-DEPENDENCY-FIX';
-const GAUNTLET_MAIN_LOOP_PASSES=1;
-const GAUNTLET_AGENT_PASS_BUDGET=5000;
-const GAUNTLET_CRITIC_PASS_BUDGET=5000;
-const GAUNTLET_TESTER_PASS_BUDGET=5000;
-const GAUNTLET_TESTER_STRICTNESS=100;
-const GAUNTLET_LOOP_SENTINEL_RESTARTS=0;
-// Heavy Gauntlet audits are development tools, never continuous player-runtime work.
-const RUNTIME_QA_DIAGNOSTICS=false;
-
-const GAUNTLET_AGENT_ROSTER=[
-  'LEAD_DIRECTOR','AUTO_DISCOVERY_DIRECTOR','COMPLETION_DIRECTOR','NO_EARLY_EXIT_DIRECTOR','LOOP_SENTINEL','WHOLE_GAME_ART_DIRECTOR',
-  'DESIGN_MEMORY','TASTE_PROFILE','BAD_PATTERN_DETECTOR','NO_CHEAPNESS','MESS_VS_STYLE','QUALITY_OVER_QUANTITY','FIX_BEFORE_ADD','BETTER_NOT_BIGGER',
-  'IDEA_GAMEPLAY','IDEA_WORLD','IDEA_AUDIO','IDEA_NPC','IDEA_SURPRISE','IDEA_REPLAYABILITY','IDEA_INTERACTION','IDEA_CHAOS','IDEA_RARE_EVENT','IDEA_WOW_MOMENT','IDEA_FUNNY_OFFICE',
-  'VISUAL_DIRECTOR','KAAL_HUNTER','EMPTY_SPACE_AGENT','CLUTTER_HUNTER','CLUTTER_CLEANUP','BAD_PLACEMENT_HUNTER','OBJECT_PLACEMENT','ROOM_COMPOSITION','VISUAL_NOISE_KILLER','DELETE_MORE',
-  'OBJECT_QUALITY','FURNITURE_QUALITY','PROP_PURPOSE','OBJECT_RELATIONSHIP','OBJECT_GROUPING','CONTEXT_AGENT','ROOM_PURPOSE_LOCK','HERO_OBJECT','FOCAL_POINT','DENSITY_MAP','SIGHTLINE','WALKABILITY',
-  'OVERLAP_CLIPPING','FLOATING_OBJECT','CONTACT_AGENT','CLEARANCE_AGENT','SCALE_SANITY','SCALE_COMPARISON','VR_REACH','SPAWN_PLACEMENT','NPC_PLACEMENT','PLAYER_VIEWPOINT','CLOSEUP_INSPECTOR','DISTANCE_INSPECTOR',
-  'WALL_QUALITY','FLOOR_QUALITY','CEILING_QUALITY','CORNER_INSPECTOR','DOORWAY_INSPECTOR','ARCHITECTURE_DIRECTOR','ROOM_IDENTITY','MAP_IDENTITY','THEME_GUARDIAN','MOOD_CONSISTENCY','COLOR_SCRIPT',
-  'PROP_CURATOR','MODEL_SCOUT','MODEL_JUDGE','MODEL_REPLACEMENT','ASSET_TOURNAMENT','ASSET_FATIGUE','DUPLICATE_REPETITION','MATERIAL_DIRECTOR','MATERIAL_RESPONSE','WEAR_STORY_PROP',
-  'LIGHTING_DIRECTOR','LIGHTING_COVERAGE','LIGHTING_STORY','AUDIO_DIRECTOR','SFX_CURATOR','SOUND_SCOUT','SOUND_JUDGE','SOUND_COVERAGE','SOUND_REPETITION_KILLER','AMBIENCE_DIRECTOR','MUSIC_FEEL',
-  'UI_BUTTON_DESIGN','AFFORDANCE','PLAYER_CONFUSION','INTERACTION_FEEL','INTERACTION_DENSITY','HAPTICS','VFX_POLISH','ANIMATION_OPPORTUNITY','MICRO_DETAIL','MICRO_POLISH',
-  'NPC_DESIGN','NPC_FACE','NPC_SILHOUETTE','NPC_BEHAVIOUR','NPC_PRESENCE','NPC_ENVIRONMENT','HITBOX_DESIGN','COLLISION','RAGDOLL','WEAPON_FEEL','DESTRUCTION','REWARD_FEEL',
-  'DEAD_TIME_HUNTER','FUN_INJECTION','REPLAY_VALUE','SECRETS_SURPRISE','FIRST_IMPRESSION','SCREENSHOT_QUALITY','TRAILER_MOMENT','BEFORE_AFTER_JUDGE',
-  'PERFORMANCE','REGRESSION','ACCESSIBILITY','SAVE_PROGRESSION','VR_PLATFORM','PC_PLATFORM','MOBILE_PLATFORM','GAMEPAD_CONSOLE_PLATFORM','CROSS_PLATFORM_CONSISTENCY','MULTIPLAYER','RELEASE_QUALITY','FINAL_CRITIC'
-];
-const GAUNTLET_CRITIC_ROSTER=GAUNTLET_AGENT_ROSTER.map(x=>x+'_CRITIC');
-const GAUNTLET_TESTER_ROSTER=[
-  'PLAYTESTER','CHAOS_TESTER','BEGINNER_TESTER','EXPERT_TESTER','VR_COMFORT_TESTER','PERFORMANCE_TESTER','VISUAL_TESTER','AUDIO_TESTER',
-  'PHYSICS_TORTURE_TESTER','BUTTON_MASH_TESTER','EXPLOIT_TESTER','LONG_SESSION_TESTER','MAP_COMPLETION_TESTER','NPC_COMBAT_TESTER','SAVE_LOAD_TESTER','RELEASE_TESTER',
-  'BLACKOUT_TESTER','CLUTTER_LAYOUT_TESTER','BUTTON_VISUAL_TESTER','FIRE_REALISM_TESTER','MODEL_LOAD_FAILURE_TESTER','SPAWN_VISIBILITY_TESTER'
-];
-const GAUNTLET_TESTER_CRITIC_ROSTER=GAUNTLET_TESTER_ROSTER.map(x=>x+'_CRITIC');
-
-// Meta-agents create missing specialist roles, create paired critics, then audit both.
-const GAUNTLET_META_AGENT_ROSTER=[
-  'AGENT_FACTORY_DIRECTOR','AGENT_FACTORY_FACTORY','AGENT_GAP_SCOUT','AGENT_ROLE_ARCHITECT','AGENT_TASK_WRITER','AGENT_CRITIC_FACTORY',
-  'AGENT_QUALITY_AUDITOR','AGENT_RED_TEAM','AGENT_OVERLAP_CHECKER','AGENT_PRIORITY_PLANNER','AGENT_PERFORMANCE_GUARD','AGENT_STYLE_GUARD',
-  'AGENT_TESTER_FACTORY','AGENT_COMPLETION_GUARD','AGENT_LOOP_GUARD','AGENT_FINAL_SUPERVISOR'
-];
-const GAUNTLET_META_CRITIC_ROSTER=GAUNTLET_META_AGENT_ROSTER.map(x=>x+'_CRITIC');
-const GENERATED_AGENT_LIMIT=80;
-
-function cleanAgentId(v){return String(v||'').toUpperCase().replace(/[^A-Z0-9_]+/g,'_').replace(/^_+|_+$/g,'').slice(0,64)||'SPECIALIST';}
-function makeGeneratedAgent(id,purpose,tasks=[],priority=5,source='AUTO'){
-  const agentId=cleanAgentId(id).startsWith('AUTO_')?cleanAgentId(id):'AUTO_'+cleanAgentId(id);
-  const spec={id:agentId,purpose:String(purpose||'Improve detected quality gap'),tasks:[...new Set((tasks||[]).map(String).filter(Boolean))].slice(0,8),priority:Math.max(1,Math.min(10,Number(priority)||5)),source,createdAt:Date.now()};
-  spec.critic={id:agentId+'_CRITIC',passBudget:GAUNTLET_CRITIC_PASS_BUDGET,strictness:GAUNTLET_TESTER_STRICTNESS,checks:['Did the specialist fix the actual problem, not just hide it?','Is the result clearly less kaal AND less rommelig?','Is placement logical at player eye-level and close-up?','Is scale/contact/clearance correct?','Are model/material/light/audio/haptic choices intentional?','Is the result consistent with Crazy Office art direction?','Did it avoid performance regressions?','Would a strict player still call this cheap, random, empty or badly placed?','Can anything be deleted instead of added?','Can it be improved further without visual noise?'],rejectOn:['placeholder look','generic cube fallback','random clutter','floating object','bad placement','giant empty slab','style mismatch','repeated asset spam','silent important interaction','unnecessary cost','no visible improvement','looks like prototype']};
-  return spec;
-}
-function validateGeneratedAgent(spec){
-  const problems=[];
-  if(!spec?.id||!/^AUTO_[A-Z0-9_]+$/.test(spec.id))problems.push('invalid id');
-  if(!spec?.purpose||spec.purpose.length<8)problems.push('purpose too vague');
-  if(!Array.isArray(spec?.tasks)||spec.tasks.length<2)problems.push('needs multiple concrete tasks');
-  if(!spec?.critic?.id||spec.critic.id!==spec.id+'_CRITIC')problems.push('paired critic missing');
-  if(!Array.isArray(spec?.critic?.checks)||spec.critic.checks.length<4)problems.push('critic too weak');
-  return {ok:problems.length===0,problems};
-}
-function agentFactoryIdeas(context={}){
-  const out=[];const mode=context.mode||'hub',map=context.map||'',sparse=Number(context.sparseSamples||0),minDensity=Number(context.minDensity??99),issues=context.issues||[];
-  const add=(id,purpose,tasks,priority=6)=>out.push(makeGeneratedAgent(id,purpose,tasks,priority,'AGENT_FACTORY'));
-  if(sparse>80||minDensity<2)add('EMPTY_SPACE_COMPOSER','Turn visually empty zones into authored compositions, never filler',['identify dead negative space from player views','choose one hero model OR architectural feature','add only supporting light/audio/detail with a reason','verify walkability, sightlines and silhouette','delete additions if they create clutter'],10);
-  add('DESIGN_HERO_MOMENT','Create memorable hero moments without blocking gameplay',['find weakest focal point','redesign with layered geometry/material/light','pair interaction with audio/haptics where useful','compare before/after readability and screenshot quality'],9);
-  add('MODEL_SELECTION_JUDGE','Select strong real models instead of placeholder geometry',['compare several candidate models for style and quality','reject low-detail or mismatched assets','check license/performance metadata','validate scale/contact/placement','use no model when all candidates are worse'],10);
-  add('SOUND_DETAIL_SCOUT','Find interactions that still feel silent, repetitive or cheap',['scan clicks/doors/impacts/machines/ambience','assign varied sound families','check distance, timing and repetition','reject harsh or mismatched sounds','keep quiet space where silence is better'],9);
-  add('CLUTTER_EDITOR','Remove random clutter and keep only designed prop groups',['find isolated/random scatter and generic fallback cubes','delete or regroup weak clutter','preserve clear VR paths and interaction space','balance filled and quiet areas','reject objects with no purpose'],10);
-  add('BAD_PLACEMENT_FIXER','Find objects on stupid, floating, clipped or inconvenient positions',['check floor contact and wall penetration','check scale against nearby furniture','check doorway and player path clearance','move/delete objects before adding new ones','recheck from multiple player viewpoints'],10);
-  add('OBJECT_RELATIONSHIP_EDITOR','Make nearby objects form believable functional groups',['pair desk with chair/monitor/input props','pair lounge furniture as one composition','avoid orphan props and duplicate furniture','keep focal hierarchy clear'],9);
-  add('NO_CHEAPNESS_SWEEP','Reject anything that still reads as prototype quality',['find giant dark slabs/plain boxes/repeated panels','replace with intentional frames/materials/details','check close-up quality','remove features that only add noise'],10);
-  add('DESIGN_MEMORY_CURATOR','Learn recurring approved and rejected design patterns',['record repeated visual failures','prefer previously successful composition patterns','prevent reintroducing giant slab/random cube patterns','keep memory lightweight and reversible'],8);
-  if(mode==='hub'){
-    add('HUB_BUTTON_SHOWCASE','Force menu controls to be hero-grade VR objects, never flat slabs',['inspect every panel/button face and frame','require depth, iconography/text, accent light and state feedback','add paired sound+haptic feedback','keep labels readable and aligned','reject any plain or giant dark rectangle'],10);
-    add('LOBBY_ZONE_DESIGNER','Give the lobby readable authored zones',['separate menu/lounge/fireplace/cosmetics circulation','use coherent furniture/model sets','add local ambience and lighting identity','remove props that do not support a zone','protect clear center walkway'],10);
-  }else{
-    add('ARENA_STORY_DRESSER','Make the arena communicate its location through models and audio',['select map-specific landmark props','add wall/floor/ceiling identity','add map ambience and reactive details','remove generic copy-paste decoration','protect combat lanes'],9);
-  }
-  if(/SERVER|IT|WAREHOUSE|MAILROOM/.test(map))add('INDUSTRIAL_DETAIL_SPECIALIST','Strengthen technical/industrial spaces',['add believable racks/cargo/status lights','use mechanical ambience','add material-specific impact feedback','keep combat lanes clear'],8);
-  if(/BREAKROOM|CAFETERIA/.test(map))add('FOOD_SPACE_STYLIST','Strengthen breakroom/cafeteria identity',['use food/kitchen furniture models','add appliance ambience','group props in believable stations','avoid floor litter'],8);
-  add('NPC_VISUAL_UPGRADE','Keep NPCs readable, expressive and intentional',['check face silhouette and expression readability','vary hair/outfit/accent without mismatch','verify body proportions and hitbox alignment','check feet contact and spawn placement','reject placeholder-looking NPC parts'],9);
-  add('MICRO_POLISH_SWEEP','Add premium feedback only where it improves feel',['hover/touch/press/release feedback','small emissive/light movement','sound+haptic timing','verify polish does not obscure usability'],8);
-  if(issues.some(x=>/overlap|clip/i.test(String(x))))add('OVERLAP_RESCUE','Resolve detected clipping and overlap',['identify exact conflicting objects','move/delete lower-value object','recheck collider and visual clearance','verify player path'],10);
-  if(issues.some(x=>/floating|sunk/i.test(String(x))))add('CONTACT_RESCUE','Fix floor and surface contact',['snap floor furniture to floor','preserve intentional wall/ceiling mounting','verify no sinking or hovering','recheck after model load'],10);
-  return out.slice(0,GENERATED_AGENT_LIMIT);
-}
-function runAgentFactory(context={}){
-  const proposed=agentFactoryIdeas(context),accepted=[],rejected=[];
-  for(const spec of proposed){
-    const check=validateGeneratedAgent(spec);
-    if(!check.ok){rejected.push({id:spec.id,problems:check.problems});continue;}
-    if(accepted.some(a=>a.id===spec.id)){rejected.push({id:spec.id,problems:['duplicate']});continue;}
-    accepted.push(spec);
-  }
-  // Meta-critic pass: ensure every accepted agent has multiple tasks, a paired critic,
-  // and no near-duplicate purpose. Lower-priority duplicates are rejected.
-  const final=[];
-  for(const spec of accepted.sort((a,b)=>b.priority-a.priority)){
-    const duplicate=final.find(x=>x.purpose===spec.purpose||x.tasks.filter(t=>spec.tasks.includes(t)).length>=3);
-    if(duplicate){rejected.push({id:spec.id,problems:['overlaps '+duplicate.id]});continue;}
-    final.push(spec);
-  }
-  G.gauntletFusion.dynamicAgents=final;
-  G.gauntletFusion.dynamicCritics=final.map(a=>a.critic);
-  G.gauntletFusion.agentFactory={generated:proposed.length,accepted:final.length,rejected,metaAgents:GAUNTLET_META_AGENT_ROSTER.length,lastRun:Date.now()};
-  console.info('AGENT FACTORY',G.gauntletFusion.agentFactory,final.map(a=>({id:a.id,priority:a.priority,tasks:a.tasks.length,critic:a.critic.id})));
-  return G.gauntletFusion.agentFactory;
-}
-
-const KAAL_AUDIT_SAMPLES=10000;
-G.gauntletFusion=G.gauntletFusion||{version:GAUNTLET_FUSION_VERSION,hubFills:0,arenaFills:0,lastAudit:null,curatedMode:true,ideasApplied:0,dynamicAgents:[],dynamicCritics:[],agentFactory:null};
-G.gauntletFusion.version=GAUNTLET_FUSION_VERSION;G.gauntletFusion.curatedMode=true;
-
-
-const DESIGN_MEMORY_KEY='crazyOfficeDesignMemoryV55';
-const FLOOR_PROP_RE=/chair|couch|bench|table|desk|cabinet|bookcase|shelf|plant|trash|crate|box|lamp|pedestal|rack|computer|keyboard|mouse|coat/i;
-const QUALITY_SKIP_RE=/collider|floor|ceil|wall|sky|label|text|glow|rail|strip|bolt|status|light|beam|wainscot/i;
-function loadDesignMemory(){try{return JSON.parse(localStorage.getItem(DESIGN_MEMORY_KEY)||'{}')||{};}catch{return {};}}
-function saveDesignMemory(mem){try{localStorage.setItem(DESIGN_MEMORY_KEY,JSON.stringify(mem));}catch{}}
-function rememberDesign(pattern,kind='reject'){
-  const mem=G.gauntletFusion.designMemory||loadDesignMemory();mem.approved=mem.approved||{};mem.rejected=mem.rejected||{};const bucket=kind==='approve'?mem.approved:mem.rejected;bucket[pattern]=(bucket[pattern]||0)+1;mem.updatedAt=Date.now();G.gauntletFusion.designMemory=mem;saveDesignMemory(mem);
-}
-function meshBoundsSafe(m){try{m.computeWorldMatrix(true);const bb=m.getBoundingInfo?.().boundingBox;if(!bb)return null;return {min:bb.minimumWorld.clone(),max:bb.maximumWorld.clone(),center:bb.centerWorld.clone(),ext:bb.extendSizeWorld.clone()};}catch{return null;}}
-function inspectSceneQuality(scene,mode='hub'){
-  const issues=[],objects=[];let visible=0,genericFallback=0,floating=0,sunk=0,giantSlabs=0,overlapHints=0;
-  for(const m of scene.meshes){if(!m||m.isDisposed?.()||m.isVisible===false)continue;visible++;const name=m.name||'';if(/fbGeneric|kaalSmartBase|kaalSmartTop/i.test(name)){genericFallback++;issues.push('generic fallback '+name);}if(/curatedWallBay|curatedSideBay|fusionConsoleHalo/i.test(name)){giantSlabs++;issues.push('giant slab '+name);}if(QUALITY_SKIP_RE.test(name))continue;const b=meshBoundsSafe(m);if(!b)continue;const size={x:b.max.x-b.min.x,y:b.max.y-b.min.y,z:b.max.z-b.min.z};const floorish=FLOOR_PROP_RE.test(name)&&!/(wall|panel|button|frame|picture)/i.test(name);if(floorish&&size.y>.10){if(b.min.y>.14){floating++;issues.push('floating '+name);}if(b.min.y<-.18){sunk++;issues.push('sunk '+name);}}
-    const maxExtent=Math.max(size.x,size.y,size.z),minExtent=Math.min(size.x,size.y,size.z);let score=100;if(maxExtent>4.2&&/(panel|console|bay|screen)/i.test(name))score-=38;if(/fbGeneric/i.test(name))score-=55;if(floorish&&b.min.y>.14)score-=28;if(floorish&&b.min.y<-.18)score-=24;
-    const flatPanelLike=maxExtent>1.65&&minExtent<.18&&/(panel|console|button|face|screen|feature)/i.test(name);
-    if(flatPanelLike&&m.material){const lum=materialLuminance(m.material)+emissiveLuminance(m.material)*.7;if(lum<.13&&!/readout|shadow|hoverGlow/i.test(name)){score-=32;giantSlabs++;issues.push('dark unreadable panel '+name);}}
-    objects.push({name,score,maxExtent,center:b.center});
-  }
-  // Remote decor overlap/placement hints are checked on roots to avoid child-mesh false positives.
-  const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.()&&h.isEnabled?.()!==false);for(let i=0;i<roots.length;i++){const a=roots[i],pa=a.getAbsolutePosition?.()||a.position;if(!pa)continue;for(let j=i+1;j<roots.length;j++){const b=roots[j],pb=b.getAbsolutePosition?.()||b.position;if(!pb)continue;const dx=pa.x-pb.x,dz=pa.z-pb.z;if(dx*dx+dz*dz<.38*.38){overlapHints++;issues.push('decor overlap '+a.name+' '+b.name);}}}
-  const penalties=genericFallback*12+floating*5+sunk*5+giantSlabs*9+overlapHints*4;const quality=Math.max(0,Math.min(100,100-penalties-Math.max(0,issues.length-4)*.35));
-  if(genericFallback)rememberDesign('generic cube fallback','reject');if(giantSlabs)rememberDesign('giant dark slab','reject');if(floating)rememberDesign('floating furniture','reject');if(overlapHints)rememberDesign('random overlapping clutter','reject');
-  return {mode,quality,visible,objects:objects.slice(0,120),issues:issues.slice(0,80),genericFallback,floating,sunk,giantSlabs,overlapHints};
-}
-const GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED=1;
-const GAUNTLET_RENDERED_PLAYTHROUGHS_EXECUTED_IN_RUNTIME=0; // only increment after a real rendered end-to-end run
-function gauntletCoverageManifest(){return {
-  requestedRenderedPlaythroughs:GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED,
-  renderedPlaythroughsExecuted:GAUNTLET_RENDERED_PLAYTHROUGHS_EXECUTED_IN_RUNTIME,
-  requiredFlow:['boot','hub','all hub interactions','survival','levels','all maps','NPC spawn','combat','hitboxes','props','audio','VFX','death','respawn','rewards','save/load','return to hub','visual clutter/placement review'],
-  note:'Audit probes never count as rendered playthroughs.'
-};}
-function runBudgetLoop(label,passes,seedIssues=0){return {label,passBudget:passes,passesExecuted:0,rejects:seedIssues,note:'Review budget metadata only. No fake repeated loop is counted as an executed critic/playtest.'};}
-function runGauntlet5000Audit(scene,context={}){
-  const mode=context.mode||'hub',snapshot=inspectSceneQuality(scene,mode),baseIssues=snapshot.issues.length;
-  const agents=[...GAUNTLET_AGENT_ROSTER,...(G.gauntletFusion.dynamicAgents||[]).map(a=>a.id)];const critics=[...GAUNTLET_CRITIC_ROSTER,...(G.gauntletFusion.dynamicCritics||[]).map(a=>a.id),...GAUNTLET_TESTER_CRITIC_ROSTER];
-  const testerRuns=GAUNTLET_TESTER_ROSTER.map((id,k)=>runBudgetLoop(id,GAUNTLET_TESTER_PASS_BUDGET,baseIssues+(k%4)));
-  // One main Gauntlet loop means a whole-game production pass. Internal audits do not increment the main-loop counter.
-  const main=runBudgetLoop('GAUNTLET_X_KAAL_MAIN',GAUNTLET_MAIN_LOOP_PASSES,baseIssues);
-  let agentRejects=0,criticRejects=0;for(let i=0;i<agents.length;i++)agentRejects+=runBudgetLoop(agents[i],GAUNTLET_AGENT_PASS_BUDGET,baseIssues+(i%5)).rejects;for(let i=0;i<critics.length;i++)criticRejects+=runBudgetLoop(critics[i],GAUNTLET_CRITIC_PASS_BUDGET,baseIssues+(i%7)+1).rejects;
-  const report={version:GAUNTLET_FUSION_VERSION,coverage:gauntletCoverageManifest(),mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,strictness:GAUNTLET_TESTER_STRICTNESS,loopSentinel:GAUNTLET_LOOP_SENTINEL_RESTARTS,agents:agents.length,critics:critics.length,testers:GAUNTLET_TESTER_ROSTER.length,snapshot,main,agentRejects,criticRejects,testerRejects:testerRuns.reduce((n,r)=>n+r.rejects,0),completedAt:Date.now()};
-  G.gauntletFusion.deepAudit=report;console.info('GAUNTLET × KAAL COMPLETE-GAME AUDIT',report);return report;
-}
-function normalizeRemotePlacement(root,opt={}){
-  if(!root||root.isDisposed?.())return;let meshes=[];try{meshes=root.getChildMeshes?.()||[]}catch{}if(!meshes.length)return;let minY=Infinity,maxY=-Infinity,minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;for(const m of meshes){const b=meshBoundsSafe(m);if(!b)continue;minY=Math.min(minY,b.min.y);maxY=Math.max(maxY,b.max.y);minX=Math.min(minX,b.min.x);maxX=Math.max(maxX,b.max.x);minZ=Math.min(minZ,b.min.z);maxZ=Math.max(maxZ,b.max.z);}if(!Number.isFinite(minY))return;
-  let extent=Math.max(maxX-minX,maxY-minY,maxZ-minZ),changed=false;const maxExtent=opt.maxExtent||(opt.lowPriority?2.4:3.2);if(extent>maxExtent&&extent>0){const k=maxExtent/extent;root.scaling.scaleInPlace(k);changed=true;for(const m of meshes)try{m.computeWorldMatrix(true)}catch{}minY=Infinity;for(const m of meshes){const b=meshBoundsSafe(m);if(b)minY=Math.min(minY,b.min.y);}}
-  const shouldSnap=opt.snapToFloor===true||(opt.snapToFloor!==false&&Math.abs(root.position.y)<.06);if(shouldSnap&&Number.isFinite(minY)){const floorY=opt.floorY??0;root.position.y+=floorY-minY;changed=true;}if(changed)for(const m of meshes)try{m.computeWorldMatrix(true)}catch{}
-}
-function hubReservedZone(x,z){return (Math.abs(x)<1.0&&Math.abs(z)<2.8)||(z<-3.05&&Math.abs(x)<4.9)||(x>4.55&&Math.abs(z)<1.35)||(x>1.25&&x<3.9&&z>3.0);}
-function runHubClutterPlacementCleanup(scene){if(G.state!=='hub')return {disabled:0,moved:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=hubReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.62){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}if(disabled)rememberDesign('low priority decor inside reserved path','reject');const strict=runStrictPlacementDirector(scene,'hub');const result={disabled:disabled+strict.disabled,moved:0,checked:roots.length,strict};G.gauntletFusion.lastPlacementCleanup=result;console.info('PLACEMENT / CLUTTER CLEANUP',result);return result;}
-function arenaReservedZone(x,z){return Math.abs(x)<2.35&&Math.abs(z)<2.35;}
-function scoreObjectPlacement(root,mode='hub'){
-  if(!root||root.isDisposed?.())return {score:0,reasons:['disposed']};
-  let p;try{p=root.getAbsolutePosition?.()||root.position}catch{p=root.position}
-  if(!p)return {score:0,reasons:['no position']};
-  let score=100;const reasons=[];const meta=root.metadata||{};
-  const bounds=(()=>{try{const meshes=root.getChildMeshes?.()||[];let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity;for(const m of meshes){const b=meshBoundsSafe(m);if(!b)continue;minX=Math.min(minX,b.min.x);minY=Math.min(minY,b.min.y);minZ=Math.min(minZ,b.min.z);maxX=Math.max(maxX,b.max.x);maxY=Math.max(maxY,b.max.y);maxZ=Math.max(maxZ,b.max.z);}return Number.isFinite(minX)?{minX,minY,minZ,maxX,maxY,maxZ,extent:Math.max(maxX-minX,maxY-minY,maxZ-minZ)}:null;}catch{return null;}})();
-  const roomX=mode==='hub'?5.15:6.25,roomZ=mode==='hub'?4.45:6.25;
-  if(Math.abs(p.x)>roomX||Math.abs(p.z)>roomZ){score-=55;reasons.push('outside authored room bounds');}
-  if(mode==='hub'&&hubReservedZone(p.x,p.z)){score-=45;reasons.push('blocks hub route/interaction zone');}
-  if(mode==='arena'&&arenaReservedZone(p.x,p.z)){score-=42;reasons.push('blocks arena combat lane');}
-  if(bounds){
-    if(bounds.minY>.18&&!/wall|picture|frame|screen|sign|light/i.test(root.name||'')){score-=34;reasons.push('floating');}
-    if(bounds.minY<-.22){score-=30;reasons.push('sunk into floor');}
-    if(bounds.extent>3.1&&meta.lowPriority){score-=30;reasons.push('low-priority asset dominates room');}
-  }
-  // Too many decorative roots in one small patch is clutter, even if every individual model is good.
-  if(meta.lowPriority&&Array.isArray(G.remoteDecor)){let near=0;for(const other of G.remoteDecor){if(!other||other===root||other.isDisposed?.()||other.isEnabled?.()===false)continue;const op=other.getAbsolutePosition?.()||other.position;if(op&&Math.hypot(op.x-p.x,op.z-p.z)<1.35)near++;}if(near>=4){score-=18;reasons.push('overcrowded local cluster');}}
-  if(/fallback|generic/i.test(root.name||'')||meta.fallback){score-=48;reasons.push('fallback/prototype visual');}
-  return {score:Math.max(0,score),reasons,position:{x:p.x,y:p.y,z:p.z},extent:bounds?.extent||0};
-}
-function runStrictPlacementDirector(scene,mode='hub'){
-  const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.()&&h.isEnabled?.()!==false),accepted=[];let disabled=0,moved=0;
-  const report=[];
-  for(const h of roots){
-    const q=scoreObjectPlacement(h,mode);let duplicate=false;const p=h.getAbsolutePosition?.()||h.position;
-    for(const a of accepted){const ap=a.getAbsolutePosition?.()||a.position;if(!ap||!p)continue;const same=(a.metadata?.file&&h.metadata?.file&&a.metadata.file===h.metadata.file);const d=Math.hypot(ap.x-p.x,ap.z-p.z);if((same&&d<1.25)||d<.52){duplicate=true;break;}}
-    if(duplicate){q.score-=28;q.reasons.push('duplicate/overcrowded placement');}
-    if(q.score<76&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;rememberDesign('auto removed bad/overcrowded decor','approve');}catch{}}
-    else accepted.push(h);
-    report.push({name:h.name,score:Math.max(0,q.score),reasons:q.reasons});
-  }
-  report.sort((a,b)=>a.score-b.score);const result={mode,checked:roots.length,disabled,moved,worst:report.slice(0,18)};
-  G.gauntletFusion.strictPlacement=result;return result;
-}
-function calculateRoomQuality(scene,mode='hub'){
-  const snap=inspectSceneQuality(scene,mode),placement=runStrictPlacementDirector(scene,mode);
-  const lowObjects=(snap.objects||[]).filter(o=>o.score<75).length;
-  const penalty=Math.min(35,placement.disabled*2.4+lowObjects*1.2+snap.overlapHints*2.5+snap.floating*3.5+snap.genericFallback*6);
-  const score=Math.max(0,Math.min(100,snap.quality-penalty));
-  const result={mode,score,sceneQuality:snap.quality,lowObjects,placementDisabled:placement.disabled,issues:snap.issues.slice(0,18),worstPlacement:placement.worst};
-  G.gauntletFusion.roomQuality=G.gauntletFusion.roomQuality||{};G.gauntletFusion.roomQuality[mode]=result;return result;
-}
-function runArenaClutterPlacementCleanup(scene){if(G.state!=='shift')return {disabled:0,checked:0};let disabled=0;const roots=(G.remoteDecor||[]).filter(h=>h&&!h.isDisposed?.());const accepted=[];for(const h of roots){const p=h.getAbsolutePosition?.()||h.position;if(!p)continue;let bad=arenaReservedZone(p.x,p.z);for(const a of accepted){const q=a.getAbsolutePosition?.()||a.position;if(q&&Math.hypot(p.x-q.x,p.z-q.z)<.56){bad=true;break;}}if(bad&&h.metadata?.lowPriority){try{h.setEnabled(false);disabled++;continue;}catch{}}accepted.push(h);}const strict=runStrictPlacementDirector(scene,'arena');const result={disabled:disabled+strict.disabled,checked:roots.length,strict};G.gauntletFusion.lastArenaPlacementCleanup=result;return result;}
-function scheduleArenaQualityRecheck(scene,map){const timers=[];if(RUNTIME_QA_DIAGNOSTICS)runGauntlet50SceneReview(scene,'arena',map);for(const ms of [1200,5000]){const t=setTimeout(()=>{if(G.state!=='shift')return;runArenaClutterPlacementCleanup(scene);if(RUNTIME_QA_DIAGNOSTICS)runGauntlet5000Audit(scene,{mode:'arena',map});},ms);timers.push(t);}G.arenaMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
-function materialLuminance(m){
-  try{const c=m?.albedoColor||m?.diffuseColor;if(!c)return .5;return c.r*.2126+c.g*.7152+c.b*.0722;}catch{return .5;}
-}
-function emissiveLuminance(m){
-  try{const c=m?.emissiveColor;if(!c)return 0;return c.r*.2126+c.g*.7152+c.b*.0722;}catch{return 0;}
-}
-function runVisualBlackoutGuard(scene){
-  if(!scene||G.state!=='hub')return {fixed:0,risks:0};
-  // A lobby that technically renders but is visually black is a hard GAUNTLET × KAAL failure.
-  scene.clearColor=new B.Color4(.055,.065,.085,1);
-  scene.ambientColor=new B.Color3(.34,.31,.28);
-  const hemi=scene.getLightByName?.('hemi');if(hemi){hemi.intensity=Math.max(hemi.intensity||0,1.02);hemi.diffuse=new B.Color3(1,.94,.86);hemi.groundColor=new B.Color3(.24,.29,.36);}
-  const key=scene.getLightByName?.('key');if(key)key.intensity=Math.max(key.intensity||0,1.18);
-  let fill=scene.getLightByName?.('hubViewFill');
-  if(!fill){
-    fill=new B.PointLight('hubViewFill',new B.Vector3(0,1.8,-2.4),scene);fill.diffuse=B.Color3.FromHexString('#ffe4c4');fill.specular=B.Color3.FromHexString('#dceaff');fill.range=9.5;fill.intensity=.48;
-    const obs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;const cam=G.xr?.baseExperience?.camera||scene.activeCamera;if(cam){const cp=cam.globalPosition||cam.position;fill.position.copyFrom(cp);fill.position.y+=.18;}});
-    G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(obs)}catch{}try{fill.dispose()}catch{}}});
-  }else fill.intensity=Math.max(fill.intensity||0,.48);
-  // Two soft ceiling fills stop one-sided PBR lighting from turning whole walls/panels black on mobile GPUs.
-  for(const [name,x,z] of [['hubCeilingFillA',-2.7,-.3],['hubCeilingFillB',2.7,1.8]]){
-    let l=scene.getLightByName?.(name);if(!l){l=new B.PointLight(name,new B.Vector3(x,3.45,z),scene);l.diffuse=B.Color3.FromHexString('#ffd7ad');l.range=7.2;l.intensity=.30;G.lobbyMeshes.push({dispose:()=>{try{l.dispose()}catch{}}});}else l.intensity=.30;
-  }
-  let fixed=0,risks=0;
-  for(const m of scene.meshes){
-    if(!m||m.isDisposed?.()||m.isVisible===false||!m.material)continue;
-    const name=m.name||'',b=meshBoundsSafe(m);if(!b)continue;
-    const sx=b.max.x-b.min.x,sy=b.max.y-b.min.y,sz=b.max.z-b.min.z,maxExtent=Math.max(sx,sy,sz);
-    if(maxExtent<1.15)continue;
-    const base=materialLuminance(m.material),em=emissiveLuminance(m.material),effective=base+em*.75;
-    const isArchitectural=/home|back|cos(Far|Front|Back|Ceil)|curated|console|panel|frame|wainscot|feature/i.test(name);
-    const thin=Math.min(sx,sy,sz),panelLike=maxExtent>1.55&&thin<.20&&/(button|face|panel|console|screen|feature)/i.test(name);
-    const intentionallyDark=/fpBack|windowSky|shadow|readout|hoverGlow/i.test(name);
-    if((isArchitectural||panelLike)&&!intentionallyDark&&effective<.22){
-      risks++;
-      const c=m.material.albedoColor||m.material.diffuseColor||new B.Color3(.22,.27,.33);
-      if(m.material.albedoColor&&base<.105)m.material.albedoColor=new B.Color3(Math.max(c.r,.16),Math.max(c.g,.19),Math.max(c.b,.23));
-      if(m.material.diffuseColor&&base<.105)m.material.diffuseColor=new B.Color3(Math.max(c.r,.16),Math.max(c.g,.19),Math.max(c.b,.23));
-      const src=m.material.albedoColor||m.material.diffuseColor||c;
-      const boost=/console|panel|frame/i.test(name)?.17:.11;
-      m.material.emissiveColor=new B.Color3(Math.max(m.material.emissiveColor?.r||0,src.r*boost),Math.max(m.material.emissiveColor?.g||0,src.g*boost),Math.max(m.material.emissiveColor?.b||0,src.b*boost));
-      fixed++;
-    }
-  }
-  const report={fixed,risks,at:Date.now()};G.gauntletFusion.lastBlackoutGuard=report;if(risks)rememberDesign('black/unreadable large surface','reject');return report;
-}
-function runGauntlet50SceneReview(scene,mode='hub',map=''){
-  // Real repeated scene-data reviews: 50 passes over current meshes, placement and lighting.
-  // These are NOT claimed as 50 rendered VR playthroughs.
-  const state={mode,map,requested:50,completed:0,minQuality:100,maxIssues:0,placementFixes:0,blackoutFixes:0,startedAt:Date.now(),done:false};
-  const ownerList=mode==='hub'?G.lobbyMeshes:G.arenaMeshes;
-  const timer=setInterval(()=>{
-    if((mode==='hub'&&G.state!=='hub')||(mode==='arena'&&G.state!=='shift')){clearInterval(timer);state.done=true;return;}
-    const snap=inspectSceneQuality(scene,mode);state.completed++;state.minQuality=Math.min(state.minQuality,snap.quality);state.maxIssues=Math.max(state.maxIssues,snap.issues.length);
-    if(state.completed%5===0){const pl=mode==='hub'?runHubClutterPlacementCleanup(scene):runArenaClutterPlacementCleanup(scene);state.placementFixes+=pl?.disabled||0;}
-    if(mode==='hub'&&state.completed%3===0){const bo=runVisualBlackoutGuard(scene);state.blackoutFixes+=bo?.fixed||0;}
-    if(state.completed%10===0)runAgentFactory({mode,map,issues:snap.issues,minDensity:0,sparseSamples:0});
-    if(state.completed>=50){clearInterval(timer);state.done=true;state.finishedAt=Date.now();G.gauntletFusion.last50SceneReview=state;console.info('GAUNTLET × KAAL 50X SCENE REVIEW COMPLETE',state);}
-  },120);
-  ownerList.push({dispose:()=>{try{clearInterval(timer)}catch{}}});
-  G.gauntletFusion.last50SceneReview=state;return state;
-}
-function scheduleAutonomousQualityRecheck(scene){const timers=[];if(RUNTIME_QA_DIAGNOSTICS)runGauntlet50SceneReview(scene,'hub','COZY HOME');for(const ms of [700,3500]){const t=setTimeout(()=>{if(G.state!=='hub')return;runVisualBlackoutGuard(scene);runHubClutterPlacementCleanup(scene);if(RUNTIME_QA_DIAGNOSTICS)runGauntlet5000Audit(scene,{mode:'hub'});},ms);timers.push(t);}G.lobbyMeshes.push({dispose:()=>timers.forEach(clearTimeout)});}
-function fusionPointLight(scene,name,pos,color,intensity=.18,range=3.6,list=G.lobbyMeshes){
-  const l=new B.PointLight(name,pos,scene);l.diffuse=B.Color3.FromHexString(color);l.intensity=intensity;l.range=range;
-  (list||G.lobbyMeshes).push({dispose:()=>{try{l.dispose()}catch{}}});return l;
-}
-function fusionStrip(scene,name,pos,scale,color,list,em=.55,rotation=null){
-  const m=denseBox(scene,name,pos,scale,color,list,em,rotation);m.material.roughness=.25;m.material.metallic=.22;return m;
-}
-function countSmallVisualsNear(scene,pos,r=1.15){
-  const r2=r*r;let c=0;
-  for(const m of scene.meshes){
-    if(!m||m.isDisposed?.()||m.isVisible===false||/collider|floor|ceil|wall|sky/i.test(m.name||''))continue;
-    let p;try{p=m.getAbsolutePosition?.()||m.position}catch{p=m.position}
-    if(!p)continue;const dx=p.x-pos.x,dy=(p.y||0)-pos.y,dz=p.z-pos.z;
-    if(dx*dx+dy*dy+dz*dz<r2)c++;
-  }
-  return c;
-}
-function addSmartKaalCluster(scene,list,pos,accent,index=0,wall=false){
-  if(wall){
-    const frame=denseBox(scene,'kaalSmartFrame',pos,new B.Vector3(.66,.48,.035),'#242c34',list);
-    denseBox(scene,'kaalSmartInset',new B.Vector3(pos.x,pos.y,pos.z+(pos.z<0?.026:-.026)),new B.Vector3(.54,.36,.014),accent,list,.10);
-    fusionStrip(scene,'kaalSmartStatus',new B.Vector3(pos.x,pos.y-.31,pos.z+(pos.z<0?.035:-.035)),new B.Vector3(.34,.025,.012),accent,list,.62);
-    for(const sx of [-1,1]){const bolt=B.MeshBuilder.CreateCylinder('kaalSmartBolt',{height:.015,diameter:.04,tessellation:8},scene);bolt.position=new B.Vector3(pos.x+sx*.27,pos.y+.19,pos.z+(pos.z<0?.043:-.043));bolt.rotation.x=Math.PI/2;bolt.material=denseMaterial(scene,'#cad6df',.06);bolt.isPickable=false;list.push(bolt);}
-    return frame;
-  }
-  const baseCols=['#775b46','#536879','#695b72','#546b58'],topCols=['#d9ccb8','#b8cbd6','#cabbd2','#bfd1bd'];
-  denseBox(scene,'kaalSmartBase',new B.Vector3(pos.x,.13,pos.z),new B.Vector3(.34,.22,.29),baseCols[index%baseCols.length],list);
-  denseBox(scene,'kaalSmartTop',new B.Vector3(pos.x+(index%2?.09:-.08),.33,pos.z+.03),new B.Vector3(.22,.11,.18),topCols[index%topCols.length],list);
-  if(index%2===0)denseCylinder(scene,'kaalSmartCan',new B.Vector3(pos.x-.15,.39,pos.z-.10),.28,.075,'#7f919a',list);
-  fusionStrip(scene,'kaalSmartGlow',new B.Vector3(pos.x,.045,pos.z-.24),new B.Vector3(.25,.012,.018),accent,list,.28);
-}
-function runKaalAuditAndFill(scene,mode='hub',map='',theme={}){
-  const L=mode==='hub'?G.lobbyMeshes:G.arenaMeshes,accent=theme.accent||'#75d6ff';
-  const floorAnchors=mode==='hub'?[
-    [-4.55,-3.6],[-4.55,-2.2],[-4.55,-.8],[-4.55,1.0],[-4.55,2.5],[-4.55,3.55],
-    [4.55,-3.55],[4.55,-2.05],[4.55,-.65],[4.55,1.1],[4.55,2.55],[4.55,3.55]
-  ]:[[-5.75,-5.3],[-3.9,-5.75],[-1.9,-5.75],[1.9,-5.75],[3.9,-5.75],[5.75,-5.3],[5.75,-2.7],[5.75,0],[5.75,2.7],[5.75,5.3],[-5.75,5.3],[-5.75,2.7],[-5.75,0],[-5.75,-2.7]];
-  let checked=0,filled=0,minDensity=999;
-  floorAnchors.forEach(([x,z],i)=>{const p=new B.Vector3(x,.3,z),density=countSmallVisualsNear(scene,p,1.05);checked++;minDensity=Math.min(minDensity,density);if(density<2&&!G.gauntletFusion.curatedMode){addSmartKaalCluster(scene,L,p,accent,i,false);filled++;}});
-  const wallZ=mode==='hub'?-4.36:6.73,wallXs=mode==='hub'?[-4.45,-3.15,-1.85,-.55,.55,1.85,3.15,4.45]:[-5.2,-3.7,-2.2,-.7,.7,2.2,3.7,5.2];
-  wallXs.forEach((x,i)=>{const p=new B.Vector3(x,2.45,wallZ),density=countSmallVisualsNear(scene,p,.82);checked++;minDensity=Math.min(minDensity,density);if(density<2&&!G.gauntletFusion.curatedMode){addSmartKaalCluster(scene,L,p,accent,i,true);filled++;}});
-  // 1000 lightweight critic samples: this samples density/style coverage without creating 1000 meshes.
-  // It is intentionally an audit, not a claim of 1000 full game-development loops.
-  let sparseSamples=0;const anchors=[...floorAnchors,...wallXs.map(x=>[x,wallZ])];
-  for(let i=0;i<KAAL_AUDIT_SAMPLES;i++){
-    const a=anchors[i%anchors.length],jx=((i*37)%101/100-.5)*.35,jz=((i*53)%97/96-.5)*.35;
-    const p=new B.Vector3(a[0]+jx,mode==='hub'?.55:.65,(a[1]??0)+jz);if(countSmallVisualsNear(scene,p,1.15)<1)sparseSamples++;
-  }
-  const factory=runAgentFactory({mode,map,minDensity,sparseSamples,checked,filled});
-  const roomQuality=calculateRoomQuality(scene,mode);const deep=runGauntlet5000Audit(scene,{mode,map});const report={mode,map,checked,filled,minDensity,sparseSamples,samples:KAAL_AUDIT_SAMPLES,roomQuality,mainLoops:GAUNTLET_MAIN_LOOP_PASSES,agentPassBudget:GAUNTLET_AGENT_PASS_BUDGET,criticPassBudget:GAUNTLET_CRITIC_PASS_BUDGET,testerPassBudget:GAUNTLET_TESTER_PASS_BUDGET,agents:GAUNTLET_AGENT_ROSTER.length,critics:GAUNTLET_CRITIC_ROSTER.length,testers:GAUNTLET_TESTER_ROSTER.length,metaAgents:GAUNTLET_META_AGENT_ROSTER.length,metaCritics:GAUNTLET_META_CRITIC_ROSTER.length,generatedAgents:factory.accepted,generatedCritics:(G.gauntletFusion.dynamicCritics||[]).length,quality:deep.snapshot.quality,issues:deep.snapshot.issues.slice(0,12)};
-  G.gauntletFusion.lastAudit=report;if(mode==='hub')G.gauntletFusion.hubFills+=filled;else G.gauntletFusion.arenaFills+=filled;
-  console.info('KAAL QUALITY AUDIT',report);return report;
-}
-function addFusionHubPass(scene){
-  const L=G.lobbyMeshes,accents=['#55c9ff','#ffad55','#9ee85e','#bd82ff'];
-  // 5.0 console framing: accent rails only; no giant dark halo slabs behind the controls.
-  [-3.75,-1.25,1.25,3.75].forEach((x,i)=>{
-    const a=accents[i];
-    for(const sx of [-1,1])fusionStrip(scene,'fusionConsoleEdge',new B.Vector3(x+sx*1.16,2.15,-4.34),new B.Vector3(.028,1.16,.018),a,L,.52);
-    fusionStrip(scene,'fusionConsoleTop',new B.Vector3(x,3.34,-4.34),new B.Vector3(.78,.028,.018),a,L,.48);
-    fusionStrip(scene,'fusionConsoleFoot',new B.Vector3(x,.96,-4.34),new B.Vector3(.46,.022,.018),a,L,.36);
-    fusionPointLight(scene,'fusionConsoleLight'+i,new B.Vector3(x,2.35,-3.92),a,.055,1.9,L);
-  });
-  // Utility status details only where they make sense, never as filler.
-  for(const [x,z,i] of [[-4.82,-.45,0],[-4.82,1.05,1],[4.82,2.10,2]]){
-    denseBox(scene,'fusionUtilityPlate',new B.Vector3(x,1.52,z),new B.Vector3(.022,.32,.24),'#2b3138',L);
-    fusionStrip(scene,'fusionUtilityStatus',new B.Vector3(x+(x<0?.026:-.026),1.52,z),new B.Vector3(.010,.045,.16),accents[i],L,.48);
-  }
-  if(RUNTIME_QA_DIAGNOSTICS)runKaalAuditAndFill(scene,'hub','COZY HOME',{accent:'#ffbf77'});
-}
-
-function addFusionArenaPass(scene,map,t){
-  const L=G.arenaMeshes,accent=t.accent||'#78d8ff';
-  // Stronger visual rhythm: illuminated room corners + suspended feature rails.
-  for(const [x,z] of [[-5.7,-5.7],[5.7,-5.7],[-5.7,5.7],[5.7,5.7]]){
-    fusionStrip(scene,'fusionCornerGlow',new B.Vector3(x,1.82,z),new B.Vector3(.035,1.25,.035),accent,L,.46);
-  }
-  for(const x of [-4,-2,0,2,4])fusionStrip(scene,'fusionCeilingRail',new B.Vector3(x,3.47,0),new B.Vector3(.035,.018,5.0),accent,L,.12);
-  fusionPointLight(scene,'fusionArenaKeyA',new B.Vector3(-4.6,2.65,-4.6),accent,.075,4.2,L);
-  fusionPointLight(scene,'fusionArenaKeyB',new B.Vector3(4.6,2.65,4.6),accent,.065,4.0,L);
-  // Older broad prop scatter is retained only as a fallback when curated mode is disabled.
-  if(!G.gauntletFusion.curatedMode){
-  const groups={
-    'FLOOR 13':['desk','chairDesk','computerScreen','bookcaseOpen'], 'ARCHIVE':['bookcaseClosedWide','books','cardboardBoxClosed','bench'],
-    'BREAKROOM':['chairRounded','benchCushionLow','cardboardBoxOpen','chairCushion'], 'SERVER':['deskCorner','computerScreen','computerKeyboard','computerMouse'],
-    'ROOFTOP':['bench','cardboardBoxClosed','coatRackStanding','chair'], 'PARKING':['bench','cardboardBoxOpen','chair','coatRack'],
-    'HR MAZE':['deskCorner','chairDesk','bookcaseOpenLow','coatRackStanding'], 'IT LAB':['desk','computerScreen','computerKeyboard','computerMouse'],
-    'CAFETERIA':['benchCushion','chairRounded','cardboardBoxOpen','chairCushion'], 'PENTHOUSE':['chairModernCushion','chairModernFrameCushion','bookcaseClosedDoors','books'],
-    'WAREHOUSE':['cardboardBoxClosed','cardboardBoxOpen','bench','coatRack'], 'CONFERENCE':['chairModernCushion','chairModernFrameCushion','desk','coatRackStanding'],
-    'COPY':['desk','computerScreen','cardboardBoxClosed','chairDesk'], 'ELEVATOR':['bench','cardboardBoxClosed','coatRack','chair'],
-    'MAILROOM':['cardboardBoxClosed','cardboardBoxOpen','bench','coatRackStanding'], 'LEGAL':['bookcaseClosedWide','books','chairModernFrameCushion','desk']
-  };
-  const files=groups[map]||groups['FLOOR 13'],spots=[[-5.25,0,4.75,.43,.15],[5.25,0,-4.75,.43,-.15],[-5.25,0,-3.25,.40,.25],[5.25,0,3.25,.40,-.25]];
-  files.forEach((file,i)=>{const [x,y,z,sc,ry]=spots[i];remoteKenneyModel(scene,file,{name:'fusionArena_'+map+'_'+file,position:new B.Vector3(x,y,z),rotation:new B.Vector3(0,ry,0),scale:sc,lowPriority:true,list:L});});
-  }
-  if(RUNTIME_QA_DIAGNOSTICS)runKaalAuditAndFill(scene,'arena',map,t);
-}
-
 
 
 // 4.2 DENSE WORLD PASS — fill visual dead space without turning the maps into collision mazes.
@@ -9172,78 +8761,6 @@ function denseBox(scene,name,pos,scale,color,list,emissive=0,rotation=null){
 function denseCylinder(scene,name,pos,height,diam,color,list,rotation=null){
   const m=B.MeshBuilder.CreateCylinder(name,{height,diameter:diam,tessellation:10},scene);m.position.copyFrom(pos);if(rotation)m.rotation.copyFrom(rotation);m.material=denseMaterial(scene,color,0);m.isPickable=false;(list||remoteListForState()).push(m);try{m.freezeWorldMatrix()}catch{}return m;
 }
-
-function addCuratedHubOverhaul(scene){
-  const L=G.lobbyMeshes,warm='#ffc980',cool='#70d8ff',ink='#252a30',wood='#6c503c',brass='#b89462';
-  // 5.0: authored architecture without giant dark wall slabs. The wall stays visible; trim creates depth.
-  for(const z of [-4.445,4.445]){
-    denseBox(scene,'curatedWainscot',new B.Vector3(0,.48,z),new B.Vector3(9.2,.74,.035),wood,L);
-    fusionStrip(scene,'curatedWainscotCap',new B.Vector3(0,.90,z+(z<0?.034:-.034)),new B.Vector3(8.75,.025,.018),warm,L,.30);
-  }
-  // Front control wall: slim pilasters and top rails frame the four consoles instead of backing each with a giant rectangle.
-  for(const x of [-5.0,-2.5,0,2.5,5.0]){
-    denseBox(scene,'curatedFrontPilaster',new B.Vector3(x,2.36,-4.43),new B.Vector3(.055,2.62,.035),brass,L);
-    fusionStrip(scene,'curatedFrontPilasterGlow',new B.Vector3(x,3.62,-4.39),new B.Vector3(.035,.28,.018),x===0?cool:warm,L,.36);
-  }
-  fusionStrip(scene,'curatedFrontCrown',new B.Vector3(0,3.78,-4.39),new B.Vector3(4.55,.028,.018),warm,L,.24);
-  // Side walls: small framed feature pieces, deliberately leaving breathing room.
-  for(const [x,z,c] of [[-5.03,-2.5,warm],[-5.03,2.5,cool],[5.03,-2.55,cool],[5.03,2.55,warm]]){
-    const face=x<0?.038:-.038;denseBox(scene,'curatedFeatureFrame',new B.Vector3(x,2.35,z),new B.Vector3(.028,1.20,.90),ink,L);
-    fusionStrip(scene,'curatedFeatureEdge',new B.Vector3(x+face,2.35,z),new B.Vector3(.014,.86,.035),c,L,.30);
-    fusionStrip(scene,'curatedFeatureTop',new B.Vector3(x+face,2.91,z),new B.Vector3(.014,.028,.62),c,L,.24);
-  }
-  // Ceiling depth: warm rafts, small enough to avoid a heavy black ceiling.
-  for(const z of [-2.75,0,2.75]){
-    denseBox(scene,'curatedCeilingRaft',new B.Vector3(0,4.03,z),new B.Vector3(2.6,.055,.46),'#34383d',L);
-    fusionStrip(scene,'curatedCeilingWarm',new B.Vector3(0,3.96,z),new B.Vector3(1.85,.016,.11),'#ffe0ad',L,.48);
-    fusionPointLight(scene,'curatedCeilingLight'+z,new B.Vector3(0,3.66,z),'#ffd8a2',.075,3.7,L);
-  }
-  // Curated, meaningful remote details only. Failed low-priority assets are hidden, never replaced by gray cubes.
-  remoteKenneyModel(scene,'books',{name:'curatedBooksForShelf',position:new B.Vector3(-4.60,.78,1.64),rotation:new B.Vector3(0,Math.PI/2,0),scale:.44,lowPriority:true,snapToFloor:false,list:L});
-  remoteKayKitModel(scene,'furniture','pictureframe_standing_A',{name:'curatedMantleFrame',position:new B.Vector3(2.15,2.10,4.00),rotation:new B.Vector3(0,Math.PI,0),scale:.35,lowPriority:true,snapToFloor:false,list:L});
-  // Design anchors keep the center walkway clean while giving the lounge a deliberate silhouette.
-  fusionStrip(scene,'loungeWarmEdge',new B.Vector3(-2.0,.035,1.55),new B.Vector3(1.55,.012,.018),warm,L,.18);
-  fusionStrip(scene,'cosmeticsCoolEdge',new B.Vector3(4.82,2.7,0),new B.Vector3(.018,.55,.55),cool,L,.24);
-}
-function addCuratedArenaOverhaul(scene,map,t){
-  const L=G.arenaMeshes,accent=t.accent||'#7bd7ff',wall=t.wall||'#3b4148';
-  // Repeated architectural language makes the arena look authored rather than procedurally littered.
-  for(const [x,z] of [[-6.1,-6.1],[6.1,-6.1],[-6.1,6.1],[6.1,6.1]]){
-    denseBox(scene,'curArenaColumn',new B.Vector3(x,1.7,z),new B.Vector3(.22,3.25,.22),wall,L);
-    fusionStrip(scene,'curArenaColumnGlow',new B.Vector3(x,2.75,z),new B.Vector3(.12,.52,.12),accent,L,.45);
-  }
-  for(const z of [-5.98,5.98]){
-    for(const x of [-4,-2,0,2,4]){
-      // Small information modules create rhythm without turning every wall into a giant dark slab.
-      denseBox(scene,'curArenaInfoModule',new B.Vector3(x,2.22,z),new B.Vector3(.78,.70,.030),'#273039',L);
-      fusionStrip(scene,'curArenaInfoTop',new B.Vector3(x,2.54,z+(z<0?.035:-.035)),new B.Vector3(.48,.022,.014),accent,L,.34);
-      fusionStrip(scene,'curArenaInfoSide',new B.Vector3(x-.36,2.20,z+(z<0?.035:-.035)),new B.Vector3(.018,.24,.014),accent,L,.22);
-    }
-  }
-  // 4-6 coherent real models per map, selected to support the room's story.
-  const city=['PARKING','ROOFTOP'].includes(map),food=['BREAKROOM','CAFETERIA'].includes(map),tech=['SERVER','IT','ELEVATOR'].includes(map),storage=['WAREHOUSE','MAILROOM'].includes(map);
-  if(city){
-    remoteKayKitModel(scene,'city','car_sedan',{position:new B.Vector3(-4.3,0,3.5),rotation:new B.Vector3(0,.2,0),scale:.53,lowPriority:true,list:L});
-    remoteKayKitModel(scene,'city','streetlight',{position:new B.Vector3(4.7,0,3.8),scale:.50,lowPriority:true,list:L});
-    remoteKayKitModel(scene,'city','dumpster',{position:new B.Vector3(4.8,0,-3.5),rotation:new B.Vector3(0,-.3,0),scale:.50,lowPriority:true,list:L});
-    remoteKayKitModel(scene,'city','firehydrant',{position:new B.Vector3(-4.9,0,-3.8),scale:.48,lowPriority:true,list:L});
-  }else if(food){
-    for(const [file,x,z,ry] of [['crate_tomatoes',-4.7,3.6,.1],['crate_buns',-4.15,3.55,-.1],['crate_potatoes',4.6,-3.6,.12],['dishrack_plates',4.35,3.7,-.2]])remoteKayKitModel(scene,'restaurant',file,{position:new B.Vector3(x,.2,z),rotation:new B.Vector3(0,ry,0),scale:.48,lowPriority:true,list:L});
-  }else if(tech||storage){
-    const files=tech?['cargo_A_packed','containers_A','lights','cargo_B_stacked']:['cargo_A_stacked','cargo_B_packed','containers_C','cargodepot_A'];
-    const pts=[[-4.6,3.7,.12],[4.6,3.7,-.15],[-4.6,-3.7,.05],[4.6,-3.7,-.08]];
-    files.forEach((file,i)=>remoteKayKitModel(scene,'space',file,{position:new B.Vector3(pts[i][0],.05,pts[i][1]),rotation:new B.Vector3(0,pts[i][2],0),scale:file==='lights'?.38:.44,lowPriority:true,list:L}));
-  }else{
-    for(const [file,x,z,ry] of [['bookcaseClosedWide',-4.8,3.6,Math.PI/2],['books',-4.55,3.6,Math.PI/2],['chairDesk',4.55,3.5,-.3]])remoteKenneyModel(scene,file,{position:new B.Vector3(x,0,z),rotation:new B.Vector3(0,ry,0),scale:.47,lowPriority:true,list:L});
-    remoteKayKitModel(scene,'furniture','lamp_standing',{position:new B.Vector3(4.75,0,-3.5),scale:.48,lowPriority:true,list:L});
-  }
-  // A clean map identity plaque on a wall; no floating labels in the center.
-  const plaque=denseBox(scene,'curatedMapPlaque',new B.Vector3(0,2.40,6.64),new B.Vector3(2.75,.75,.035),'#151b21',L);
-  fusionStrip(scene,'curatedMapPlaqueGlow',new B.Vector3(0,2.85,6.59),new B.Vector3(1.25,.024,.014),accent,L,.55);
-  for(const tx of [[map,.28,'#ffffff',.08],['NIGHT SHIFT // CHAOS ZONE',.13,accent,-.26]]){const tp=fixedPanelText(scene,tx[0],plaque,tx[1],tx[2],tx[3],-.052);const li=G.lobbyMeshes.indexOf(tp);if(li>=0)G.lobbyMeshes.splice(li,1);L.push(tp);}
-  G.gauntletFusion.ideasApplied=(G.gauntletFusion.ideasApplied||0)+3;
-}
-
 function addDenseHubPass(scene){
   const L=G.lobbyMeshes;
   // wood wall trims + ceiling cove strips
@@ -9482,26 +8999,6 @@ function noiseBurst(dur=.05,gain=.03,low=400,high=2200){
 }
 
 
-// 4.8 extra CC0 Kenney Interface Sounds — 100-sound source pack, selectively mapped for richer feedback.
-const KENNEY_INTERFACE_LICENSE='CC0-1.0';
-const KENNEY_INTERFACE_ROOTS=[
-  'https://raw.githubusercontent.com/Calinou/kenney-interface-sounds/master/addons/kenney_interface_sounds/',
-  'https://cdn.jsdelivr.net/gh/Calinou/kenney-interface-sounds@master/addons/kenney_interface_sounds/'
-];
-const KENNEY_INTERFACE_SFX={
-  hover:'select_001.wav',hover2:'select_004.wav',press:'click_003.wav',press2:'click_005.wav',switch:'switch_003.wav',toggle:'toggle_002.wav',
-  confirm:'confirmation_003.wav',confirm2:'confirmation_001.wav',deny:'error_004.wav',deny2:'error_008.wav',open:'open_002.wav',close:'close_002.wav',
-  reward:'maximize_006.wav',drop:'drop_003.wav',glitch:'glitch_002.wav',scroll:'scroll_003.wav',tick:'tick_002.wav',question:'question_002.wav'
-};
-const INTERFACE_SFX_CACHE=new Map(),INTERFACE_SFX_INFLIGHT=new Map();
-async function loadInterfaceSfx(key){
-  if(!audio||!KENNEY_INTERFACE_SFX[key])return null;if(INTERFACE_SFX_CACHE.has(key))return INTERFACE_SFX_CACHE.get(key);if(INTERFACE_SFX_INFLIGHT.has(key))return INTERFACE_SFX_INFLIGHT.get(key);
-  const p=(async()=>{let last=null;for(const root of KENNEY_INTERFACE_ROOTS){try{const r=await fetch(root+KENNEY_INTERFACE_SFX[key],{cache:'force-cache'});if(!r.ok)throw new Error('HTTP '+r.status);const ab=await r.arrayBuffer(),buf=await audio.decodeAudioData(ab.slice(0));INTERFACE_SFX_CACHE.set(key,buf);return buf;}catch(e){last=e;}}throw last||new Error('interface SFX load failed');})();
-  INTERFACE_SFX_INFLIGHT.set(key,p);try{return await p;}finally{INTERFACE_SFX_INFLIGHT.delete(key);}
-}
-function playInterfaceSfx(key,gain=.22,rate=1){const buf=INTERFACE_SFX_CACHE.get(key);if(!audio||!buf||!audioVoiceEnter(gain*.06))return false;try{if(audio.state==='suspended')audio.resume().catch(()=>{});const src=audio.createBufferSource(),g=audio.createGain();src.buffer=buf;src.playbackRate.value=rate;g.gain.value=Math.min(.58,gain);src.connect(g).connect(audio.destination);src.onended=audioVoiceLeave;src.start();return true;}catch{audioVoiceLeave();return false;}}
-function preloadInterfaceSfx(){for(const k of Object.keys(KENNEY_INTERFACE_SFX))loadInterfaceSfx(k).catch(()=>{});}setTimeout(preloadInterfaceSfx,520);
-
 // 4.3 REAL CC0 KENNEY SFX — downloaded/decode-cached once, procedural audio remains the instant fallback.
 const KENNEY_SFX_LICENSE='CC0-1.0';
 const KENNEY_SFX_ROOTS=[
@@ -9527,17 +9024,15 @@ function playRemoteSfx(key,gain=.35,rate=1){
 }
 function preloadKenneySfx(){for(const k of Object.keys(KENNEY_SFX))loadRemoteSfx(k).catch(()=>{});}setTimeout(preloadKenneySfx,350);
 function randomRemoteSfx(keys,gain=.3,rate=1){const k=keys[Math.floor(Math.random()*keys.length)];return playRemoteSfx(k,gain,rate);}
-function uiHoverSound(){ if(playInterfaceSfx(Math.random()<.5?'hover':'hover2',.13,.98+Math.random()*.04))return;if(playRemoteSfx('uiHover',.15,.98+Math.random()*.05))return; tone(760,.024,'triangle',.012,-120); }
+function uiHoverSound(){ if(playRemoteSfx('uiHover',.15,.98+Math.random()*.05))return; tone(760,.024,'triangle',.012,-120); }
 function uiClickSound(kind='press'){
-  if(kind==='deny'){if(playInterfaceSfx(Math.random()<.5?'deny':'deny2',.22,.96))return;if(playRemoteSfx('uiError',.24,.96))return;tone(150,.05,'square',.02,-40);setTimeout(()=>tone(102,.08,'sine',.014,-20),22);return;}
-  const ik=kind==='switch'?'switch':(Math.random()<.5?'press':'press2');if(playInterfaceSfx(ik,.18,.98+Math.random()*.035))return;
+  if(kind==='deny'){if(playRemoteSfx('uiError',.24,.96))return;tone(150,.05,'square',.02,-40);setTimeout(()=>tone(102,.08,'sine',.014,-20),22);return;}
   if(playRemoteSfx(kind==='switch'?'uiSwitch':'uiClick',.22,.98+Math.random()*.04))return;tone(240,.032,'sine',.02,-25);setTimeout(()=>tone(420,.05,'triangle',.012,40),15);
 }
 function whooshSound(power=1){
   power=Math.max(.25,Math.min(1.4,power));if(playRemoteSfx('whoosh',.10+.12*power,.88+Math.random()*.22))return;noiseBurst(.028+.018*power,.012+.01*power,280,1600);tone(240+power*120,.024,'triangle',.008*power,120);
 }
 function rewardSound(kind='reward'){
-  if(playInterfaceSfx(kind==='complete'?'confirm':kind==='challenge'?'confirm2':'reward',.18,.98+Math.random()*.03))return;
   if(kind==='crate'){ tone(330,.08,'triangle',.024,180); setTimeout(()=>tone(494,.09,'triangle',.026,120),70); setTimeout(()=>tone(659,.13,'triangle',.028,80),145); }
   else if(kind==='challenge'){ tone(294,.07,'triangle',.02,140); setTimeout(()=>tone(392,.08,'triangle',.024,110),70); setTimeout(()=>tone(587,.12,'triangle',.026,80),145); }
   else if(kind==='complete'){ tone(520,.08,'triangle',.022,140); setTimeout(()=>tone(780,.12,'triangle',.026,150),90); }
@@ -9554,7 +9049,6 @@ function impactSound(material='wood',power=1){
 
 function stopLobbyAudio(){
   if(!G.lobbyAudio)return;
-  try{G.lobbyAudio.stop?.();}catch{}
   try{G.lobbyAudio.nodes?.forEach(n=>{try{n.stop?.()}catch{} try{n.disconnect?.()}catch{}});}catch{}
   G.lobbyAudio=null;
 }
@@ -9592,17 +9086,7 @@ function startLobbyAudio(){
       if(Math.random()<.72){tone(920+Math.random()*1250,.018+Math.random()*.025,'triangle',.004+Math.random()*.006,-500);}
       if(!cancelled)setTimeout(emberPop,260+Math.random()*900);
     }
-    function officeLife(){
-      if(cancelled||G.state!=='hub'||G.meta.settings?.music===false)return;
-      const r=Math.random();
-      if(r<.25)playRemoteSfx('book',.055,.94+Math.random()*.10);
-      else if(r<.50)playRemoteSfx('latch',.050,.88+Math.random()*.12);
-      else if(r<.67)waterCoolerBubbleSound();
-      else if(r<.82)clockTickSound();
-      else keyboardBurstSound();
-      if(!cancelled)setTimeout(officeLife,9000+Math.random()*15000);
-    }
-    crack();emberPop();setTimeout(officeLife,4500+Math.random()*4500);
+    crack();emberPop();
     G.lobbyAudio={nodes,stop:()=>{cancelled=true;}};
   }catch(e){console.warn('Lobby ambience unavailable',e);}
 }
@@ -9729,13 +9213,22 @@ function propSpecialSound(type='prop',speed=3){
   else if(type==='broom'){noiseBurst(.05,.010*p,180,900);}
   else if(type==='chair'){chairSqueakSound();impactSound('metal',.35*p);}
   else if(type==='monitor'||type==='laptop'){tone(690,.028,'square',.009*p,-210);setTimeout(()=>noiseBurst(.02,.005*p,1000,2800),8);}
-  else if(type==='printer'){printerCycleSound();}
+  else if(type==='printer'||type==='photocopier'){printerCycleSound();}
   else if(type==='keyboard'){keyboardBurstSound();}
   else if(type==='watercooler'){waterCoolerBubbleSound();}
   else if(type==='mug'||type==='coffeepot'){dishClinkSound();}
   else if(type==='cart'){impactSound('metal',.65*p);setTimeout(()=>metalCreakSound(),25);}
   else if(type==='extinguisher'){tone(190,.04,'square',.014*p,-55);setTimeout(()=>noiseBurst(.03,.008*p,500,1800),18);}
-  else if(type==='fan'){tone(145,.08,'sine',.009*p,18);noiseBurst(.028,.004*p,220,900);}
+  else if(type==='projector'){tone(490,.07,'sine',.012*p,90);setTimeout(()=>tone(670,.06,'triangle',.009*p,-45),50);}
+  else if(type==='vendingmachine'){tone(540,.055,'triangle',.016*p,130);setTimeout(()=>tone(710,.07,'sine',.012*p,-40),65);}
+  else if(type==='bowlingball'){impactSound('metal',.5*p);}
+  else if(type==='gluegun'){tone(430,.065,'triangle',.013*p,-180);noiseBurst(.035,.007*p,320,1100);}
+  else if(type==='boxingglove'){tone(125,.07,'sine',.019*p,40);noiseBurst(.03,.009*p,190,800);}
+  else if(type==='rubberhammer'){tone(155,.055,'sine',.018*p,-50);noiseBurst(.025,.008*p,180,850);}
+  else if(type==='chaircatapult'){tone(190,.08,'triangle',.02*p,210);noiseBurst(.07,.013*p,350,1200);}
+  else if(type==='confetticannon'){noiseBurst(.11,.022*p,430,2900);tone(340,.06,'triangle',.014*p,240);}
+  else if(type==='suctioncannon'||type==='magnetgun'){tone(type==='magnetgun'?390:155,.09,'sine',.014*p,type==='magnetgun'?-130:90);noiseBurst(.045,.007*p,240,1200);}
+  else if(type==='fan'||type==='aircannon'){tone(type==='aircannon'?105:145,.08,'sine',.009*p,18);noiseBurst(type==='aircannon'?.065:.028,.006*p,220,900);}
   else if(type==='plantpot'){impactSound('ceramic',.65*p);}
   else if(type==='firstaid'){tone(320,.03,'square',.009*p,-70);}
   else if(type==='cone'){tone(110,.045,'sine',.013*p,-25);}
@@ -9757,16 +9250,352 @@ function incidentSound(name){
   else tone(160,.08,'triangle',.016,80);
 }
 
+// Lightweight impact dynamics for Quest: springs and animated limbs, without an expensive rigid-body solver.
+
+// Version 4.9: shared-material, Quest-friendly identity silhouettes.
+// This is stylized geometry, not a substitute for high-quality authored 3D characters.
+function dressOfficeCoworker(n,scene){
+  if(n.bossId)return;
+  const palette={
+    'PANICKED INTERN':['#67aec6','#f6d580','#25435d'],
+    'OFFICE GOSSIP':['#f064ae','#ffe1a0','#6d275f'],
+    'SLEEPY ANALYST':['#93a7c7','#f4f1ba','#354364'],
+    'CAFFEINE ADDICT':['#e9984b','#f7dfa1','#714529'],
+    'IT NERD':['#43678b','#5be9f0','#172a46'],
+    'RECEPTIONIST':['#d8669a','#ffe4ac','#622f50'],
+    'OFFICE CLEANER':['#3cb9a5','#d7fff5','#27605c'],
+    'SECURITY GUARD':['#2e639a','#ffdc78','#1d344e'],
+    'HR MANAGER':['#9464c4','#ffbad9','#473067']
+  };
+  const colors=palette[n.persona]||palette['PANICKED INTERN'];
+  const shared=(hex)=>{
+    const name='office49Shared_'+hex.slice(1).toUpperCase();
+    let m=scene.getMaterialByName(name);
+    if(!m){m=new B.StandardMaterial(name,scene);m.diffuseColor=B.Color3.FromHexString(hex);m.specularColor=new B.Color3(.10,.10,.10);}
+    return m;
+  };
+  const panel=(name,x,y,z,w,h,d,color,rz=0)=>{
+    const mesh=B.MeshBuilder.CreateBox('persona_'+name,{width:w,height:h,depth:d},scene);
+    mesh.parent=n.root;mesh.position.set(x,y,z);mesh.rotation.z=rz;mesh.material=shared(color);return mesh;
+  };
+  // Every co-worker has purposeful shoes, cuffs and a readable office ID.
+  panel('shoeL',-.14,.07,-.10,.20,.13,.31,colors[2]);
+  panel('shoeR', .14,.07,-.10,.20,.13,.31,colors[2]);
+  panel('idBadge',.16,1.38,-.29,.16,.20,.035,'#f4f4e5',-.09);
+  panel('idStripe',.16,1.43,-.312,.125,.03,.01,colors[1],-.09);
+  panel('wristL',-.35,.86,-.02,.13,.13,.15,colors[2]);
+  panel('wristR', .35,.86,-.02,.13,.13,.15,colors[2]);
+  // Distinct outline for each of the nine personalities.
+  switch(n.persona){
+    case 'PANICKED INTERN':
+      panel('oversizedTie',0,1.13,-.29,.14,.47,.04,colors[1],.14);
+      panel('internSatchel',-.31,.66,.20,.22,.29,.20,colors[2]);
+      break;
+    case 'OFFICE GOSSIP':
+      panel('brightScarf',0,1.48,-.04,.55,.13,.36,colors[1]);
+      panel('scarfTail',.21,1.26,-.27,.13,.34,.06,colors[1],-.18);
+      break;
+    case 'SLEEPY ANALYST':
+      panel('sleepyPillow',0,1.06,.30,.45,.36,.17,'#bec7ef');
+      panel('droopyTie',0,1.06,-.29,.13,.38,.035,colors[1],-.21);
+      break;
+    case 'CAFFEINE ADDICT':{
+      const mug=B.MeshBuilder.CreateCylinder('personaCoffee',{height:.28,diameter:.18,tessellation:10},scene);
+      mug.parent=n.root;mug.position.set(.43,.9,-.15);mug.material=shared('#f5e2c6');
+      panel('caffeineLogo',.43,.92,-.24,.10,.09,.025,'#995127');
+      break;}
+    case 'IT NERD':
+      panel('gadgetPack',0,1.02,.29,.52,.51,.21,colors[2]);
+      panel('statusDisplay',0,1.06,.402,.32,.23,.016,colors[1]);
+      panel('headsetCable',.26,1.61,.04,.04,.34,.04,colors[1]);
+      break;
+    case 'RECEPTIONIST':
+      panel('frontBow',0,1.42,-.33,.37,.10,.07,colors[1]);
+      panel('blazerRight',.21,1.18,-.25,.16,.52,.06,colors[2]);
+      panel('blazerLeft',-.21,1.18,-.25,.16,.52,.06,colors[2]);
+      break;
+    case 'OFFICE CLEANER':
+      panel('cleanerApron',0,.95,-.29,.47,.61,.07,'#dce7e0');
+      panel('cleanerPocket',0,.77,-.34,.31,.17,.04,colors[2]);
+      break;
+    case 'SECURITY GUARD':
+      panel('securityVest',0,1.11,-.28,.51,.56,.08,colors[2]);
+      panel('securityBadge',.13,1.32,-.342,.16,.16,.03,colors[1]);
+      break;
+    case 'HR MANAGER':
+      panel('hrBlazerLeft',-.20,1.17,-.27,.18,.55,.06,colors[2]);
+      panel('hrBlazerRight',.20,1.17,-.27,.18,.55,.06,colors[2]);
+      panel('clipBoard',.38,1.00,-.24,.26,.37,.055,'#d9c3a3',-.13);
+      break;
+  }
+}
+
+function updateCoworkerImpact(n,dt){
+  if(!n?.recoilVelocity||n.dead)return;
+  const step=Number.isFinite(dt)?Math.min(.033,Math.max(0,dt)):0;
+  if(!step)return;
+  const rv=n.recoilVelocity;
+  const vx=rv.x,vy=rv.y,vz=rv.z;
+  const damping=Math.exp(-9*step);
+  if(![vx,vy,vz].every(Number.isFinite)){
+    rv.set(0,0,0);
+  }else{
+    const speed=Math.hypot(vx,vy,vz);
+    if(speed>.02){
+      // A damaged velocity must not launch a worker through the office.
+      const factor=Math.min(1,5/speed);
+      // Reuse the worker's recoil delta: no temporary Vector3 per active recoil frame.
+      const delta=n._recoilStepVec instanceof B.Vector3?n._recoilStepVec:(n._recoilStepVec=new B.Vector3(0,0,0));
+      delta.set(vx*factor*step,vy*factor*step,vz*factor*step);
+      if(moveNpcWithCollision(n,delta))rv.scaleInPlace(damping);
+      else rv.set(0,0,0);
+    }else rv.set(0,0,0);
+  }
+  n.recoilLean=Number.isFinite(n.recoilLean)?n.recoilLean*damping:0;
+  n.recoilTwist=Number.isFinite(n.recoilTwist)?n.recoilTwist*damping:0;
+  // Nonlethal cartoon tumble: a bounded side tilt that returns to upright.
+  const down=Number.isFinite(n.knockdownT)?Math.max(0,Math.min(.85,n.knockdownT)):0;
+  const tumble=down>0?Math.sin(Math.PI*(1-down/.85))*.65:0;
+  n.knockdownT=Math.max(0,down-step);
+  if(n.root?.rotation&&!n.dead)n.root.rotation.z=(n.knockdownSide===-1?-1:1)*tumble;
+  if(n.bodyVisual){n.bodyVisual.rotation.x=n.recoilLean+tumble*.25;n.bodyVisual.rotation.z=n.recoilTwist;}
+  if(n.head){
+    n.head.rotation.x=-n.recoilLean*.42;n.head.rotation.z=-n.recoilTwist*.57;
+    // Visible cartoon head wobble on impact, returning to neutral afterward.
+    const stagger=Number.isFinite(n.staggerT)?Math.max(0,n.staggerT):0;
+    n.head.rotation.y=stagger>0?Math.sin((Number.isFinite(n.t)?n.t:0)*17)*Math.min(.18,stagger*.55):0;
+  }
+  if(n.staggerT>0){
+    if(n.armL)n.armL.rotation.z=.22+Math.sin(n.t*21)*(.31+tumble*.45);
+    if(n.armR)n.armR.rotation.z=-.22-Math.cos(n.t*19)*(.34+tumble*.45);
+    if(tumble>0){if(n.legL)n.legL.rotation.x=Math.sin(n.t*16)*.65;if(n.legR)n.legR.rotation.x=-Math.sin(n.t*16)*.65;n._tumbleLegsActive=true;}
+  }else{
+    if(n.armL)n.armL.rotation.z=.22;
+    if(n.armR)n.armR.rotation.z=-.22;
+  }
+  // Restore neutral legs once after the tumble; do not leave a permanent stumble pose.
+  if(tumble===0&&n._tumbleLegsActive){
+    if(n.legL)n.legL.rotation.x=0;
+    if(n.legR)n.legR.rotation.x=0;
+    n._tumbleLegsActive=false;
+  }
+}
+// CR4.9.226: Shift-only FX must not animate an older wave when a new shift starts.
+// A callback can change wave during a getter or a mesh setter, so check both sides.
+function captureShiftFxOwner(scene){
+  const token=G.waveToken,wave=G.wave,transition=G.waveTransition;
+  return ()=>{
+    try{
+      if(G.state!=='shift'||G.ended!==false||G.waveToken!==token||
+         G.wave!==wave||G.waveTransition!==transition||scene.isDisposed?.())return false;
+      return G.state==='shift'&&G.ended===false&&G.waveToken===token&&
+        G.wave===wave&&G.waveTransition===transition;
+    }catch{return false;}
+  };
+}
+function shiftFxStep(owned,action){
+  if(!owned())return false;
+  try{action()}catch{return false;}
+  return owned();
+}
+function scatterOfficeDebris(scene,p,point){
+  if(!scene||!p||(G.debrisBudget||0)>=36)return;
+  const fxOwned=captureShiftFxOwner(scene);if(!fxOwned())return;
+  G.debrisBudget=G.debrisBudget||0;
+  const colors={paper:'#fff2c7',glass:'#79c9e5',ceramic:'#f1e6dc',metal:'#bdcad1',wood:'#bb8a57',plastic:'#e9a765'};
+  const toneColor=colors[p.material]||colors.plastic;
+  const fragments=Math.min(7,Math.max(0,36-G.debrisBudget),Math.max(3,Math.round(3+p.mass*.25)));
+  if(fragments===0)return;
+  const shared=mat(scene,'debris_'+p.type+'_'+Math.random(),toneColor,.7);
+  let fragmentsRemaining=fragments,created=0;
+  for(let i=0;i<fragments;i++){
+    if(!fxOwned())break;
+    const shard=B.MeshBuilder.CreateBox('impactDebris',{size:1},scene);
+    if(!fxOwned()){try{shard.dispose()}catch{};break;}
+    shard.scaling.set(.035+Math.random()*.095,.024+Math.random()*.035,.08+Math.random()*.085);
+    shard.position.copyFrom(point);
+    shard.position.x+=(Math.random()-.5)*.15;
+    shard.position.y+=.1;
+    shard.material=shared;
+    if(!fxOwned()){try{shard.dispose()}catch{};break;}
+    G.debrisBudget++;created++;
+    const vx=(Math.random()-.5)*4.2,vy=1.0+Math.random()*2,vz=(Math.random()-.5)*4.2;
+    // Render observers keep firing when XR is disconnected; use active game time.
+    let age=0,released=false,obs=null;
+    const release=()=>{
+      if(released)return;
+      released=true;
+      try{if(obs!==null)scene.onBeforeRenderObservable.remove(obs)}catch{}
+      try{if(!shard.isDisposed?.())shard.dispose()}catch{}
+      G.debrisBudget=Math.max(0,(G.debrisBudget||0)-1);
+      if(--fragmentsRemaining===0)try{if(!shared.isDisposed?.())shared.dispose()}catch{}
+    };
+    try{obs=scene.onBeforeRenderObservable.add(()=>{
+      if(released)return;
+      if(!fxOwned()||shard.isDisposed?.()){release();return;}
+      if(!hasActivePlayerSession()){if(!fxOwned())release();return;}
+      if(!fxOwned()){release();return;}
+      let rawDt;
+      if(!shiftFxStep(fxOwned,()=>{rawDt=scene.getEngine().getDeltaTime()/1000;})){release();return;}
+      const dt=Number.isFinite(rawDt)?Math.min(.04,Math.max(0,rawDt)):0;
+      if(dt<=0)return;
+      age+=dt;
+      if(!shiftFxStep(fxOwned,()=>{shard.position.x+=vx*dt*.65;})){release();return;}
+      if(!shiftFxStep(fxOwned,()=>{shard.position.z+=vz*dt*.65;})){release();return;}
+      if(!shiftFxStep(fxOwned,()=>{shard.position.y=Math.max(.045,shard.position.y+(vy-9.8*age)*dt);})){release();return;}
+      if(!shiftFxStep(fxOwned,()=>{shard.rotation.x+=dt*3.2;})){release();return;}
+      if(!shiftFxStep(fxOwned,()=>{shard.rotation.z+=dt*4.4;})){release();return;}
+      if(age>=.68)release();
+    });}catch{release();}
+    if(released&&obs!==null)try{scene.onBeforeRenderObservable.remove(obs)}catch{}
+    if(!fxOwned())release();
+  }
+  // A foreign wave can stop this loop early: uncreated shards must not
+  // keep the shared material alive forever.
+  if(created<fragments){
+    fragmentsRemaining-=fragments-created;
+    if(fragmentsRemaining===0)try{if(!shared.isDisposed?.())shared.dispose()}catch{}
+  }
+}
+// CR4.9.437: finish local break state before fallible effects; never award
+// damage scores or tech challenges to a replacement wave.
+// CR4.9.439: shared type lookup avoids a fresh array on every collision.
+const OFFICE_FRAGILE_TYPES=new Set(['mug','coffeepot','monitor','laptop','printer','keyboard','deskphone','calculator','plantpot','donutbox','watercooler','desklamp','glass']);
+function damageOfficeProp(scene,p,force,cause='IMPACT'){
+  if(!p||p.broken||p.heldBy||p.npcOwner||!Number.isFinite(force)||force<1.5||
+     !Number.isFinite(p.integrity))return;
+  const startedInShift=G.state==='shift';
+  const scoreContext=startedInShift?officeContactScoreContext():null;
+  if(startedInShift&&!scoreContext)return;
+  const scoreOwned=()=>{try{return officeContactScoreContextOwned(scoreContext)&&
+    scoreContext.props.includes(p)&&p.broken===true;}catch{return false;}};
+  const brokenType=p.type;
+  const isFragile=OFFICE_FRAGILE_TYPES.has(brokenType);
+  const damage=force*(isFragile?1.15:.62);
+  p.integrity-=damage;
+  if(p.integrity>0)return;
+  let origin=null;
+  try{origin=p.mesh.getAbsolutePosition().clone();}catch{return;}
+  if(!origin||!Number.isFinite(origin.x)||!Number.isFinite(origin.y)||!Number.isFinite(origin.z)||
+     (startedInShift&&!(officeContactScoreContextOwned(scoreContext)&&scoreContext.props.includes(p))))return;
+  p.broken=true;
+  // Even if debris, audio or UI throws, the broken object cannot keep flying.
+  try{p.vel.set(0,0,0);}catch{}
+  try{p.mesh.scaling.scaleInPlace(.32);}catch{}
+  p.brokenDisposeT=.15;
+  // A broken setter may synchronously advance the wave: do not spawn FX there.
+  if(startedInShift&&!scoreOwned())return;
+  try{scatterOfficeDebris(scene,p,origin);}catch{}
+  try{impactSound(p.material,Math.min(1.35,force/7));}catch{}
+  if(!scoreOwned())return;
+  try{addScore(90,'SMASH');}catch{}
+  if(!scoreOwned())return;
+  if((brokenType==='monitor'||brokenType==='laptop'||brokenType==='printer')&&
+     p.type===brokenType&&scoreOwned()){
+    try{completeOfficeTask('TECH',scene,origin);}catch{}
+    if(p.type===brokenType&&scoreOwned()){
+      try{recordOfficeTechDuo(p,scene,origin,scoreContext);}catch{}
+    }
+  }
+  if(!scoreOwned())return;
+  try{
+    const witness=G.npcs.find(n=>n&&!n.dead&&n.root&&!n.root.isDisposed?.());
+    if(scoreOwned()&&witness&&Math.random()<.22)npcBubble(witness,'MY STUFF!','#ffdb7d');
+  }catch{}
+}
+
 function npcVoice(kind='hit'){const base=kind==='ko'?115:kind==='throw'?230:kind==='boss'?82:165;const type=kind==='boss'?'sawtooth':'triangle';tone(base+Math.random()*35,kind==='ko'?.12:.055,type,kind==='boss'?.03:.016,kind==='ko'?-45:70);}
 function bodyHitSound(power=1){const p=Math.max(.35,Math.min(1.25,power));if(playRemoteSfx('body',.16+.14*p,.92+Math.random()*.12))return;tone(82+Math.random()*10,.08,'sine',.05*p,-30);setTimeout(()=>tone(190+Math.random()*30,.045,'square',.03*p,-80),8);setTimeout(()=>tone(540+Math.random()*70,.025,'triangle',.018*p,-220),15);setTimeout(()=>tone(72+Math.random()*8,.055,'sine',.035*p,-22),20);setTimeout(()=>noiseBurst(.024+.01*p,.01+.01*p,320,1200),10);}
-function spawnHitFX(scene,pos,power=1){try{const m=B.MeshBuilder.CreateSphere('hitFlash',{diameter:.09+Math.min(.1,power*.04),segments:8},scene);m.position.copyFrom(pos);const mm=new B.StandardMaterial('hitFlashMat',scene);mm.diffuseColor=new B.Color3(1,.72,.2);mm.emissiveColor=new B.Color3(1,.34,.05);mm.disableLighting=true;m.material=mm;const st=performance.now();const obs=scene.onBeforeRenderObservable.add(()=>{const t=(performance.now()-st)/110;m.scaling.setAll(1+t*3);mm.alpha=Math.max(0,1-t);if(t>=1){scene.onBeforeRenderObservable.remove(obs);m.dispose(false,true);}});}catch{}}
+function spawnHitFX(scene,pos,power=1){
+  const fxOwned=captureShiftFxOwner(scene);if(!fxOwned())return;
+  // Render callbacks continue after an XR disconnect; hit flashes use active game time.
+  try{
+    const m=B.MeshBuilder.CreateSphere('hitFlash',{diameter:.09+Math.min(.1,power*.04),segments:8},scene);
+    m.position.copyFrom(pos);
+    const mm=new B.StandardMaterial('hitFlashMat',scene);
+    mm.diffuseColor=new B.Color3(1,.72,.2);
+    mm.emissiveColor=new B.Color3(1,.34,.05);
+    mm.disableLighting=true;
+    m.material=mm;
+    let age=0,released=false,obs=null;
+    const release=()=>{
+      if(released)return;
+      released=true;
+      try{scene.onBeforeRenderObservable.remove(obs);}catch{}
+      try{if(!m.isDisposed?.())m.dispose(false,true);else if(!mm.isDisposed?.())mm.dispose();}catch{}
+    };
+    if(!fxOwned()){release();return;}
+    try{obs=scene.onBeforeRenderObservable.add(()=>{
+      if(released)return;
+      if(!fxOwned()||m.isDisposed?.()){release();return;}
+      if(!hasActivePlayerSession()){if(!fxOwned())release();return;}
+      if(!fxOwned()){release();return;}
+      let rawDt;
+      if(!shiftFxStep(fxOwned,()=>{rawDt=scene.getEngine().getDeltaTime()/1000;})){release();return;}
+      const dt=Number.isFinite(rawDt)?Math.min(.04,Math.max(0,rawDt)):0;
+      if(dt<=0)return;
+      age+=dt;
+      const t=Math.min(1,age/.11);
+      if(!shiftFxStep(fxOwned,()=>{m.scaling.setAll(1+t*3);})){release();return;}
+      if(!shiftFxStep(fxOwned,()=>{mm.alpha=Math.max(0,1-t);})){release();return;}
+      if(t>=1)release();
+    });}catch{release();}
+    if(released&&obs!==null)try{scene.onBeforeRenderObservable.remove(obs)}catch{}
+    if(!fxOwned())release();
+  }catch{}
+}
 function musicPulse(){
   if(G.state!=='shift'||G.meta.settings?.music===false)return; const band=G.boss?'boss':G.chaos>72?'mayhem':G.chaos>35?'tension':'shift';
   if(band!==G.lastMusicBand){G.lastMusicBand=band; tone(band==='boss'?52:band==='mayhem'?78:band==='tension'?98:118,.16,'sine',.012,band==='boss'?18:35);}
   const f=band==='boss'?58:band==='mayhem'?82:band==='tension'?110:132; tone(f,.055,'sine',band==='shift'?.006:.009,0);
 }
 function announce(text,kind='info'){ toast(text,kind==='boss'?2100:1200); if(kind==='good')tone(330,.12,'triangle',.035,150); else if(kind==='danger')tone(105,.1,'square',.04,-40); }
-function haptic(ctrl,power=.4,dur=35){ if(G.meta.settings?.haptics===false)return; try{ctrl?.inputSource?.gamepad?.hapticActuators?.[0]?.pulse(Math.min(1,power),dur);}catch{} }
+// CR4.9.629: support both legacy WebXR haptic actuators and modern
+// Gamepad vibrationActuator, while ignoring rejected vibration promises.
+// CR4.9.637: fall back to modern XR vibration if the legacy actuator
+// throws, reports failure, or rejects. Ignore late rejections after disconnect.
+// CR4.9.639: only the newest pulse on a connected gamepad may trigger
+// an asynchronous legacy-to-modern haptic fallback.
+const hapticPulseSerial=new WeakMap();
+function haptic(ctrl,power=.4,dur=35){
+  if(G.meta.settings?.haptics===false)return;
+  try{
+    const pad=ctrl?.inputSource?.gamepad;
+    if(!pad)return;
+    const strength=Number.isFinite(power)?Math.max(0,Math.min(1,power)):0;
+    const duration=Number.isFinite(dur)?Math.max(0,Math.min(250,dur)):0;
+    if(strength===0||duration===0)return;
+    const pulseSerial=(hapticPulseSerial.get(pad)||0)+1;
+    hapticPulseSerial.set(pad,pulseSerial);
+    let legacy=null,modern=null;
+    try{legacy=pad.hapticActuators?.[0];}catch{}
+    try{modern=pad.vibrationActuator;}catch{}
+    const fire=(actuator,fallback=null)=>{
+      if(!actuator)return false;
+      try{
+        let result;
+        if(typeof actuator.pulse==='function')result=actuator.pulse(strength,duration);
+        else if(typeof actuator.playEffect==='function')
+          result=actuator.playEffect('dual-rumble',{
+            duration,strongMagnitude:strength,weakMagnitude:strength
+          });
+        else return false;
+        if(result===false)return false;
+        if(result&&typeof result.catch==='function'){
+          result.catch(()=>{
+            try{
+              if(fallback&&G.meta.settings?.haptics!==false&&
+                 hapticPulseSerial.get(pad)===pulseSerial&&
+                 ctrl?.inputSource?.gamepad===pad)fire(fallback);
+            }catch{}
+          });
+        }
+        return true;
+      }catch{return false;}
+    };
+    if(!fire(legacy,modern!==legacy?modern:null)&&modern!==legacy)fire(modern);
+  }catch{}
+}
 
 function mat(scene,name,color,rough=.7){ const m=new B.PBRMaterial(name,scene); m.albedoColor=B.Color3.FromHexString(color); m.roughness=rough; m.metallic=rough<.4?.45:.05; return m; }
 function box(scene,name,pos,scale,color,parent=null){ const x=B.MeshBuilder.CreateBox(name,{size:1},scene); x.position.copyFrom(pos); x.scaling.copyFrom(scale); x.material=mat(scene,name+'Mat',color); if(parent)x.parent=parent; return x; }
@@ -9809,6 +9638,22 @@ function clearPlayerVisuals(){
   disposeMeshSafe(G.handVisuals.left);disposeMeshSafe(G.handVisuals.right);G.handVisuals.left=null;G.handVisuals.right=null;
   disposeMeshSafe(G.playerBodyRoot);G.playerBodyRoot=null;disposeMeshSafe(G.vrHudRoot);G.vrHudRoot=null;G.vrHudTex=null;
 }
+// Cartoon VR grip pose: update four fingers only on grab/release transitions.
+function setHandGrabPose(hand,closed){
+  let root=null;try{root=G.handVisuals?.[hand];}catch{return;}
+  let md=null;try{if(!root||root.isDisposed?.())return;md=root.metadata;}catch{return;}
+  if(!md||!Array.isArray(md.grabFingers)||md.grabFingers.length!==4)return;
+  const gripping=!!closed;
+  if(md.grabPose===gripping)return;
+  let complete=true;
+  for(const finger of md.grabFingers){
+    try{if(finger&&!finger.isDisposed?.())finger.rotation.x=gripping?-2.05:-Math.PI/2.35;}
+    catch{complete=false;}
+  }
+  try{if(md.grabThumb&&!md.grabThumb.isDisposed?.())md.grabThumb.rotation.x=gripping?-1.9:-Math.PI/2.15;}
+  catch{complete=false;}
+  if(complete)try{md.grabPose=gripping;}catch{}
+}
 function buildHandVisual(scene, hand, ctrl){
   const node=controllerNode(ctrl); if(!node) return null;
   const old=G.handVisuals[hand]; if(old) disposeMeshSafe(old);
@@ -9818,16 +9663,20 @@ function buildHandVisual(scene, hand, ctrl){
   root.rotationQuaternion=null;root.rotation=new B.Vector3(0,Math.PI,0);
   if(true){
     const palm=B.MeshBuilder.CreateSphere(`potatoPalm_${hand}`,{diameter:.12,segments:12},scene); palm.parent=root; palm.scaling=new B.Vector3(1.18,.95,1.3); palm.material=mat(scene,`potatoHandMat_${hand}`,skin.id==='POTATO'?'#b9833d':skin.shirt,.95); const spotMat=mat(scene,`potatoSpotMat_${hand}`,skin.id==='POTATO'?'#6d431f':skin.accent,.98); for(let si=0;si<3;si++){const sp=B.MeshBuilder.CreateSphere(`potatoSpot_${hand}_${si}`,{diameter:.018,segments:6},scene);sp.parent=root;sp.position=new B.Vector3((si-1)*.025,.03,.058+si*.01);sp.material=spotMat;}
+    const fingers=[];
     for(let i=0;i<4;i++){
-      const finger=B.MeshBuilder.CreateCapsule(`potatoFinger_${hand}_${i}`,{radius:.018,height:.08,subdivisions:4},scene); finger.parent=root; finger.position=new B.Vector3((i-1.5)*.018,.005,-.058-i*.004); finger.rotation.z=(hand==='left'?1:-1)*(.10+i*.018); finger.rotation.x=-Math.PI/2.35; finger.material=palm.material;
+      const finger=B.MeshBuilder.CreateCapsule(`potatoFinger_${hand}_${i}`,{radius:.018,height:.08,subdivisions:4},scene); finger.parent=root; finger.position=new B.Vector3((i-1.5)*.018,.005,-.058-i*.004); finger.rotation.z=(hand==='left'?1:-1)*(.10+i*.018); finger.rotation.x=-Math.PI/2.35; finger.material=palm.material; fingers.push(finger);
     }
     const thumb=B.MeshBuilder.CreateCapsule(`potatoThumb_${hand}`,{radius:.02,height:.07,subdivisions:4},scene); thumb.parent=root; thumb.position=new B.Vector3(hand==='left'?-0.055:0.055,-.004,-.018); thumb.rotation.x=-Math.PI/2.15; thumb.rotation.z=(hand==='left'?-1:1)*0.75; thumb.material=palm.material;
+    root.metadata={grabFingers:fingers,grabThumb:thumb,grabPose:false};
   }else{
     const palm=box(scene,`glove_${hand}`,new B.Vector3(0,0,0),new B.Vector3(.085,.065,.12), skin.shirt, root);
     const cuff=box(scene,`cuff_${hand}`,new B.Vector3(0,-.045,-.025),new B.Vector3(.1,.03,.08), skin.accent, root);
     palm.material.roughness=.92; cuff.material.roughness=.88;
   }
-  G.handVisuals[hand]=root; return root;
+  G.handVisuals[hand]=root;
+  setHandGrabPose(hand,!!G.handState?.get(hand)?.grabbing);
+  return root;
 }
 function buildVRHud(scene){
   disposeMeshSafe(G.vrHudRoot);G.vrHudRoot=null;G.vrHudTex=null;const node=controllerNode(G.left);if(!node)return;
@@ -9836,9 +9685,14 @@ function buildVRHud(scene){
   const m=new B.StandardMaterial('vrHudMat',scene);m.diffuseTexture=tex;m.emissiveTexture=tex;m.opacityTexture=tex;m.disableLighting=true;m.backFaceCulling=false;plane.material=m;G.vrHudRoot=root;G.vrHudTex=tex;updateVRHud();
 }
 function updateVRHud(){const tex=G.vrHudTex;if(!tex)return;const ctx=tex.getContext();ctx.clearRect(0,0,900,340);ctx.fillStyle='rgba(10,12,18,.97)';ctx.fillRect(0,0,900,340);const hp=Math.max(0,Math.ceil(G.hp)),pct=Math.max(0,Math.min(1,G.hp/Math.max(1,G.maxHp)));ctx.fillStyle='#fff';ctx.font='bold 96px Arial';ctx.textAlign='left';ctx.fillText(`HP ${hp}`,34,104);ctx.fillStyle='#273041';ctx.fillRect(34,132,832,62);ctx.fillStyle=pct>.5?'#49ef71':pct>.25?'#ffc44b':'#ff4959';ctx.fillRect(34,132,832*pct,62);ctx.fillStyle='#d9ecff';ctx.font='bold 48px Arial';const mode=G.mode==='SURVIVAL'?`SURV W${G.wave||0}`:`LEVEL ${G.meta.survivalLevel||1} W${G.wave||0}/5`;const cc=G.contract&&!G.contract.done?`  ${G.contract.label}:${Math.min(G.contract.goal,Math.floor(G.contract.progress||0))}/${G.contract.goal}`:'';ctx.fillText(`${mode}   ${G.meta.coins||0}C${cc}`,34,284);tex.update();}
+function playerBodyCamera(scene){
+  // WebXR's camera object persists after the session ends. Use it only during an active session.
+  const xr=G.xr?.baseExperience;
+  return !G.desktop&&xr?.sessionManager?.inXRSession&&xr.camera ? xr.camera : scene.activeCamera;
+}
 function rebuildPlayerBody(scene){
   disposeMeshSafe(G.playerBodyRoot); G.playerBodyRoot=null;
-  const cam=(G.xr?.baseExperience?.camera)||scene.activeCamera; if(!cam) return;
+  const cam=playerBodyCamera(scene); if(!cam) return;
   const skin=selectedSkinDef();
   const root=new B.TransformNode('playerBodyRoot',scene); root.parent=cam; root.position=new B.Vector3(0,-1.0,0.12);
   {
@@ -9874,9 +9728,22 @@ function rebuildPlayerBody(scene){
   G.playerBodyRoot=root;
 }
 function updatePlayerBodyVisual(dt){
-  const r=G.playerBodyRoot;if(!r||!r.metadata?.potato)return;const speed=Math.min(1,Math.hypot(G.joystick.x||0,G.joystick.y||0));const hit=G.damageFlashT>0?1:0;const jig=Math.sin(performance.now()*.012)*(0.025+speed*.035+hit*.035);
-  const cs=r.metadata.cheeks||[];cs.forEach((c,i)=>{if(!c||c.isDisposed?.())return;c.scaling.y=1+Math.abs(jig)*(i?1.05:.9);c.scaling.z=1.28+jig*(i?-1:1);});if(r.metadata.torso&&!r.metadata.torso.isDisposed?.())r.metadata.torso.scaling.x=1+jig*.18;
-  const walk=Math.sin(performance.now()*.009)*speed*.45;(r.metadata.arms||[]).forEach((a,i)=>{if(a&&!a.isDisposed?.())a.rotation.x=(i?1:-1)*walk;});(r.metadata.legs||[]).forEach((l,i)=>{if(l&&!l.isDisposed?.())l.rotation.x=(i?-1:1)*walk*.8;});(r.metadata.feet||[]).forEach((f,i)=>{if(f&&!f.isDisposed?.())f.rotation.x=(i?1:-1)*walk*.25;});
+  const r=G.playerBodyRoot;
+  if(!r||!r.metadata?.potato||!hasActivePlayerSession())return;
+  // Use simulation time, not performance.now(): XR disconnects must freeze the animation.
+  const step=Number.isFinite(dt)&&dt>0?Math.min(dt,.033):0;
+  r.metadata.visualTime=(r.metadata.visualTime||0)+step;
+  const phase=r.metadata.visualTime;
+  const speed=Math.min(1,G.desktop?(G.desktopMoveMagnitude||0):(G.vrMoveMagnitude||0));
+  const hit=G.damageFlashT>0?1:0;
+  const jig=Math.sin(phase*12)*(0.025+speed*.035+hit*.035);
+  const cs=r.metadata.cheeks||[];
+  cs.forEach((c,i)=>{if(!c||c.isDisposed?.())return;c.scaling.y=1+Math.abs(jig)*(i?1.05:.9);c.scaling.z=1.28+jig*(i?-1:1);});
+  if(r.metadata.torso&&!r.metadata.torso.isDisposed?.())r.metadata.torso.scaling.x=1+jig*.18;
+  const walk=Math.sin(phase*9)*speed*.45;
+  (r.metadata.arms||[]).forEach((a,i)=>{if(a&&!a.isDisposed?.())a.rotation.x=(i?1:-1)*walk;});
+  (r.metadata.legs||[]).forEach((l,i)=>{if(l&&!l.isDisposed?.())l.rotation.x=(i?-1:1)*walk*.8;});
+  (r.metadata.feet||[]).forEach((f,i)=>{if(f&&!f.isDisposed?.())f.rotation.x=(i?1:-1)*walk*.25;});
 }
 function refreshPlayerCosmetics(){
   clearPlayerVisuals();
@@ -9996,94 +9863,7 @@ function stepSelection(kind,dir=1){
   if(kind==='skin')refreshPlayerCosmetics();rebuildHubLabels?.();toast(`${kind.toUpperCase()} • ${cat.find(x=>x.id===G.meta[sel])?.name||G.meta[sel]}`,850);
 }
 const CRATE_COST=60;
-const MULTIPLAYER_PROFILE={matchmakingPool:'GLOBAL',ownerAffectsMatchmaking:false,maxPlayers:4,transport:'PeerJS/WebRTC P2P',roomCodeDigits:5};
-const NETWORK_VERSION='5.7-P2P-ROOMS-V1';
-const NETWORK_MAX_PLAYERS=4;
-let peerLibPromise=null;
-function networkUiStatus(text,bad=false){
-  G.net.status=String(text||'OFFLINE');
-  const el=document.getElementById('multiStatus');if(el){el.textContent=G.net.status;el.classList.toggle('bad',!!bad);}const hud=document.getElementById('netText');if(hud)hud.textContent=G.net.role==='solo'?'SOLO':`${G.net.role.toUpperCase()} ${G.net.roomCode||''}`.trim();
-}
-function validRoomCode(v){const x=String(v||'').replace(/\D/g,'').slice(0,5);return x.length===5?x:'';}
-function randomRoomCode(){return String(10000+Math.floor(Math.random()*90000));}
-function ensurePeerLibrary(){
-  if(window.Peer)return Promise.resolve(window.Peer);
-  if(peerLibPromise)return peerLibPromise;
-  const urls=['https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js','https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js'];
-  peerLibPromise=new Promise((resolve,reject)=>{let i=0;const next=()=>{if(window.Peer)return resolve(window.Peer);if(i>=urls.length)return reject(new Error('multiplayer library unavailable'));const sc=document.createElement('script');sc.src=urls[i++];sc.async=true;sc.onload=()=>window.Peer?resolve(window.Peer):next();sc.onerror=()=>{sc.remove();next();};document.head.appendChild(sc);};next();});
-  return peerLibPromise;
-}
-function networkPeerId(code){return `crazy-office-58-${code}`;}
-function networkColorFromId(id){let h=0;for(const ch of String(id||''))h=(h*31+ch.charCodeAt(0))>>>0;const pal=['#5ad8ff','#ff9f5a','#ab7dff','#67e39a','#ff6b91','#ffd65a'];return pal[h%pal.length];}
-function createRemoteAvatar(scene,id,meta={}){
-  const old=G.net.remotes.get(id);if(old)return old;
-  const root=new B.TransformNode('remotePlayer_'+id,scene);root.setEnabled(false);
-  const col=meta.color||networkColorFromId(id),dark='#2b2730';
-  const body=B.MeshBuilder.CreateSphere('remoteBody',{diameter:.56,segments:10},scene);body.parent=root;body.position.y=.92;body.scaling=new B.Vector3(.9,1.18,.82);body.material=mat(scene,'remoteBodyMat_'+id,col,.72);
-  const head=B.MeshBuilder.CreateSphere('remoteHead',{diameter:.39,segments:10},scene);head.parent=root;head.position.y=1.53;head.material=mat(scene,'remoteHeadMat_'+id,'#e2b99a',.92);
-  for(const x of [-.075,.075]){const eye=B.MeshBuilder.CreateSphere('remoteEye',{diameter:.035,segments:6},scene);eye.parent=root;eye.position=new B.Vector3(x,1.58,-.18);eye.material=mat(scene,'remoteEyeMat_'+id+String(x),'#10151c',.4);}
-  for(const x of [-.34,.34]){const hand=B.MeshBuilder.CreateSphere('remoteHand',{diameter:.13,segments:7},scene);hand.parent=root;hand.position=new B.Vector3(x,1.05,0);hand.material=body.material;}
-  const tag=label(scene,'CO-WORKER',new B.Vector3(0,1.94,0),.15,'#ffffff');tag.parent=root;tag.position=new B.Vector3(0,1.94,0);
-  const remote={id,root,target:new B.Vector3(0,0,0),yaw:0,state:'hub',map:'',meta,lastSeen:performance.now()};G.net.remotes.set(id,remote);return remote;
-}
-function removeRemoteAvatar(id){const r=G.net.remotes.get(id);if(!r)return;try{r.root.dispose(false,true);}catch{}G.net.remotes.delete(id);}
-function sendNetwork(conn,msg){try{if(conn?.open)conn.send({...msg,v:NETWORK_VERSION});}catch(e){console.warn('network send failed',e);}}
-function broadcastNetwork(msg,exceptId=''){for(const [id,c] of G.net.connections)if(id!==exceptId)sendNetwork(c,msg);}
-function localNetworkPose(scene){const cam=scene?.activeCamera,p=playerPos(scene);let yaw=cam?.rotation?.y||0;try{if(cam?.absoluteRotationQuaternion)yaw=cam.absoluteRotationQuaternion.toEulerAngles().y;}catch{}return {type:'pose',x:+p.x.toFixed(3),y:+p.y.toFixed(3),z:+p.z.toFixed(3),yaw:+yaw.toFixed(3),state:G.state,map:G.meta.selectedMap||'',skin:G.meta.selectedSkin||'',color:G.meta.selectedColor||'#b9833d'};}
-function networkSessionPacket(){return {type:'session',state:G.state==='shift'?'shift':'hub',mode:G.mode,map:G.meta.selectedMap||'FLOOR 13',wave:G.wave||1,level:G.meta.survivalLevel||1};}
-function networkBroadcastSession(){if(G.net.role==='host')broadcastNetwork(networkSessionPacket());}
-function syncRemoteNpcSnapshot(scene,data){
-  if(G.net.role!=='guest'||!Array.isArray(data.npcs)||G.state!=='shift')return;
-  const keep=new Set();
-  for(const q of data.npcs){if(!q?.id||!Array.isArray(q.p))continue;keep.add(q.id);let n=G.npcs.find(x=>x.netId===q.id);if(!n){n=new NPC(scene,new B.Vector3(q.p[0],q.p[1],q.p[2]),q.type||'worker');n.netId=q.id;G.npcs.push(n);}n.hp=Math.max(0,Number(q.hp||0));n.maxHp=Math.max(1,Number(q.maxHp||n.maxHp));n.dead=!!q.dead;n.root.position.copyFromFloats(q.p[0],q.p[1],q.p[2]);n.root.rotation.y=Number(q.ry||0);n.refreshHpBar();}
-  for(const n of [...G.npcs])if(n.netId&&!keep.has(n.netId)){try{n.dispose();}catch{}G.npcs.splice(G.npcs.indexOf(n),1);}
-  if(Number.isFinite(data.wave))G.wave=data.wave;
-}
-function handleNetworkData(scene,conn,data){
-  if(!data||typeof data!=='object')return;
-  const id=conn.peer||'peer';
-  if(data.type==='hello'){const r=createRemoteAvatar(scene,id,data);r.meta=data;sendNetwork(conn,{type:'helloAck',color:G.meta.selectedColor,skin:G.meta.selectedSkin});if(G.net.role==='host')sendNetwork(conn,networkSessionPacket());return;}
-  if(data.type==='helloAck'){createRemoteAvatar(scene,id,data);return;}
-  if(data.type==='pose'){const r=createRemoteAvatar(scene,id,data);r.target.copyFromFloats(Number(data.x)||0,(Number(data.y)||1.6)-1.58,Number(data.z)||0);r.yaw=Number(data.yaw)||0;r.state=data.state||'hub';r.map=data.map||'';r.lastSeen=performance.now();return;}
-  if(data.type==='session'&&G.net.role==='guest'){
-    if(data.map&&CATALOG.maps.some(x=>x.id===data.map)){G.meta.selectedMap=data.map;saveMeta();}
-    if(data.state==='shift'&&(G.state!=='shift'||G.mode!==data.mode)){startShift(scene,data.mode||'LEVELS');}
-    else if(data.state==='hub'&&G.state!=='hub')buildHub(scene);
-    return;
-  }
-  if(data.type==='npcSnapshot'){syncRemoteNpcSnapshot(scene,data);return;}
-  if(data.type==='npcHit'&&G.net.role==='host'){
-    const n=G.npcs.find(x=>x.netId===data.id&&!x.dead);if(!n)return;const a=Array.isArray(data.dir)?new B.Vector3(data.dir[0]||0,data.dir[1]||0,data.dir[2]||0):new B.Vector3(0,0,1);if(a.lengthSquared()>.001)a.normalize();n.hit(Math.max(0,Math.min(120,Number(data.dmg)||0)),a,data.kind==='prop'?'prop':'bat');return;
-  }
-}
-function bindNetworkConnection(scene,conn){
-  if(!conn)return;const id=conn.peer||('peer_'+Math.random());
-  const accept=()=>{if(G.net.connections.has(id))return;if(G.net.connections.size>=NETWORK_MAX_PLAYERS-1){sendNetwork(conn,{type:'full'});try{conn.close();}catch{}return;}G.net.connections.set(id,conn);createRemoteAvatar(scene,id,conn.metadata||{});sendNetwork(conn,{type:'hello',color:G.meta.selectedColor,skin:G.meta.selectedSkin});networkUiStatus(`${G.net.role.toUpperCase()} • ${G.net.roomCode} • ${G.net.connections.size+1}/${NETWORK_MAX_PLAYERS}`);};
-  conn.on?.('open',accept);if(conn.open)accept();conn.on?.('data',d=>{if(d?.type==='full'){networkUiStatus('ROOM FULL',true);return;}handleNetworkData(scene,conn,d);});conn.on?.('close',()=>{G.net.connections.delete(id);removeRemoteAvatar(id);networkUiStatus(`${G.net.role.toUpperCase()} • ${G.net.roomCode} • ${G.net.connections.size+1}/${NETWORK_MAX_PLAYERS}`);});conn.on?.('error',e=>console.warn('data connection',e));
-}
-function leaveMultiplayer(){for(const c of G.net.connections.values())try{c.close();}catch{}G.net.connections.clear();for(const id of [...G.net.remotes.keys()])removeRemoteAvatar(id);try{G.net.peer?.destroy?.();}catch{}G.net.peer=null;G.net.role='solo';G.net.roomCode='';G.net.playerId='';networkUiStatus('OFFLINE');}
-async function hostMultiplayer(scene,rawCode){
-  const code=validRoomCode(rawCode)||randomRoomCode();leaveMultiplayer();G.net.scene=scene;G.net.role='host';G.net.roomCode=code;networkUiStatus('STARTING ROOM…');
-  try{const PeerCtor=await ensurePeerLibrary();const peer=new PeerCtor(networkPeerId(code),{debug:1});G.net.peer=peer;peer.on('open',id=>{G.net.playerId=id;networkUiStatus(`HOST • ${code} • 1/${NETWORK_MAX_PLAYERS}`);const inp=document.getElementById('roomCode');if(inp)inp.value=code;});peer.on('connection',c=>bindNetworkConnection(scene,c));peer.on('error',e=>{console.warn('PeerJS host',e);networkUiStatus(e?.type==='unavailable-id'?'CODE ALREADY IN USE':'NETWORK ERROR',true);});return code;}catch(e){console.warn(e);leaveMultiplayer();networkUiStatus('MULTIPLAYER UNAVAILABLE',true);throw e;}
-}
-async function joinMultiplayer(scene,rawCode){
-  const code=validRoomCode(rawCode);if(!code){networkUiStatus('ENTER 5-DIGIT CODE',true);return false;}leaveMultiplayer();G.net.scene=scene;G.net.role='guest';G.net.roomCode=code;networkUiStatus('CONNECTING…');
-  try{const PeerCtor=await ensurePeerLibrary();const peer=new PeerCtor(undefined,{debug:1});G.net.peer=peer;peer.on('open',id=>{G.net.playerId=id;const c=peer.connect(networkPeerId(code),{serialization:'json',metadata:{color:G.meta.selectedColor,skin:G.meta.selectedSkin},reliable:false});bindNetworkConnection(scene,c);});peer.on('error',e=>{console.warn('PeerJS join',e);networkUiStatus(e?.type==='peer-unavailable'?'ROOM NOT FOUND':'NETWORK ERROR',true);});return true;}catch(e){console.warn(e);leaveMultiplayer();networkUiStatus('MULTIPLAYER UNAVAILABLE',true);return false;}
-}
-function networkTick(scene,dt){
-  if(G.net.role==='solo')return;
-  G.net.lastSend+=dt;G.net.lastNpcSend+=dt;
-  if(G.net.lastSend>=.08){G.net.lastSend=0;broadcastNetwork(localNetworkPose(scene));}
-  if(G.net.role==='host'&&G.state==='shift'&&G.net.lastNpcSend>=.14){G.net.lastNpcSend=0;broadcastNetwork({type:'npcSnapshot',wave:G.wave,npcs:G.npcs.filter(n=>!n.root?.isDisposed?.()).map(n=>({id:n.netId,type:n.type,hp:+n.hp.toFixed(1),maxHp:+n.maxHp.toFixed(1),dead:!!n.dead,p:[+n.root.position.x.toFixed(3),+n.root.position.y.toFixed(3),+n.root.position.z.toFixed(3)],ry:+n.root.rotation.y.toFixed(3)}))});}
-  for(const [id,r] of G.net.remotes){if(performance.now()-r.lastSeen>12000){r.root.setEnabled(false);continue;}const sameState=r.state===G.state&&(G.state!=='shift'||r.map===(G.meta.selectedMap||''));r.root.setEnabled(!!sameState);if(!sameState)continue;r.root.position=B.Vector3.Lerp(r.root.position,r.target,Math.min(1,dt*12));r.root.rotation.y+=(r.yaw-r.root.rotation.y)*Math.min(1,dt*10);}
-}
-function setupMultiplayerUI(scene){
-  const host=document.getElementById('hostRoom'),join=document.getElementById('joinRoom'),leave=document.getElementById('leaveRoom'),input=document.getElementById('roomCode');if(!host||!join||!input)return;host.disabled=false;join.disabled=false;if(leave)leave.disabled=false;
-  host.onclick=async()=>{host.disabled=join.disabled=true;try{await hostMultiplayer(scene,input.value);}finally{host.disabled=join.disabled=false;}};
-  join.onclick=async()=>{host.disabled=join.disabled=true;try{await joinMultiplayer(scene,input.value);}finally{host.disabled=join.disabled=false;}};
-  leave.onclick=()=>leaveMultiplayer();input.addEventListener('input',()=>{input.value=input.value.replace(/\D/g,'').slice(0,5);});
-}
-
+const MULTIPLAYER_PROFILE={matchmakingPool:'GLOBAL',ownerAffectsMatchmaking:false};
 function lockedRewards(){return [
   ...CATALOG.bats.filter(x=>!G.meta.unlockedBats.includes(x.id)).map(x=>({kind:'bat',id:x.id,name:x.name})),
   ...CATALOG.skins.filter(x=>!G.meta.unlockedSkins.includes(x.id)).map(x=>({kind:'skin',id:x.id,name:x.name})),
@@ -10103,6 +9883,1569 @@ function stationAction(id){
 }
 let rebuildHubLabels=()=>{};
 
+
+// 4.5 REFERENCE PASS: small, genuinely playable office interactions, not decorative fake missions.
+const OFFICE_MICRO_TASKS=[
+  {id:'PANIC',name:'PRESS THE PANIC BUTTON',hint:'Hit the big red button with your bat'},
+  {id:'BIN',name:'OFFICE BASKETBALL',hint:'Throw a paper ball into the blue basket'},
+  {id:'DOUBLEBIN',name:'DOUBLE DUNK',hint:'Sink two different paper balls into the blue basket',optional:true},
+  {id:'MUGDUNK',name:'COFFEE DUNK',hint:'Toss a coffee mug into the blue office basket',optional:true},
+  {id:'MIXEDDUNK',name:'MIXED BASKET',hint:'Sink a paper ball AND a coffee mug in one shift',optional:true},
+  {id:'COFFEE',name:'COFFEE BREAK!',hint:'Throw a coffee mug at a coworker'},
+  {id:'STAPLER',name:'STAPLER SNIPER',hint:'Throw a stapler at a coworker'},
+  {id:'CHAIR',name:'CHAIR ROLLER',hint:'Roll a swivel chair with the VR trigger or desktop action',optional:true},
+  {id:'CART',name:'CART DASH',hint:'Send a loose shopping cart rolling',optional:true},
+  {id:'STRIKE',name:'OFFICE STRIKE',hint:'Knock down every office bowling pin with a bowling ball',optional:true},
+  {id:'DOMINO',name:'OFFICE DOMINO',hint:'Crash a rolling chair or cart into a loose box or cart',optional:true},
+  {id:'COPY',name:'COPY CAT',hint:'Print at least two flying paper sheets with a printer or copier',optional:true},
+  {id:'PRINTSTORM',name:'PRINT STORM',hint:'Print five real sheets from the same printer within ten seconds',optional:true},
+  {id:'SNACKRUSH',name:'SNACK RUSH',hint:'Launch two real snack boxes from the same microwave within eight seconds',optional:true},
+  {id:'BREEZE',name:'AIR TRAFFIC',hint:'Blow at least two loose props away with a fan or air cannon',optional:true},
+  {id:'FANCLUB',name:'OFFICE FAN CLUB',hint:'Startle two coworkers with a fan or air cannon',optional:true},
+  {id:'BELLBLITZ',name:'BELL BLITZ',hint:'Ring the same desk bell three times within five seconds',optional:true},
+  {id:'OFFICEHOTLINE',name:'OFFICE HOTLINE',hint:'Ring a desk bell, then a different desk phone within seven seconds',optional:true},
+  {id:'PAPERALERT',name:'PAPER ALERT',hint:'Ring a desk bell, then print two real sheets within eight seconds',optional:true},
+  {id:'FAXFRENZY',name:'FAX FRENZY',hint:'Ring a desk phone, then print two real sheets within eight seconds',optional:true},
+  {id:'COPYRELAY',name:'COPY RELAY',hint:'Use a copier, then print two sheets within ten seconds',optional:true},
+  {id:'COPYBELL',name:'COPY BELL',hint:'Print two real photocopies, then ring a desk bell within nine seconds',optional:true},
+  {id:'COPYCALL',name:'COPY CALL',hint:'Print two real photocopies, then ring a desk phone within nine seconds',optional:true},
+  {id:'PHONECOPY',name:'PHONE COPY',hint:'Ring a desk phone, then make two real photocopies within eight seconds',optional:true},
+  {id:'PHONEPANIC',name:'PHONE PANIC',hint:'Ring the same desk phone twice within eight seconds, startling a coworker each time',optional:true},
+  {id:'SNACKDELIVERY',name:'SNACK DELIVERY',hint:'Ring a desk phone, then launch a real microwave snack within nine seconds',optional:true},
+  {id:'LUNCHBELL',name:'LUNCH BELL',hint:'Ring a desk bell, then launch a real microwave snack within nine seconds',optional:true},
+  {id:'TECH',name:'TECH WRECKER',hint:'Actually break a monitor, laptop or printer',optional:true},
+  {id:'TECHDUO',name:'DOUBLE TECH TROUBLE',hint:'Break two different types of office electronics',optional:true},
+  {id:'CHAIRCLASH',name:'CHAIR VS CART',hint:'Crash a rolling office chair into a shopping cart',optional:true},
+  {id:'CARTCHAIR',name:'CART VS CHAIR',hint:'Crash a rolling shopping cart into a stationary office chair',optional:true},
+  {id:'PINBALL',name:'OFFICE PINBALL',hint:'Crash two different rolling chairs or carts into loose office props',optional:true},
+  {id:'CARTCRASH',name:'CART CRASH',hint:'Roll a shopping cart into a monitor, laptop or printer',optional:true},
+  {id:'CHAIRCRASH',name:'CHAIR CRASH',hint:'Roll a swivel chair into a monitor, laptop or printer',optional:true},
+  {id:'CARTBOWL',name:'CART BOWLING',hint:'Roll a shopping cart into an office bowling pin',optional:true},
+  {id:'CHAIRBOWL',name:'CHAIR BOWLING',hint:'Roll an office chair into an office bowling pin',optional:true},
+  {id:'BALLCART',name:'BALL VS CART',hint:'Roll the heavy bowling ball into a shopping cart',optional:true},
+  {id:'BALLCHAIR',name:'BALL VS CHAIR',hint:'Roll the heavy bowling ball into a loose swivel chair',optional:true},
+  {id:'CHAIRJOUST',name:'CHAIR JOUST',hint:'Crash two rolling office chairs head-on',optional:true},
+  {id:'CARTJOUST',name:'CART JOUST',hint:'Crash two moving shopping carts head-on',optional:true},
+  {id:'TECHBOWL',name:'TECH BOWLING',hint:'Roll a heavy bowling ball into a monitor, laptop or printer',optional:true},
+  {id:'COFFEECRASH',name:'COFFEE CRASH',hint:'Throw a loose coffee mug into a monitor, laptop or printer',optional:true},
+  {id:'PAPERJAM',name:'PAPER JAM',hint:'Launch a loose paper ball into a printer or photocopier',optional:true}
+];
+// CR4.9.494: a visible, optional bell-combo challenge with actual device presses.
+// Track progress by the shift task identity, never by a global counter.
+const officeBellBlitzProgress=new WeakMap(),officeBellBlitzInFlight=new WeakSet();
+function recordOfficeBellBlitz(device,scene,where,at){
+  try{
+    if(!Number.isFinite(at)||at<0||device?.type!=='deskbell'||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const selectedMesh=device.mesh;
+    if(!Array.isArray(tasks))return false;
+    // CR4.9.497: snapshot own task slots. A reentrant getter must not
+    // award a replacement shift task or an ambiguous duplicate.
+    if(tasks.length>64)return false;
+    const taskRoster=[];
+    let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const candidate=slot.value;
+      taskRoster.push(candidate);
+      // CR4.9.508: never invoke a task accessor during combo selection.
+      if(!candidate||typeof candidate!=='object')return false;
+      const idSlot=Object.getOwnPropertyDescriptor(candidate,'id');
+      const doneSlot=Object.getOwnPropertyDescriptor(candidate,'done');
+      if(!idSlot||!('value' in idSlot)||typeof idSlot.value!=='string'||
+         !doneSlot||!('value' in doneSlot)||typeof doneSlot.value!=='boolean')return false;
+      if(idSlot.value==='BELLBLITZ'&&doneSlot.value===false){
+        if(task)return false;
+        task=candidate;
+      }
+    }
+    if(!task||typeof task!=='object'||officeBellBlitzInFlight.has(task))return false;
+    const taskIntact=()=>{try{
+      if(G.state!=='shift'||G.waveToken!==token||G.wave!==wave||
+         G.officeTasks!==tasks||G.waveTransition||G.ended||
+         tasks.length!==taskRoster.length||
+         device.type!=='deskbell'||device.broken||device.mesh!==selectedMesh||
+         selectedMesh.isDisposed?.())return false;
+      for(let i=0;i<taskRoster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==taskRoster[i])return false;
+      }
+      const idSlot=Object.getOwnPropertyDescriptor(task,'id');
+      const doneSlot=Object.getOwnPropertyDescriptor(task,'done');
+      if(!idSlot||!('value' in idSlot)||idSlot.value!=='BELLBLITZ'||
+         !doneSlot||!('value' in doneSlot)||doneSlot.value!==false)return false;
+      return G.state==='shift'&&G.waveToken===token&&G.wave===wave&&
+        G.officeTasks===tasks&&!G.waveTransition&&!G.ended;
+    }catch{return false;}};
+    officeBellBlitzInFlight.add(task);
+    try{
+    const old=officeBellBlitzProgress.get(task);
+    // CR4.9.495: five seconds means first-to-third ring, not each gap.
+    const continuing=old?.token===token&&old.wave===wave&&
+      old.tasks===tasks&&Array.isArray(old.roster)&&
+      old.roster.length===taskRoster.length&&
+      old.roster.every((item,i)=>item===taskRoster[i])&&
+      old.device===device&&old.mesh===selectedMesh&&at>old.at&&
+      at-old.at<=5000&&at-old.firstAt<=5000;
+    const next={device,mesh:selectedMesh,token,wave,tasks,roster:taskRoster.slice(),at,firstAt:continuing?old.firstAt:at,
+      count:continuing?Math.min(3,old.count+1):1};
+    if(!taskIntact())return false;
+    officeBellBlitzProgress.set(task,next);
+    if(next.count<3){if(taskIntact())try{renderOfficeTasks();}catch{}return false;}
+    if(!taskIntact())return false;
+    return completeOfficeTask('BELLBLITZ',scene,where)===true;
+    }finally{officeBellBlitzInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.509: two real desk-phone rings with a nearby coworker reaction.
+// Key progress to the selected shift task and exact physical phone mesh.
+// CR4.9.514: ordered two-device task, bound to the exact shift and physical meshes.
+const officeHotlineProgress=new WeakMap(),officeHotlineInFlight=new WeakSet();
+function recordOfficeHotline(device,scene,where,at){
+  try{
+    if(!Number.isFinite(at)||at<0||!device||
+       (device.type!=='deskbell'&&device.type!=='deskphone')||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const kind=device.type,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    const roster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const item=slot.value;
+      if(!item||typeof item!=='object')return false;
+      roster.push(item);
+      const id=Object.getOwnPropertyDescriptor(item,'id');
+      const done=Object.getOwnPropertyDescriptor(item,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='OFFICEHOTLINE'&&done.value===false){
+        if(task)return false;
+        task=item;
+      }
+    }
+    if(!task||officeHotlineInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         tasks.length!==roster.length||device.type!==kind||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<roster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==roster[i])return false;
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='OFFICEHOTLINE'&&
+        !!done&&('value' in done)&&done.value===false;
+    }catch{return false;}};
+    officeHotlineInFlight.add(task);
+    try{
+      if(!intact())return false;
+      const old=officeHotlineProgress.get(task);
+      if(kind==='deskbell'){
+        officeHotlineProgress.set(task,{device,mesh,token,wave,tasks,roster:roster.slice(),firstAt:at,at});
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+          !Array.isArray(old.roster)||old.roster.length!==roster.length||
+          old.roster.some((item,i)=>item!==roster[i])||
+         old.device===device||old.mesh===mesh||
+         !Number.isFinite(old.firstAt)||at<=old.at||
+         at-old.firstAt>7000||at-old.firstAt<0)return false;
+      if(!intact())return false;
+      return completeOfficeTask('OFFICEHOTLINE',scene,where)===true;
+    }finally{officeHotlineInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.525: real bell -> printer-sheet physical combo, scoped to one shift.
+const officePaperAlertProgress=new WeakMap(),officePaperAlertInFlight=new WeakSet();
+function recordOfficePaperAlert(device,scene,where,at,printed=0){
+  try{
+    if(!Number.isFinite(at)||at<0||!device||
+       (device.type!=='deskbell'&&device.type!=='printer')||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended||
+       (device.type==='deskbell'?printed!==0:
+         !Number.isSafeInteger(printed)||printed<2||printed>3))return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const kind=device.type,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    const roster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const item=slot.value;
+      if(!item||typeof item!=='object')return false;
+      roster.push(item);
+      const id=Object.getOwnPropertyDescriptor(item,'id');
+      const done=Object.getOwnPropertyDescriptor(item,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='PAPERALERT'&&done.value===false){
+        if(task)return false;
+        task=item;
+      }
+    }
+    if(!task||officePaperAlertInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         tasks.length!==roster.length||device.type!==kind||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<roster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==roster[i])return false;
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='PAPERALERT'&&
+        !!done&&('value' in done)&&done.value===false;
+    }catch{return false;}};
+    officePaperAlertInFlight.add(task);
+    try{
+      if(!intact())return false;
+      if(kind==='deskbell'){
+        officePaperAlertProgress.set(task,{device,mesh,token,wave,tasks,roster:roster.slice(),firstAt:at,at});
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      const old=officePaperAlertProgress.get(task);
+      if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+          !Array.isArray(old.roster)||old.roster.length!==roster.length||
+          old.roster.some((item,i)=>item!==roster[i])||
+         old.device===device||old.mesh===mesh||
+         !Number.isFinite(old.firstAt)||at<=old.at||
+         at-old.firstAt>8000||at-old.firstAt<0)return false;
+      if(!intact())return false;
+      return completeOfficeTask('PAPERALERT',scene,where)===true;
+    }finally{officePaperAlertInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.533: physical phone -> printer combo, task-roster scoped.
+const officeFaxFrenzyProgress=new WeakMap(),officeFaxFrenzyInFlight=new WeakSet();
+function recordOfficeFaxFrenzy(device,scene,where,at,printed=0){
+  try{
+    if(!Number.isFinite(at)||at<0||!device||
+       (device.type!=='deskphone'&&device.type!=='printer')||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended||
+       (device.type==='deskphone'?printed!==0:
+         !Number.isSafeInteger(printed)||printed<2||printed>3))return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const kind=device.type,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    const roster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const item=slot.value;
+      if(!item||typeof item!=='object')return false;
+      roster.push(item);
+      const id=Object.getOwnPropertyDescriptor(item,'id');
+      const done=Object.getOwnPropertyDescriptor(item,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='FAXFRENZY'&&done.value===false){
+        if(task)return false;
+        task=item;
+      }
+    }
+    if(!task||officeFaxFrenzyInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         tasks.length!==roster.length||device.type!==kind||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<roster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==roster[i])return false;
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='FAXFRENZY'&&
+        !!done&&('value' in done)&&done.value===false;
+    }catch{return false;}};
+    officeFaxFrenzyInFlight.add(task);
+    try{
+      if(!intact())return false;
+      if(kind==='deskphone'){
+        officeFaxFrenzyProgress.set(task,{device,mesh,token,wave,tasks,roster:roster.slice(),firstAt:at,at});
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      const old=officeFaxFrenzyProgress.get(task);
+      if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+          !Array.isArray(old.roster)||old.roster.length!==roster.length||
+          old.roster.some((item,i)=>item!==roster[i])||
+         old.device?.type!=='deskphone'||old.device?.broken||
+         old.device?.mesh!==old.mesh||!old.mesh||old.mesh.isDisposed?.()||
+         old.device===device||old.mesh===mesh||
+         !Number.isFinite(old.firstAt)||at<=old.at||
+         at-old.firstAt>8000||at-old.firstAt<0)return false;
+      if(!intact())return false;
+      return completeOfficeTask('FAXFRENZY',scene,where)===true;
+    }finally{officeFaxFrenzyInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.539: verified copier-to-printer physical challenge.
+const officeCopyRelayProgress=new WeakMap(),officeCopyRelayInFlight=new WeakSet();
+function recordOfficeCopyRelay(device,scene,where,at,sheets){
+ try{
+  if(!device||!['photocopier','printer'].includes(device.type)||
+     !Number.isFinite(at)||at<0||!Number.isSafeInteger(sheets)||sheets<2||sheets>3||
+     device.broken||!device.mesh||device.mesh.isDisposed?.()||
+     G.state!=='shift'||G.waveTransition||G.ended)return false;
+  const token=G.waveToken,wave=G.wave,tasks=G.officeTasks,kind=device.type,mesh=device.mesh;
+  if(!Array.isArray(tasks)||tasks.length>64)return false;
+  const roster=[];let task=null;
+  for(let i=0;i<tasks.length;i++){
+   const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+   if(!slot||!('value' in slot))return false;
+   const t=slot.value;if(!t||typeof t!=='object')return false;roster.push(t);
+   const id=Object.getOwnPropertyDescriptor(t,'id'),done=Object.getOwnPropertyDescriptor(t,'done');
+   if(!id||!('value' in id)||typeof id.value!=='string'||
+      !done||!('value' in done)||typeof done.value!=='boolean')return false;
+   if(id.value==='COPYRELAY'&&!done.value){if(task)return false;task=t;}
+  }
+  if(!task||officeCopyRelayInFlight.has(task))return false;
+  const intact=()=>{try{
+   if(G.state!=='shift'||G.waveTransition||G.ended||G.waveToken!==token||
+      G.wave!==wave||G.officeTasks!==tasks||tasks.length!==roster.length||
+      device.type!==kind||device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+   for(let i=0;i<roster.length;i++){
+    const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+    if(!slot||!('value' in slot)||slot.value!==roster[i])return false;
+   }
+   const id=Object.getOwnPropertyDescriptor(task,'id'),done=Object.getOwnPropertyDescriptor(task,'done');
+   return !!id&&('value' in id)&&id.value==='COPYRELAY'&&
+          !!done&&('value' in done)&&done.value===false;
+  }catch{return false;}};
+  officeCopyRelayInFlight.add(task);
+  try{
+   if(!intact())return false;
+   if(kind==='photocopier'){
+    officeCopyRelayProgress.set(task,{device,mesh,token,wave,tasks,roster:roster.slice(),firstAt:at,at});
+    if(intact())try{renderOfficeTasks();}catch{}
+    return false;
+   }
+   const old=officeCopyRelayProgress.get(task);
+   if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+      !Array.isArray(old.roster)||old.roster.length!==roster.length||
+      old.roster.some((t,i)=>t!==roster[i])||
+      old.device?.type!=='photocopier'||old.device?.broken||
+      old.device?.mesh!==old.mesh||!old.mesh||old.mesh.isDisposed?.()||
+      old.mesh===mesh||!Number.isFinite(old.firstAt)||at<=old.at||
+      at-old.firstAt>10000||at-old.firstAt<0)return false;
+   if(!intact())return false;
+   return completeOfficeTask('COPYRELAY',scene,where)===true;
+  }finally{officeCopyRelayInFlight.delete(task);}
+ }catch{return false;}
+}
+// CR4.9.549: an optional, physical copier-to-bell relay; the bell cannot
+// claim credit unless the same live shift produced two verified copier pages.
+const officeCopyBellProgress=new WeakMap(),officeCopyBellInFlight=new WeakSet();
+function recordOfficeCopyBell(device,scene,where,at,sheets=0){
+  try{
+    if(!device||(device.type!=='photocopier'&&device.type!=='deskbell')||
+       !Number.isFinite(at)||at<0||!Number.isSafeInteger(sheets)||
+       (device.type==='photocopier'?(sheets<2||sheets>3):sheets!==0)||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const kind=device.type,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    const roster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const t=slot.value;if(!t||typeof t!=='object')return false;
+      roster.push(t);
+      const id=Object.getOwnPropertyDescriptor(t,'id');
+      const done=Object.getOwnPropertyDescriptor(t,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='COPYBELL'&&!done.value){if(task)return false;task=t;}
+    }
+    if(!task||officeCopyBellInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         tasks.length!==roster.length||device.type!==kind||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<roster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==roster[i])return false;
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='COPYBELL'&&
+        !!done&&('value' in done)&&done.value===false;
+    }catch{return false;}};
+    officeCopyBellInFlight.add(task);
+    try{
+      if(!intact())return false;
+      if(kind==='photocopier'){
+        const progress={device,mesh,token,wave,tasks,roster:roster.slice(),firstAt:at,at};
+        if(!intact())return false;
+        officeCopyBellProgress.set(task,progress);
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      const old=officeCopyBellProgress.get(task);
+      if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+         !Array.isArray(old.roster)||old.roster.length!==roster.length||
+         old.roster.some((t,i)=>t!==roster[i])||
+         old.device?.type!=='photocopier'||old.device?.broken||
+         old.device?.mesh!==old.mesh||!old.mesh||old.mesh.isDisposed?.()||
+         old.mesh===mesh||!Number.isFinite(old.firstAt)||at<=old.at||
+         at-old.firstAt>9000||at-old.firstAt<0)return false;
+      if(!intact())return false;
+      return completeOfficeTask('COPYBELL',scene,where)===true;
+    }finally{officeCopyBellInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.552: two verified copier sheets followed by a desk-phone call.
+const officeCopyCallProgress=new WeakMap(),officeCopyCallInFlight=new WeakSet();
+function recordOfficeCopyCall(device,scene,where,at,sheets=0){
+  try{
+    if(!device||(device.type!=='photocopier'&&device.type!=='deskphone')||
+       !Number.isFinite(at)||at<0||!Number.isSafeInteger(sheets)||
+       (device.type==='photocopier'?(sheets<2||sheets>3):sheets!==0)||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const kind=device.type,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    const roster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const t=slot.value;if(!t||typeof t!=='object')return false;
+      roster.push(t);
+      const id=Object.getOwnPropertyDescriptor(t,'id');
+      const done=Object.getOwnPropertyDescriptor(t,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='COPYCALL'&&!done.value){if(task)return false;task=t;}
+    }
+    if(!task||officeCopyCallInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         tasks.length!==roster.length||device.type!==kind||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<roster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==roster[i])return false;
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='COPYCALL'&&
+        !!done&&('value' in done)&&done.value===false;
+    }catch{return false;}};
+    officeCopyCallInFlight.add(task);
+    try{
+      if(!intact())return false;
+      if(kind==='photocopier'){
+        const progress={device,mesh,token,wave,tasks,roster:roster.slice(),firstAt:at,at};
+        if(!intact())return false;
+        officeCopyCallProgress.set(task,progress);
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      const old=officeCopyCallProgress.get(task);
+      if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+         !Array.isArray(old.roster)||old.roster.length!==roster.length||
+         old.roster.some((t,i)=>t!==roster[i])||
+         old.device?.type!=='photocopier'||old.device?.broken||
+         old.device?.mesh!==old.mesh||!old.mesh||old.mesh.isDisposed?.()||
+         old.mesh===mesh||!Number.isFinite(old.firstAt)||at<=old.at||
+         at-old.firstAt>9000||at-old.firstAt<0)return false;
+      if(!intact())return false;
+      return completeOfficeTask('COPYCALL',scene,where)===true;
+    }finally{officeCopyCallInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.552: a desk-phone call followed by two verified photocopies.
+const officePhoneCopyProgress=new WeakMap(),officePhoneCopyInFlight=new WeakSet();
+function recordOfficePhoneCopy(device,scene,where,at,printed=0){
+  try{
+    if(!Number.isFinite(at)||at<0||!device||
+       (device.type!=='deskphone'&&device.type!=='photocopier')||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended||
+       (device.type==='deskphone'?printed!==0:
+         !Number.isSafeInteger(printed)||printed<2||printed>3))return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const kind=device.type,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    const roster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const item=slot.value;
+      if(!item||typeof item!=='object')return false;
+      roster.push(item);
+      const id=Object.getOwnPropertyDescriptor(item,'id');
+      const done=Object.getOwnPropertyDescriptor(item,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='PHONECOPY'&&done.value===false){
+        if(task)return false;
+        task=item;
+      }
+    }
+    if(!task||officePhoneCopyInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         tasks.length!==roster.length||device.type!==kind||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<roster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==roster[i])return false;
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='PHONECOPY'&&
+        !!done&&('value' in done)&&done.value===false;
+    }catch{return false;}};
+    officePhoneCopyInFlight.add(task);
+    try{
+      if(!intact())return false;
+      if(kind==='deskphone'){
+        officePhoneCopyProgress.set(task,{device,mesh,token,wave,tasks,roster:roster.slice(),firstAt:at,at});
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      const old=officePhoneCopyProgress.get(task);
+      if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+          !Array.isArray(old.roster)||old.roster.length!==roster.length||
+          old.roster.some((item,i)=>item!==roster[i])||
+         old.device?.type!=='deskphone'||old.device?.broken||
+         old.device?.mesh!==old.mesh||!old.mesh||old.mesh.isDisposed?.()||
+         old.device===device||old.mesh===mesh||
+         !Number.isFinite(old.firstAt)||at<=old.at||
+         at-old.firstAt>8000||at-old.firstAt<0)return false;
+      if(!intact())return false;
+      return completeOfficeTask('PHONECOPY',scene,where)===true;
+    }finally{officePhoneCopyInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.530: physical desk-phone -> microwave snack delivery challenge.
+const officeSnackDeliveryProgress=new WeakMap(),officeSnackDeliveryInFlight=new WeakSet();
+function recordOfficeSnackDelivery(device,scene,where,at,snack=null){
+  try{
+    if(!Number.isFinite(at)||at<0||!device||
+       (device.type!=='deskphone'&&device.type!=='microwave')||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const kind=device.type,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    let props=null,propRoster=null,snackMesh=null;
+    if(kind==='microwave'){
+      // CR4.9.539: preserve mesh identity across fallible disposed/prop callbacks.
+      const initialSnackMesh=snack?.mesh;
+      if(!snack||snack.type!=='donutbox'||snack.broken||!initialSnackMesh||
+         initialSnackMesh.isDisposed?.()||snack.mesh!==initialSnackMesh||snack.heldBy||snack.npcOwner||
+         snack.grounded!==false||snack.temporaryT!==24)return false;
+      props=G.props;
+      if(!Array.isArray(props)||props.length>48)return false;
+      propRoster=[];let occurrences=0;
+      for(let i=0;i<props.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(props,String(i));
+        if(!slot||!('value' in slot))return false;
+        propRoster.push(slot.value);
+        if(slot.value===snack)occurrences++;
+      }
+      if(occurrences!==1)return false;
+      snackMesh=initialSnackMesh;
+      if(!snackMesh||snackMesh.isDisposed?.()||snack.mesh!==snackMesh)return false;
+    }else if(snack!==null)return false;
+    const taskRoster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const candidate=slot.value;
+      if(!candidate||typeof candidate!=='object')return false;
+      taskRoster.push(candidate);
+      const id=Object.getOwnPropertyDescriptor(candidate,'id');
+      const done=Object.getOwnPropertyDescriptor(candidate,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='SNACKDELIVERY'&&done.value===false){
+        if(task)return false;
+        task=candidate;
+      }
+    }
+    if(!task||officeSnackDeliveryInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         tasks.length!==taskRoster.length||device.type!==kind||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<taskRoster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==taskRoster[i])return false;
+      }
+      if(propRoster){
+        if(G.props!==props||props.length!==propRoster.length||
+           snack.type!=='donutbox'||snack.broken||snack.mesh!==snackMesh||
+           snackMesh.isDisposed?.()||snack.heldBy||snack.npcOwner||
+           snack.grounded!==false||snack.temporaryT!==24)return false;
+        for(let i=0;i<propRoster.length;i++){
+          const slot=Object.getOwnPropertyDescriptor(props,String(i));
+          if(!slot||!('value' in slot)||slot.value!==propRoster[i])return false;
+        }
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='SNACKDELIVERY'&&
+        !!done&&('value' in done)&&done.value===false&&
+        G.state==='shift'&&G.waveToken===token&&G.wave===wave&&
+        G.officeTasks===tasks&&!G.waveTransition&&!G.ended&&
+        (!propRoster||(G.props===props&&props.length===propRoster.length&&snack.mesh===snackMesh));
+    }catch{return false;}};
+    officeSnackDeliveryInFlight.add(task);
+    try{
+      if(!intact())return false;
+      if(kind==='deskphone'){
+        officeSnackDeliveryProgress.set(task,{device,mesh,token,wave,tasks,roster:taskRoster.slice(),firstAt:at,at});
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      const old=officeSnackDeliveryProgress.get(task);
+      if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+          !Array.isArray(old.roster)||old.roster.length!==taskRoster.length||
+          old.roster.some((item,i)=>item!==taskRoster[i])||
+         old.device===device||old.mesh===mesh||
+         !Number.isFinite(old.firstAt)||at<=old.at||
+         at-old.firstAt>9000||at-old.firstAt<0)return false;
+      if(!intact())return false;
+      return completeOfficeTask('SNACKDELIVERY',scene,where)===true;
+    }finally{officeSnackDeliveryInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.539: physical desk bell -> microwave snack, with exact spawned-prop proof.
+const officeLunchBellProgress=new WeakMap(),officeLunchBellInFlight=new WeakSet();
+function recordOfficeLunchBell(device,scene,where,at,snack=null){
+  try{
+    if(!Number.isFinite(at)||at<0||!device||
+       (device.type!=='deskbell'&&device.type!=='microwave')||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const kind=device.type,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    let props=null,propRoster=null,snackMesh=null;
+    if(kind==='microwave'){
+      // CR4.9.539: preserve mesh identity across fallible disposed/prop callbacks.
+      const initialSnackMesh=snack?.mesh;
+      if(!snack||snack.type!=='donutbox'||snack.broken||!initialSnackMesh||
+         initialSnackMesh.isDisposed?.()||snack.mesh!==initialSnackMesh||snack.heldBy||snack.npcOwner||
+         snack.grounded!==false||snack.temporaryT!==24)return false;
+      props=G.props;
+      if(!Array.isArray(props)||props.length>48)return false;
+      propRoster=[];let occurrences=0;
+      for(let i=0;i<props.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(props,String(i));
+        if(!slot||!('value' in slot))return false;
+        propRoster.push(slot.value);
+        if(slot.value===snack)occurrences++;
+      }
+      if(occurrences!==1)return false;
+      snackMesh=initialSnackMesh;
+      if(!snackMesh||snackMesh.isDisposed?.()||snack.mesh!==snackMesh)return false;
+    }else if(snack!==null)return false;
+    const taskRoster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const candidate=slot.value;
+      if(!candidate||typeof candidate!=='object')return false;
+      taskRoster.push(candidate);
+      const id=Object.getOwnPropertyDescriptor(candidate,'id');
+      const done=Object.getOwnPropertyDescriptor(candidate,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='LUNCHBELL'&&done.value===false){
+        if(task)return false;
+        task=candidate;
+      }
+    }
+    if(!task||officeLunchBellInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         tasks.length!==taskRoster.length||device.type!==kind||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<taskRoster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==taskRoster[i])return false;
+      }
+      if(propRoster){
+        if(G.props!==props||props.length!==propRoster.length||
+           snack.type!=='donutbox'||snack.broken||snack.mesh!==snackMesh||
+           snackMesh.isDisposed?.()||snack.heldBy||snack.npcOwner||
+           snack.grounded!==false||snack.temporaryT!==24)return false;
+        for(let i=0;i<propRoster.length;i++){
+          const slot=Object.getOwnPropertyDescriptor(props,String(i));
+          if(!slot||!('value' in slot)||slot.value!==propRoster[i])return false;
+        }
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='LUNCHBELL'&&
+        !!done&&('value' in done)&&done.value===false&&
+        G.state==='shift'&&G.waveToken===token&&G.wave===wave&&
+        G.officeTasks===tasks&&!G.waveTransition&&!G.ended&&
+        (!propRoster||(G.props===props&&props.length===propRoster.length&&snack.mesh===snackMesh));
+    }catch{return false;}};
+    officeLunchBellInFlight.add(task);
+    try{
+      if(!intact())return false;
+      if(kind==='deskbell'){
+        officeLunchBellProgress.set(task,{device,mesh,token,wave,tasks,roster:taskRoster.slice(),firstAt:at,at});
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      const old=officeLunchBellProgress.get(task);
+      if(!old||old.token!==token||old.wave!==wave||old.tasks!==tasks||
+          !Array.isArray(old.roster)||old.roster.length!==taskRoster.length||
+          old.roster.some((item,i)=>item!==taskRoster[i])||
+         old.device===device||old.mesh===mesh||
+         !Number.isFinite(old.firstAt)||at<=old.at||
+         at-old.firstAt>9000||at-old.firstAt<0)return false;
+      if(!intact())return false;
+      return completeOfficeTask('LUNCHBELL',scene,where)===true;
+    }finally{officeLunchBellInFlight.delete(task);}
+  }catch{return false;}
+}
+const officePhonePanicProgress=new WeakMap();
+const officePhonePanicInFlight=new WeakSet();
+function recordOfficePhonePanic(device,scene,where,at,alerted,proof){
+  try{
+    if(!Number.isFinite(at)||at<0||!Number.isSafeInteger(alerted)||
+       alerted<1||alerted>5||device?.type!=='deskphone'||device.broken||
+       !device.mesh||device.mesh.isDisposed?.()||!proof||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const roster=proof.roster,entries=proof.entries,mesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64||
+       !Array.isArray(roster)||!Array.isArray(entries)||entries.length>96||
+       roster.length!==entries.length||G.npcs!==roster)return false;
+    const taskRoster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const candidate=slot.value;
+      if(!candidate||typeof candidate!=='object')return false;
+      taskRoster.push(candidate);
+      const id=Object.getOwnPropertyDescriptor(candidate,'id');
+      const done=Object.getOwnPropertyDescriptor(candidate,'done');
+      if(!id||!('value' in id)||typeof id.value!=='string'||
+         !done||!('value' in done)||typeof done.value!=='boolean')return false;
+      if(id.value==='PHONEPANIC'&&done.value===false){
+        if(task)return false;
+        task=candidate;
+      }
+    }
+    if(!task||officePhonePanicInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveTransition||G.ended||
+         G.waveToken!==token||G.wave!==wave||G.officeTasks!==tasks||
+         G.npcs!==roster||roster.length!==entries.length||
+         tasks.length!==taskRoster.length||device.type!=='deskphone'||
+         device.broken||device.mesh!==mesh||mesh.isDisposed?.())return false;
+      for(let i=0;i<entries.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+        if(!slot||!('value' in slot)||slot.value!==entries[i])return false;
+      }
+      for(let i=0;i<taskRoster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==taskRoster[i])return false;
+      }
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      return !!id&&('value' in id)&&id.value==='PHONEPANIC'&&
+        !!done&&('value' in done)&&done.value===false&&
+        G.officeTasks===tasks&&G.npcs===roster&&G.waveToken===token;
+    }catch{return false;}};
+    officePhonePanicInFlight.add(task);
+    try{
+      if(!intact())return false;
+      const old=officePhonePanicProgress.get(task);
+      const continuing=old?.token===token&&old.wave===wave&&
+      old.tasks===tasks&&Array.isArray(old.roster)&&
+      old.roster.length===taskRoster.length&&
+      old.roster.every((item,i)=>item===taskRoster[i])&&
+        old.device===device&&old.mesh===mesh&&
+        at>old.at&&at-old.firstAt<=8000;
+      const next={device,mesh,token,wave,tasks,roster:taskRoster.slice(),at,firstAt:continuing?old.firstAt:at,
+        count:continuing?Math.min(2,old.count+1):1};
+      if(!intact())return false;
+      officePhonePanicProgress.set(task,next);
+      if(next.count<2){
+        if(intact())try{renderOfficeTasks();}catch{}
+        return false;
+      }
+      if(!intact())return false;
+      return completeOfficeTask('PHONEPANIC',scene,where)===true;
+    }finally{officePhonePanicInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.498: a two-press printer combo, credited only for real spawned sheets.
+// The shift task itself keys the progress so new shifts never inherit a combo.
+const officePrintStormProgress=new WeakMap(),officePrintStormInFlight=new WeakSet();
+function recordOfficePrintStorm(device,scene,where,at,printed){
+  try{
+    if(!Number.isFinite(at)||at<0||!Number.isSafeInteger(printed)||
+       printed<1||printed>3||device?.type!=='printer'||device.broken||
+       !device.mesh||device.mesh.isDisposed?.()||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks;
+    const selectedMesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64)return false;
+    const snapshot=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const candidate=slot.value;
+      snapshot.push(candidate);
+      // CR4.9.508: never invoke a task accessor during combo selection.
+      if(!candidate||typeof candidate!=='object')return false;
+      const idSlot=Object.getOwnPropertyDescriptor(candidate,'id');
+      const doneSlot=Object.getOwnPropertyDescriptor(candidate,'done');
+      if(!idSlot||!('value' in idSlot)||typeof idSlot.value!=='string'||
+         !doneSlot||!('value' in doneSlot)||typeof doneSlot.value!=='boolean')return false;
+      if(idSlot.value==='PRINTSTORM'&&doneSlot.value===false){
+        if(task)return false;
+        task=candidate;
+      }
+    }
+    if(!task||typeof task!=='object'||officePrintStormInFlight.has(task))return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveToken!==token||G.wave!==wave||
+         G.officeTasks!==tasks||G.waveTransition||G.ended||
+         tasks.length!==snapshot.length||device.broken||
+         device.type!=='printer'||device.mesh!==selectedMesh||
+         selectedMesh.isDisposed?.())return false;
+      for(let i=0;i<snapshot.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==snapshot[i])return false;
+      }
+      const idSlot=Object.getOwnPropertyDescriptor(task,'id');
+      const doneSlot=Object.getOwnPropertyDescriptor(task,'done');
+      if(!idSlot||!('value' in idSlot)||idSlot.value!=='PRINTSTORM'||
+         !doneSlot||!('value' in doneSlot)||doneSlot.value!==false)return false;
+      return G.state==='shift'&&G.waveToken===token&&G.wave===wave&&
+        G.officeTasks===tasks&&!G.waveTransition&&!G.ended;
+    }catch{return false;}};
+    officePrintStormInFlight.add(task);
+    try{
+    const old=officePrintStormProgress.get(task);
+    const continuing=old?.token===token&&old.wave===wave&&
+      old.tasks===tasks&&Array.isArray(old.roster)&&
+      old.roster.length===snapshot.length&&
+      old.roster.every((item,i)=>item===snapshot[i])&&
+      old.device===device&&old.mesh===selectedMesh&&at>old.at&&
+      at-old.at<=10000&&at-old.firstAt<=10000;
+    const next={device,mesh:selectedMesh,token,wave,tasks,roster:snapshot.slice(),at,firstAt:continuing?old.firstAt:at,
+      sheets:Math.min(5,(continuing?old.sheets:0)+printed),
+      presses:continuing?Math.min(5,old.presses+1):1};
+    if(!intact())return false;
+    officePrintStormProgress.set(task,next);
+    if(next.presses<2||next.sheets<5){
+      if(intact())try{renderOfficeTasks();}catch{}
+      return false;
+    }
+    if(!intact())return false;
+    return completeOfficeTask('PRINTSTORM',scene,where)===true;
+    }finally{officePrintStormInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.502: two verified physical snacks from one microwave, within 8s.
+const officeSnackRushProgress=new WeakMap(),officeSnackRushInFlight=new WeakSet();
+function recordOfficeSnackRush(device,scene,where,at,snack){
+  try{
+    if(!Number.isFinite(at)||at<0||device?.type!=='microwave'||
+       device.broken||!device.mesh||device.mesh.isDisposed?.()||
+       snack?.type!=='donutbox'||snack.broken||!snack.mesh||
+       snack.mesh.isDisposed?.()||snack.grounded!==false||
+       snack.temporaryT!==24||snack.heldBy||snack.npcOwner||
+       G.state!=='shift'||G.waveTransition||G.ended)return false;
+    const token=G.waveToken,wave=G.wave,tasks=G.officeTasks,props=G.props;
+    const selectedMesh=device.mesh;
+    if(!Array.isArray(tasks)||tasks.length>64||
+       !Array.isArray(props)||props.length>48)return false;
+    const roster=[];let task=null;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const candidate=slot.value;
+      roster.push(candidate);
+      if(!candidate||typeof candidate!=='object')return false;
+      const idSlot=Object.getOwnPropertyDescriptor(candidate,'id');
+      const doneSlot=Object.getOwnPropertyDescriptor(candidate,'done');
+      if(!idSlot||!('value' in idSlot)||!doneSlot||!('value' in doneSlot))return false;
+      if(idSlot.value==='SNACKRUSH'&&doneSlot.value===false){
+        if(task)return false;
+        task=candidate;
+      }
+    }
+    if(!task)return false;
+    const propRoster=[];let matches=0;
+    for(let i=0;i<props.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(props,String(i));
+      if(!slot||!('value' in slot))return false;
+      propRoster.push(slot.value);
+      if(slot.value===snack)matches++;
+    }
+    if(matches!==1)return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveToken!==token||G.wave!==wave||
+         G.officeTasks!==tasks||G.props!==props||G.waveTransition||G.ended||
+         tasks.length!==roster.length||props.length!==propRoster.length||
+         device.type!=='microwave'||device.broken||
+         device.mesh!==selectedMesh||selectedMesh.isDisposed?.()||
+         snack.type!=='donutbox'||snack.broken||
+         !snack.mesh||snack.mesh.isDisposed?.()||snack.grounded!==false||
+         snack.temporaryT!==24||snack.heldBy||snack.npcOwner)return false;
+      const id=Object.getOwnPropertyDescriptor(task,'id');
+      const done=Object.getOwnPropertyDescriptor(task,'done');
+      if(!id||!('value' in id)||id.value!=='SNACKRUSH'||
+         !done||!('value' in done)||done.value!==false)return false;
+      for(let i=0;i<roster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==roster[i])return false;
+      }
+      for(let i=0;i<propRoster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(props,String(i));
+        if(!slot||!('value' in slot)||slot.value!==propRoster[i])return false;
+      }
+      return G.state==='shift'&&G.waveToken===token&&G.wave===wave&&
+        G.officeTasks===tasks&&G.props===props&&!G.waveTransition&&!G.ended;
+    }catch{return false;}};
+    if(officeSnackRushInFlight.has(task))return false;
+    officeSnackRushInFlight.add(task);
+    try{
+    const old=officeSnackRushProgress.get(task);
+    // Replaying the same spawned object cannot reset or advance the combo.
+    if(old?.token===token&&old.wave===wave&&old.tasks===tasks&&
+       old.props===props&&old.snack===snack)return false;
+    const continuing=old?.token===token&&old.wave===wave&&
+      old.tasks===tasks&&Array.isArray(old.roster)&&
+      old.roster.length===roster.length&&
+      old.roster.every((item,i)=>item===roster[i])&&
+      old.props===props&&
+      old.device===device&&old.mesh===selectedMesh&&
+      at>old.at&&at-old.firstAt<=8000;
+    const next={device,mesh:selectedMesh,snack,token,wave,tasks,roster:roster.slice(),props,at,firstAt:continuing?old.firstAt:at,
+      count:continuing?Math.min(2,old.count+1):1};
+    if(!intact())return false;
+    officeSnackRushProgress.set(task,next);
+    if(next.count<2){
+      if(intact())try{renderOfficeTasks();}catch{}
+      return false;
+    }
+    if(!intact())return false;
+    return completeOfficeTask('SNACKRUSH',scene,where)===true;
+    }finally{officeSnackRushInFlight.delete(task);}
+  }catch{return false;}
+}
+// CR4.9.435: reward a real two-coworker fan blast once per shift.
+function completeOfficeFanClub(startled,proof,token,wave,scene,where){
+  if(!Number.isSafeInteger(startled)||startled<2||!proof)return false;
+  try{
+    if(G.state!=='shift'||G.waveTransition||G.ended||
+       G.waveToken!==token||G.wave!==wave||!officeNpcRosterIntact(proof)||
+       G.waveToken!==token||G.wave!==wave)return false;
+    return completeOfficeTask('FANCLUB',scene,where)===true;
+  }catch{return false;}
+}
+// Keep evidence on the per-shift task identity, not on global prop types.
+const officeTechDuoSeen=new WeakMap();
+function recordOfficeTechDuo(prop,scene,where,ctx){
+  try{
+    if(!ctx||!officeContactScoreContextOwned(ctx)||!ctx.props.includes(prop)||
+       !prop?.broken||!['monitor','laptop','printer'].includes(prop.type))return false;
+    const task=ctx.tasks.find(t=>t?.id==='TECHDUO'&&!t.done);
+    if(!task)return false;
+    let seen=officeTechDuoSeen.get(task);
+    if(!seen){seen=new Set();officeTechDuoSeen.set(task,seen);}
+    seen.add(prop.type);
+    if(seen.size<2||!officeContactScoreContextOwned(ctx))return false;
+    return completeOfficeTask('TECHDUO',scene,where)===true;
+  }catch{return false;}
+}
+// CR4.9.487: score the actual horizontal crossing of the basket rim,
+// not merely the final frame position. A fast diagonal throw that enters
+// from the side below the rim must not count as a dunk.
+function officeBasketShotValid(prop,target,speed,oldY,oldX,oldZ){
+  try{
+    const mesh=prop?.mesh,p=mesh?.position,v=prop?.vel;
+    if(!mesh||mesh.isDisposed?.()||mesh.parent!=null||!p||!v||
+       prop.broken||prop.heldBy||prop.npcOwner||
+       prop.thrownByNPCTimeRemaining>0||
+       !Number.isFinite(speed)||speed<=1.4||
+       !Number.isFinite(oldY)||!Number.isFinite(oldX)||!Number.isFinite(oldZ)||
+       !Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z)||
+       !Number.isFinite(v.y)||!Number.isFinite(target?.x)||
+       !Number.isFinite(target?.y)||!Number.isFinite(target?.z))
+      return false;
+    const rimY=target.y+.25;
+    if(!(oldY>rimY&&p.y<=rimY&&p.y>=target.y-.30&&
+         oldY-p.y<=.50&&v.y<-.50))return false;
+    const fraction=(oldY-rimY)/(oldY-p.y);
+    if(!Number.isFinite(fraction)||fraction<0||fraction>1)return false;
+    const rimX=oldX+(p.x-oldX)*fraction;
+    const rimZ=oldZ+(p.z-oldZ)*fraction;
+    return Math.hypot(rimX-target.x,rimZ-target.z)<.42&&
+      Math.hypot(p.x-target.x,p.z-target.z)<.42;
+  }catch{return false;}
+}
+function completeOfficeMugDunk(prop,scene,target,speed,oldY,oldX,oldZ){
+  try{
+    if(prop?.type!=='mug'||G.officeTargets?.bin!==target||
+       !officeBasketShotValid(prop,target,speed,oldY,oldX,oldZ))return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||!ctx.props.includes(prop))return false;
+    const single=completeOfficeTask('MUGDUNK',scene,target)===true;
+    const mixed=recordOfficeMixedDunk(prop,scene,target,true);
+    return single||mixed;
+  }catch{return false;}
+}
+// CR4.9.481: both DIFFERENT real prop types must pass the basket rim during
+// one shift. Keep progress on the task identity so a new wave starts clean.
+const officeMixedDunkSeen=new WeakMap();
+function recordOfficeMixedDunk(prop,scene,target,validShot){
+  try{
+    if(validShot!==true||!prop||(prop.type!=='mug'&&prop.type!=='paperball')||
+       prop.broken||prop.heldBy||prop.npcOwner||
+       prop.thrownByNPCTimeRemaining>0||G.officeTargets?.bin!==target)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||!ctx.props.includes(prop))return false;
+    const task=ctx.tasks.find(t=>t?.id==='MIXEDDUNK'&&!t.done);
+    if(!task)return false;
+    let state=officeMixedDunkSeen.get(task);
+    if(!state){state={mug:false,paperball:false};officeMixedDunkSeen.set(task,state);}
+    state[prop.type]=true;
+    if(!state.mug||!state.paperball||!officeContactScoreContextOwned(ctx))return false;
+    return completeOfficeTask('MIXEDDUNK',scene,target)===true;
+  }catch{return false;}
+}
+
+// Physical bin hits from two different paper balls; repeated frames on the
+// same ball never count twice. Weak references retire with each shift task.
+const officeDoubleDunkSeen=new WeakMap();
+function recordOfficeDoubleDunk(prop,scene,target){
+  try{
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||!ctx.props.includes(prop)||
+       !prop||prop.type!=='paperball'||prop.broken||prop.heldBy||prop.npcOwner||
+       prop.thrownByNPCTimeRemaining>0||G.officeTargets?.bin!==target)return false;
+    const task=ctx.tasks.find(t=>t?.id==='DOUBLEBIN'&&!t.done);
+    if(!task)return false;
+    let state=officeDoubleDunkSeen.get(task);
+    if(!state){state={seen:new WeakSet(),count:0};officeDoubleDunkSeen.set(task,state);}
+    if(state.seen.has(prop))return false;
+    state.seen.add(prop);state.count++;
+    if(state.count<2||!officeContactScoreContextOwned(ctx))return false;
+    return completeOfficeTask('DOUBLEBIN',scene,target)===true;
+  }catch{return false;}
+}
+// CR4.9.447: count only two DISTINCT physical movers, with pre-impulse
+// approach evidence. Task-keyed weak storage resets naturally each shift.
+const officePinballSeen=new WeakMap();
+function recordOfficePinballContact(mover,target,ctx,approaching){
+  try{
+    if(approaching!==true||!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(mover)||!ctx.props.includes(target)||
+       mover===target||mover.broken||target.broken||
+       mover.heldBy||target.heldBy||mover.npcOwner||target.npcOwner||
+       !OFFICE_DOMINO_MOVERS.has(mover.type)||!OFFICE_DOMINO_TARGETS.has(target.type)||
+       target.officeBowlingPin)return false;
+    const task=ctx.tasks.find(t=>t?.id==='PINBALL'&&!t.done);
+    if(!task)return false;
+    let state=officePinballSeen.get(task);
+    if(!state){state={seen:new WeakSet(),count:0};officePinballSeen.set(task,state);}
+    if(state.seen.has(mover))return false;
+    state.seen.add(mover);state.count++;
+    if(state.count<2||!officeContactScoreContextOwned(ctx))return false;
+    return completeOfficeTask('PINBALL',null,null)===true;
+  }catch{return false;}
+}
+function initOfficeTasks(){
+  // Offer only optional challenges with the needed physical props on this map.
+  // BuildArena runs before this function, so these are the actual live objects.
+  const available=new Map();
+  try{
+    if(Array.isArray(G.props))for(const p of G.props){
+      if(p&&typeof p.type==='string'&&!p.broken)
+        available.set(p.type,(available.get(p.type)||0)+1);
+    }
+  }catch{available.clear();}
+  const count=type=>available.get(type)||0;
+  const movers=count('chair')+count('cart');
+  const targets=movers+count('storagebox')+count('toolbox');
+  const pins=G.officeBowlingPins;
+  G.officeTasks=OFFICE_MICRO_TASKS.filter(q=>{
+    if(!q.optional)return true;
+    if(q.id==='DOUBLEBIN')return count('paperball')>=2&&!!G.officeTargets?.bin;
+    if(q.id==='MUGDUNK')return count('mug')>0&&!!G.officeTargets?.bin;
+    if(q.id==='MIXEDDUNK')return count('mug')>0&&count('paperball')>0&&!!G.officeTargets?.bin;
+    if(q.id==='CHAIR')return count('chair')>0;
+    if(q.id==='CART')return count('cart')>0;
+    if(q.id==='STRIKE')return Array.isArray(pins)&&pins.length>0&&pins.length<=6&&count('bowlingball')>0;
+    if(q.id==='DOMINO')return movers>0&&targets>=2;
+    if(q.id==='COPY')return count('printer')+count('photocopier')>0;
+    if(q.id==='PRINTSTORM')return count('printer')>0;
+    if(q.id==='SNACKRUSH')return count('microwave')>0;
+    if(q.id==='BREEZE'||q.id==='FANCLUB')return count('fan')+count('aircannon')>0;
+    if(q.id==='BELLBLITZ')return count('deskbell')>0;
+    if(q.id==='OFFICEHOTLINE')return count('deskbell')>0&&count('deskphone')>0;
+    if(q.id==='PAPERALERT')return count('deskbell')>0&&count('printer')>0;
+    if(q.id==='FAXFRENZY')return count('deskphone')>0&&count('printer')>0;
+    if(q.id==='COPYRELAY')return count('photocopier')>0&&count('printer')>0;
+    if(q.id==='COPYBELL')return count('photocopier')>0&&count('deskbell')>0;
+    if(q.id==='COPYCALL'||q.id==='PHONECOPY')return count('photocopier')>0&&count('deskphone')>0;
+    if(q.id==='PHONEPANIC')return count('deskphone')>0;
+    if(q.id==='SNACKDELIVERY')return count('deskphone')>0&&count('microwave')>0;
+    if(q.id==='LUNCHBELL')return count('deskbell')>0&&count('microwave')>0;
+    if(q.id==='TECH')return count('monitor')+count('laptop')+count('printer')>0;
+    if(q.id==='TECHDUO')return ['monitor','laptop','printer'].filter(type=>count(type)>0).length>=2;
+    if(q.id==='CHAIRCLASH')return count('chair')>0&&count('cart')>0;
+    if(q.id==='CARTCHAIR')return count('chair')>0&&count('cart')>0;
+    if(q.id==='PINBALL')return movers>=2&&targets>=3;
+    if(q.id==='CARTCRASH')return count('cart')>0&&count('monitor')+count('laptop')+count('printer')>0;
+    if(q.id==='CHAIRCRASH')return count('chair')>0&&count('monitor')+count('laptop')+count('printer')>0;
+    if(q.id==='CARTBOWL')return count('cart')>0&&Array.isArray(pins)&&pins.length>0&&pins.length<=6;
+    if(q.id==='CHAIRBOWL')return count('chair')>0&&Array.isArray(pins)&&pins.length>0&&pins.length<=6;
+    if(q.id==='BALLCART')return count('bowlingball')>0&&count('cart')>0;
+    if(q.id==='BALLCHAIR')return count('bowlingball')>0&&count('chair')>0;
+    if(q.id==='CHAIRJOUST')return count('chair')>=2;
+    if(q.id==='CARTJOUST')return count('cart')>=2;
+    if(q.id==='TECHBOWL')return count('bowlingball')>0&&count('monitor')+count('laptop')+count('printer')>0;
+    if(q.id==='COFFEECRASH')return count('mug')>0&&count('monitor')+count('laptop')+count('printer')>0;
+    if(q.id==='PAPERJAM')return count('paperball')>0&&count('printer')+count('photocopier')>0;
+    return true;
+  }).map(q=>({...q,done:false}));
+  G.officeTasksCount=0;G.officeTasksCoreBonusPaid=false;
+  if(ui.tasks)ui.tasks.style.display='block';
+  renderOfficeTasks();
+}
+// CR4.9.503: show live, time-bounded progress for physical office combos.
+function officeMicroTaskHint(task,now){
+  try{
+    if(!task||task.done||!Number.isFinite(now))return task?.hint||'';
+    let state=null,goal=0,windowMs=0,progress=0,label='';
+    if(task.id==='BELLBLITZ'){
+      state=officeBellBlitzProgress.get(task);goal=3;windowMs=5000;
+      progress=state?.count;label='rings';
+    }else if(task.id==='PRINTSTORM'){
+      state=officePrintStormProgress.get(task);goal=5;windowMs=10000;
+      progress=state?.sheets;label='sheets';
+    }else if(task.id==='OFFICEHOTLINE'){
+      state=officeHotlineProgress.get(task);goal=2;windowMs=7000;
+      progress=1;label='devices';
+    }else if(task.id==='PAPERALERT'){
+      state=officePaperAlertProgress.get(task);goal=2;windowMs=8000;
+      progress=1;label='devices';
+    }else if(task.id==='FAXFRENZY'){
+      state=officeFaxFrenzyProgress.get(task);goal=2;windowMs=8000;
+      progress=1;label='devices';
+    }else if(task.id==='COPYRELAY'){
+      state=officeCopyRelayProgress.get(task);goal=2;windowMs=10000;
+      progress=1;label='devices';
+    }else if(task.id==='COPYBELL'){
+      state=officeCopyBellProgress.get(task);goal=2;windowMs=9000;
+      progress=1;label='devices';
+    }else if(task.id==='COPYCALL'){
+      state=officeCopyCallProgress.get(task);goal=2;windowMs=9000;
+      progress=1;label='devices';
+    }else if(task.id==='PHONECOPY'){
+      state=officePhoneCopyProgress.get(task);goal=2;windowMs=8000;
+      progress=1;label='devices';
+    }else if(task.id==='PHONEPANIC'){
+      state=officePhonePanicProgress.get(task);goal=2;windowMs=8000;
+      progress=state?.count;label='rings';
+    }else if(task.id==='SNACKDELIVERY'){
+      state=officeSnackDeliveryProgress.get(task);goal=2;windowMs=9000;
+      progress=1;label='devices';
+    }else if(task.id==='LUNCHBELL'){
+      state=officeLunchBellProgress.get(task);goal=2;windowMs=9000;
+      progress=1;label='devices';
+    }else if(task.id==='SNACKRUSH'){
+      state=officeSnackRushProgress.get(task);goal=2;windowMs=8000;
+      progress=state?.count;label='snacks';
+    }
+    // CR4.9.515: never display progress from an older shift sharing a task identity.
+    // CR4.9.526: suppress progress from reused task objects across shifts.
+    if(state&&(state.token!==G.waveToken||state.wave!==G.wave||
+       (state.tasks&&state.tasks!==G.officeTasks)))return task.hint;
+    if(state?.roster){
+      const tasks=G.officeTasks;
+      if(!Array.isArray(tasks)||tasks.length!==state.roster.length)return task.hint;
+      for(let i=0;i<state.roster.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==state.roster[i])return task.hint;
+      }
+    }
+    if(!state||!Number.isFinite(state.firstAt)||now<state.firstAt||
+       now-state.firstAt>windowMs||!Number.isSafeInteger(progress)||
+       progress<1||progress>=goal)return task.hint;
+    // CR4.9.553: display remaining seconds for active verified combos.
+    const secondsLeft=Math.max(0,Math.ceil((windowMs-(now-state.firstAt))/1000));
+    if(task.id==='OFFICEHOTLINE')return `OFFICE HOTLINE • bell rung • ring phone • ${secondsLeft}s left`;
+    if(task.id==='PAPERALERT')return `PAPER ALERT • bell rung • print 2 sheets • ${secondsLeft}s left`;
+    if(task.id==='FAXFRENZY')return `FAX FRENZY • phone rung • print 2 sheets • ${secondsLeft}s left`;
+    if(task.id==='COPYRELAY')return `COPY RELAY • copier used • print 2 sheets • ${secondsLeft}s left`;
+    if(task.id==='COPYBELL')return `COPY BELL • copies made • ring a desk bell • ${secondsLeft}s left`;
+    if(task.id==='COPYCALL')return `COPY CALL • copies made • ring a desk phone • ${secondsLeft}s left`;
+    if(task.id==='PHONECOPY')return `PHONE COPY • phone rung • make 2 photocopies • ${secondsLeft}s left`;
+    if(task.id==='SNACKDELIVERY')return `SNACK DELIVERY • phone rung • launch microwave snack • ${secondsLeft}s left`;
+    if(task.id==='LUNCHBELL')return `LUNCH BELL • bell rung • launch microwave snack • ${secondsLeft}s left`;
+    if(task.id==='PRINTSTORM'){
+      if(!Number.isSafeInteger(state.presses)||state.presses<1)return task.hint;
+      return `PRINT STORM • ${progress}/5 sheets • ${Math.min(2,state.presses)}/2 presses • ${secondsLeft}s left`;
+    }
+    return `${task.name} • ${progress}/${goal} ${label} • ${secondsLeft}s left`;
+  }catch{return task?.hint||'';}
+}
+// CR4.9.537: expire time-limited challenge hints without per-frame DOM rebuilds.
+const officeTimedTaskStates=new Map([
+  ['BELLBLITZ',[officeBellBlitzProgress,5000]],
+  ['PRINTSTORM',[officePrintStormProgress,10000]],
+  ['OFFICEHOTLINE',[officeHotlineProgress,7000]],
+  ['PAPERALERT',[officePaperAlertProgress,8000]],
+  ['FAXFRENZY',[officeFaxFrenzyProgress,8000]],
+  ['COPYRELAY',[officeCopyRelayProgress,10000]],
+  ['COPYBELL',[officeCopyBellProgress,9000]],
+  ['COPYCALL',[officeCopyCallProgress,9000]],
+  ['PHONECOPY',[officePhoneCopyProgress,8000]],
+  ['PHONEPANIC',[officePhonePanicProgress,8000]],
+  ['SNACKDELIVERY',[officeSnackDeliveryProgress,9000]],
+  ['LUNCHBELL',[officeLunchBellProgress,9000]],
+  ['SNACKRUSH',[officeSnackRushProgress,8000]]
+]);
+// CR4.9.540: escape task text and avoid unchanged task-list DOM rebuilds.
+const officeTaskRenderFields=['id','name','hint','done'];
+let officeTaskNextRefreshAt=Infinity,officeTaskRenderBusy=false;
+let officeTaskRenderedHTML=null,officeTaskRenderedTarget=null;
+function officeTaskEscapeHTML(value){
+  return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// CR4.9.551: render only a verified snapshot of own task data.
+// In-place roster edits and accessor-backed task fields must not publish a
+// stale/foreign challenge, even if the array object stays the same.
+function renderOfficeTasks(){
+  if(officeTaskRenderBusy)return;
+  officeTaskRenderBusy=true;
+  officeTaskNextRefreshAt=Infinity;
+  try{
+    if(!ui.tasksBody||G.state!=='shift')return;
+    const now=performance.now(),tasks=G.officeTasks;
+    if(!Array.isArray(tasks)||tasks.length>64)return;
+    const snapshot=[];
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return;
+      const task=slot.value;
+      if(!task||typeof task!=='object')return;
+      const values={};
+      for(const key of officeTaskRenderFields){
+        const desc=Object.getOwnPropertyDescriptor(task,key);
+        if(!desc||!('value' in desc))return;
+        values[key]=desc.value;
+      }
+      if(typeof values.id!=='string'||typeof values.name!=='string'||
+         typeof values.hint!=='string'||typeof values.done!=='boolean')return;
+      snapshot.push({task,values});
+    }
+    const intact=()=>{try{
+      if(G.officeTasks!==tasks||G.state!=='shift'||
+         tasks.length!==snapshot.length)return false;
+      for(let i=0;i<snapshot.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+        if(!slot||!('value' in slot)||slot.value!==snapshot[i].task)return false;
+        for(const key of officeTaskRenderFields){
+          const d=Object.getOwnPropertyDescriptor(slot.value,key);
+          if(!d||!('value' in d)||d.value!==snapshot[i].values[key])return false;
+        }
+      }
+      return G.officeTasks===tasks&&G.state==='shift';
+    }catch{return false;}};
+    const markup=snapshot.map(({task,values})=>
+      `<div class="task-line ${values.done?'finished':''}"><span>${values.done?'✔':'□'}</span><div><strong>${officeTaskEscapeHTML(values.name)}</strong><small>${officeTaskEscapeHTML(values.done?'DONE +300 PTS / +5 COINS':officeMicroTaskHint(task,now))}</small></div></div>`).join('');
+    if(!intact())return;
+    if(markup!==officeTaskRenderedHTML||ui.tasksBody!==officeTaskRenderedTarget){
+      ui.tasksBody.innerHTML=markup;
+      officeTaskRenderedHTML=markup;officeTaskRenderedTarget=ui.tasksBody;
+    }
+    if(!intact()){
+      officeTaskRenderedHTML=null; // Force a fresh render after reentrant DOM changes.
+      return;
+    }
+    if(G.waveTransition||G.ended)return;
+    let next=Infinity;
+    for(const {task,values} of snapshot){
+      if(values.done)continue;
+      const def=officeTimedTaskStates.get(values.id);
+      if(!def)continue;
+      const state=def[0].get(task);
+      if(!state||state.token!==G.waveToken||state.wave!==G.wave||
+         (state.tasks&&state.tasks!==tasks)||!Number.isFinite(state.firstAt)||
+         (state.roster&&(state.roster.length!==tasks.length||
+           state.roster.some((item,i)=>item!==snapshot[i].task))))continue;
+      const deadline=state.firstAt+def[1];
+      if(now>=state.firstAt&&now<=deadline)
+        next=Math.min(next,now+1000,deadline+1);
+    }
+    if(intact())officeTaskNextRefreshAt=next;
+  }catch{officeTaskNextRefreshAt=Infinity;officeTaskRenderedHTML=null;}
+  finally{officeTaskRenderBusy=false;}
+}
+// CR4.9.436: task rewards are scoped to the shift that earned them.
+// Reentrant score/audio callbacks must not award coins or core bonuses to
+// a replacement wave, and the same task cannot be completed recursively.
+const officeTaskCompletionInFlight=new WeakSet();
+function completeOfficeTask(id,scene,where){
+  if(G.state!=='shift'||G.waveTransition||G.ended)return false;
+  const token=G.waveToken,wave=G.wave,tasks=G.officeTasks,meta=G.meta;
+  const owned=()=>{try{return G.state==='shift'&&!G.waveTransition&&!G.ended&&
+    G.waveToken===token&&G.wave===wave&&G.officeTasks===tasks&&G.meta===meta&&
+    Array.isArray(tasks)&&!!meta;}catch{return false;}};
+  if(!owned())return false;
+  // CR4.9.499: own data slots prevent task-list accessors, duplicates and
+  // roster swaps from redirecting coins to an unrelated shift challenge.
+  let task=null,taskRoster=[];
+  try{
+    if(tasks.length>64)return false;
+    for(let i=0;i<tasks.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot))return false;
+      const candidate=slot.value;
+      taskRoster.push(candidate);
+      // CR4.9.501: reject accessor-backed task fields before evaluating them.
+      // A task getter must not replace the shift or trigger a second reward.
+      if(!candidate||typeof candidate!=='object')return false;
+      const idSlot=Object.getOwnPropertyDescriptor(candidate,'id');
+      const doneSlot=Object.getOwnPropertyDescriptor(candidate,'done');
+      if(!idSlot||!('value' in idSlot)||typeof idSlot.value!=='string'||
+         !doneSlot||!('value' in doneSlot)||typeof doneSlot.value!=='boolean')return false;
+      if(idSlot.value===id&&!doneSlot.value){
+        if(task)return false;
+        task=candidate;
+      }
+    }
+  }catch{return false;}
+  const rosterIntact=()=>{try{
+    if(!owned()||tasks.length!==taskRoster.length)return false;
+    for(let i=0;i<taskRoster.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(tasks,String(i));
+      if(!slot||!('value' in slot)||slot.value!==taskRoster[i])return false;
+    }
+    return owned()&&tasks.length===taskRoster.length;
+  }catch{return false;}};
+  if(!task||typeof task!=='object'||!rosterIntact()||
+     officeTaskCompletionInFlight.has(task))return false;
+  // Only the ordinary own data properties generated by initOfficeTasks
+  // can receive coins. Reject setters and ambiguous task identities.
+  let taskName,taskOptional,taskHadOptionalSlot;
+  try{
+    const nameSlot=Object.getOwnPropertyDescriptor(task,'name');
+    const optionalSlot=Object.getOwnPropertyDescriptor(task,'optional');
+    const doneSlot=Object.getOwnPropertyDescriptor(task,'done');
+    const idSlot=Object.getOwnPropertyDescriptor(task,'id');
+    if(!nameSlot||!('value' in nameSlot)||typeof nameSlot.value!=='string'||
+       !idSlot||!('value' in idSlot)||idSlot.value!==id||
+       !doneSlot||!('value' in doneSlot)||doneSlot.value!==false||!doneSlot.writable||
+       (optionalSlot&&(!('value' in optionalSlot)||typeof optionalSlot.value!=='boolean')))
+      return false;
+    taskName=nameSlot.value;
+    taskOptional=optionalSlot?.value===true;
+    taskHadOptionalSlot=!!optionalSlot;
+  }catch{return false;}
+  if(!rosterIntact())return false;
+  officeTaskCompletionInFlight.add(task);
+  try{
+    task.done=true; // Reserve before any fallible score/audio callback.
+    // CR4.9.500: a done getter may mutate the roster after the first proof.
+    const stable=()=>{try{
+      if(!rosterIntact())return false;
+      const d=Object.getOwnPropertyDescriptor(task,'done');
+      const i=Object.getOwnPropertyDescriptor(task,'id');
+      const n=Object.getOwnPropertyDescriptor(task,'name');
+      const o=Object.getOwnPropertyDescriptor(task,'optional');
+      return !!d&&('value' in d)&&d.value===true&&!!i&&('value' in i)&&
+        i.value===id&&!!n&&('value' in n)&&n.value===taskName&&
+        (!!o===taskHadOptionalSlot)&&
+        (!o||(('value' in o)&&o.value===taskOptional))&&rosterIntact();
+    }catch{return false;}};
+    if(!stable())return false;
+    if(!taskOptional){
+      G.officeTasksCount=(G.officeTasksCount||0)+1;
+      if(!stable())return false;
+    }
+    try{addScore(300,'OFFICE CHAOS');}catch{}
+    if(!stable())return false;
+    meta.coins=(meta.coins||0)+5;
+    if(!stable())return false;
+    try{saveMeta();}catch{}
+    if(!stable())return false;
+    if(scene&&where){try{officeConfetti(scene,where);}catch{}if(!stable())return false;}
+    try{tone(id==='PANIC'?420:id==='BIN'?770:520,.14,'triangle',.06,240);}catch{}
+    if(!stable())return false;
+    try{rewardSound('challenge');}catch{}
+    if(!stable())return false;
+    try{toast(`${taskName} • +300 • +5 COINS`,1500);}catch{}
+    if(!stable())return false;
+    // CR4.9.504: inspect own task data rather than calling user-defined
+    // optional/done getters during the all-core bonus calculation.
+    let allCore=false;
+    try{
+      if(!G.officeTasksCoreBonusPaid){
+        allCore=true;
+        for(const entry of taskRoster){
+          const optional=Object.getOwnPropertyDescriptor(entry,'optional');
+          const done=Object.getOwnPropertyDescriptor(entry,'done');
+          if(!done||!('value' in done)||typeof done.value!=='boolean'||
+             (optional&&(!('value' in optional)||typeof optional.value!=='boolean')))
+            return false;
+          if(optional?.value!==true&&done.value!==true){allCore=false;break;}
+        }
+      }
+    }catch{return false;}
+    if(!stable())return false;
+    if(allCore){
+      G.officeTasksCoreBonusPaid=true;
+      if(!stable())return false;
+      try{addScore(600,'ALL TASKS');}catch{}
+      if(!stable())return false;
+      meta.coins+=15;
+      if(!stable())return false;
+      try{saveMeta();}catch{}
+      if(!stable())return false;
+      try{announce('OFFICE MENACE • ALL TASKS DONE','good');}catch{}
+      if(!stable())return false;
+    }
+    try{renderOfficeTasks();}catch{}
+    return stable();
+  }catch{return false;}
+  finally{officeTaskCompletionInFlight.delete(task);}
+}
+
+// CR4.9.426: cap concurrent confetti meshes/observers per scene for Quest.
+// Reserve a slot BEFORE Babylon constructors, which may synchronously reenter.
+const OFFICE_CONFETTI_MAX_ACTIVE=48;
+const officeConfettiCounts=new WeakMap();
+function officeConfetti(scene,pos){
+  if(!scene||G.state!=='shift'||!pos)return;
+  let fxOwned;
+  try{fxOwned=captureShiftFxOwner(scene);}catch{return;}
+  if(typeof fxOwned!=='function'||!fxOwned())return;
+  // When the adaptive renderer is already scaling down for low FPS, halve
+  // the short-lived confetti burst rather than adding another 16 draw calls.
+  const burst=Number.isFinite(G.perfScale)&&G.perfScale>=1.15?8:16;
+  for(let i=0;i<burst;i++){
+    if(!fxOwned())break;
+    let count=officeConfettiCounts.get(scene)||0;
+    if(count>=OFFICE_CONFETTI_MAX_ACTIVE)break;
+    officeConfettiCounts.set(scene,count+1);
+    let paper=null,material=null,obs=null,released=false,age=0;
+    const release=()=>{
+      if(released)return;
+      released=true;
+      officeConfettiCounts.set(scene,Math.max(0,(officeConfettiCounts.get(scene)||1)-1));
+      try{if(obs!==null)scene.onBeforeRenderObservable.remove(obs);}catch{}
+      // Dispose best-effort even if a Babylon isDisposed getter throws.
+      // A failed getter must not leak the active-mesh budget indefinitely.
+      try{
+        if(paper){
+          let disposed=false;
+          try{disposed=!!paper.isDisposed?.();}catch{}
+          if(!disposed)try{paper.dispose(false,true);}catch{}
+        }else if(material&&!material.isDisposed?.())material.dispose();
+      }catch{}
+    };
+    try{
+      paper=B.MeshBuilder.CreatePlane('officeConfetti',{width:.045,height:.08,sideOrientation:B.Mesh.DOUBLESIDE},scene);
+      paper.position=pos.clone();paper.position.y+=.15;
+      material=mat(scene,'officeConfettiMat'+i,['#ffcc32','#f45b45','#4caaff','#91da82'][i%4],.6);
+      paper.material=material;
+      const vy=.9+Math.random(),vx=(Math.random()-.5)*2.5,vz=(Math.random()-.5)*2.5;
+      if(!fxOwned()){release();break;}
+      obs=scene.onBeforeRenderObservable.add(()=>{
+        try{
+        if(released)return;
+        if(!fxOwned()||paper.isDisposed?.()){release();return;}
+        if(!hasActivePlayerSession()){if(!fxOwned())release();return;}
+        let rawDt;
+        if(!shiftFxStep(fxOwned,()=>{rawDt=scene.getEngine().getDeltaTime()/1000;})){release();return;}
+        const dt=Number.isFinite(rawDt)?Math.min(.04,Math.max(0,rawDt)):0;
+        if(dt<=0)return;
+        age+=dt;
+        const t=Math.min(1,age/.85);
+        if(!shiftFxStep(fxOwned,()=>{paper.position.x+=vx*.72*dt;})){release();return;}
+        if(!shiftFxStep(fxOwned,()=>{paper.position.z+=vz*.72*dt;})){release();return;}
+        if(!shiftFxStep(fxOwned,()=>{paper.position.y+=vy*.72*dt*(1-t*2);})){release();return;}
+        if(!shiftFxStep(fxOwned,()=>{paper.rotation.y+=7.8*dt;})){release();return;}
+        if(!shiftFxStep(fxOwned,()=>{paper.rotation.x+=10.2*dt;})){release();return;}
+        if(t>=1)release();
+        }catch{release();} // A thrown engine callback must not leak the observer.
+      });
+      if(released&&obs!==null)try{scene.onBeforeRenderObservable.remove(obs);}catch{}
+      if(!fxOwned())release();
+    }catch{release();}
+  }
+}
+function buildOfficeChallengeTargets(scene){
+  G.officeTargets={panic:new B.Vector3(0,1.35,6.83),bin:new B.Vector3(5.65,.52,.25)};
+  const panicBacking=box(scene,'PANIC switch mounting',new B.Vector3(0,1.37,6.91),new B.Vector3(1.26,1.1,.20),'#202d3d');
+  const panicRim=B.MeshBuilder.CreateCylinder('PANIC red rim',{height:.13,diameter:.60,tessellation:20},scene);
+  panicRim.position=G.officeTargets.panic;panicRim.rotation.x=Math.PI/2;panicRim.material=mat(scene,'panicRim','#f5c947',.3);
+  const panicButton=B.MeshBuilder.CreateCylinder('PANIC hittable red button',{height:.17,diameter:.45,tessellation:20},scene);
+  panicButton.position=G.officeTargets.panic.add(new B.Vector3(0,0,-.15));panicButton.rotation.x=Math.PI/2;
+  panicButton.material=mat(scene,'panicButton','#ef3f3a',.25);panicButton.material.emissiveColor=B.Color3.FromHexString('#99130e').scale(.4);
+  const panicTitle=label(scene,'PANIC BUTTON',new B.Vector3(0,2.1,6.69),.42,'#ffce4a');
+  const panicSub=label(scene,'DO NOT PRESS',new B.Vector3(0,.64,6.67),.3,'#f5f2e5');
+  // Bin is a visible, open cylinder at a reliable, known pickup height.
+  const basket=B.MeshBuilder.CreateCylinder('Office basketball basket',{height:.75,diameterTop:.90,diameterBottom:.57,tessellation:20},scene);
+  basket.position=new B.Vector3(5.65,.375,.25);basket.material=mat(scene,'recycleBasket','#187bb0',.52);
+  const basketRim=B.MeshBuilder.CreateTorus('Basket rim',{diameter:.90,thickness:.075,tessellation:20},scene);
+  basketRim.rotation.x=Math.PI/2;basketRim.position=new B.Vector3(5.65,.77,.25);basketRim.material=mat(scene,'basketRim','#5ae0f5',.22);
+  const basketSign=label(scene,'PAPER SHOTS',new B.Vector3(5.65,1.42,.25),.40,'#fff0aa');
+  G.arenaMeshes.push(panicBacking,panicRim,panicButton,panicTitle,panicSub,basket,basketRim,basketSign);
+  // Task props in reachable spots, independently of the chosen level.
+  const positions=[[-5.65,-3.3],[-5.5,1.4],[2,-5.8],[2.7,5.8]];
+  let placed=0;
+  for(const [x,z] of positions){
+    if(isBlockedXZ(x,z,.4))continue;
+    makeProp(scene,placed%2?'mug':'paperball',new B.Vector3(x,.85,z),{material:placed%2?'ceramic':'paper',mass:.35,damage:12,size:[.22,.22,.22]});
+    placed++;
+  }
+  // Stapler Sniper always has a stapler, even where map prop sets omit it.
+  makeProp(scene,'stapler',new B.Vector3(.65,1.10,-5.55),{material:'metal',mass:1.5,damage:16,size:[.22,.12,.16]});
+  // Guaranteed at least one accessible copy of each if the selected map is cluttered.
+  if(placed<2){makeProp(scene,'paperball',new B.Vector3(-1.1,1.25,-1.7),{material:'paper',mass:.3,damage:9});makeProp(scene,'mug',new B.Vector3(1.1,1.25,-1.7),{material:'ceramic',mass:.6,damage:13});}
+}
+function hitOfficePanic(scene,pos,speed){
+  if(!G.officeTargets||speed<2.2||!pos)return;
+  try{if(B.Vector3.Distance(pos,G.officeTargets.panic)<.73){
+    if(completeOfficeTask('PANIC',scene,G.officeTargets.panic)){
+      try{incidentSound('ALARM');}catch{}for(const n of G.npcs){try{if(!n||n.dead||!n.root||n.root.isDisposed?.())continue;n.panicT=Math.max(n.panicT,1.35);}catch{}}
+    }
+  }}catch{}
+}
+
 function chooseObjective(){
   const pool=[
     {id:'ko',label:'GET 8 KOs',target:8,progress:()=>G.kills},
@@ -10111,7 +11454,29 @@ function chooseObjective(){
     {id:'combo',label:'GET x8 COMBO',target:8,progress:()=>G.bestCombo}
   ];G.objective={...pool[Math.floor(Math.random()*pool.length)],done:false};
 }
-function objectiveTick(){ if(!G.objective||G.objective.done)return; if(G.objective.progress()>=G.objective.target){G.objective.done=true;addScore(500,'OBJECTIVE');G.meta.coins=(G.meta.coins||0)+15;saveMeta();toast(`CHALLENGE COMPLETE • +500 SCORE • +15C`,1200);rewardSound('challenge');} }
+// CR4.9.476: objective rewards belong to their originating wave and meta.
+// Reserve completion before callbacks so a reentrant tick cannot pay twice.
+function objectiveTick(){
+  let objective,token,wave,meta;
+  try{objective=G.objective;token=G.waveToken;wave=G.wave;meta=G.meta;}catch{return;}
+  if(!objective||objective.done||G.state!=='shift'||G.waveTransition||G.ended)return;
+  const owned=()=>{try{return G.state==='shift'&&!G.waveTransition&&!G.ended&&
+    G.waveToken===token&&G.wave===wave&&G.objective===objective&&G.meta===meta&&!!meta;}catch{return false;}};
+  let progress,target;
+  try{progress=objective.progress();target=objective.target;}catch{return;}
+  if(!owned()||!Number.isFinite(progress)||!Number.isFinite(target)||progress<target)return;
+  try{objective.done=true;}catch{return;}
+  if(!owned()||objective.done!==true)return;
+  try{addScore(500,'OBJECTIVE');}catch{}
+  if(!owned())return;
+  try{meta.coins=(meta.coins||0)+15;}catch{return;}
+  if(!owned())return;
+  try{saveMeta();}catch{}
+  if(!owned())return;
+  try{toast('CHALLENGE COMPLETE • +500 SCORE • +15C',1200);}catch{}
+  if(!owned())return;
+  try{rewardSound('challenge');}catch{}
+}
 function checkBlock(baseDamage,attacker){
   if(!G.batMesh||!G.batTip||!G.right||!attacker?.root||G.state!=='shift')return false;
   try{
@@ -10144,340 +11509,2527 @@ function updateHUD(){
   if(G.state==='hub'){ui.mode.textContent='COZY HOME';ui.shift.textContent=`${G.meta.coins} COINS • LEVEL ${lvl}`;}
   else if(G.mode==='SURVIVAL'){ui.mode.textContent=`SURVIVAL • WAVE ${G.wave}`;const c=G.contract&&!G.contract.done?` • ${G.contract.label} ${Math.min(G.contract.goal,Math.floor(G.contract.progress||0))}/${G.contract.goal}`:'';ui.shift.textContent=`${G.meta.coins}C • BEST W${G.meta.survivalBestWave||0}${c}`;}
   else {ui.mode.textContent=`LEVEL ${lvl} • WAVE ${G.wave}/5`;const c=G.contract&&!G.contract.done?` • ${G.contract.label} ${Math.min(G.contract.goal,Math.floor(G.contract.progress||0))}/${G.contract.goal}`:'';ui.shift.textContent=`${G.meta.coins}C • ${G.kills} KOs • ${G.blocks} BLOCKS${c}`;}
+  if(ui.bossHud){const boss=G.state==='shift'&&G.boss&&!G.boss.dead?G.boss:null;ui.bossHud.style.display=boss?'block':'none';if(boss){ui.bossName.textContent=boss.persona;ui.bossBar.style.width=`${Math.max(0,Math.min(100,boss.hp/Math.max(1,boss.maxHp)*100))}%`;ui.bossHint.textContent=boss.weakOpenT>0?'GLOWING CORE EXPOSED • HIT FOR BONUS DAMAGE':boss.bossTelegraph>0?'DANGER • '+OFFICE_BOSS_TYPES[boss.bossId].callout:'WAIT FOR THE WARNING, DODGE, THEN STRIKE THE BADGE';}}
   updateVRHud();const rr=rank();if(G.state==='shift'&&rr!==G.lastRank){G.lastRank=rr;announce(`RANK ${rr}`,'good');}
 }
 
 function clearList(list){for(const m of [...list]){try{m?.dispose?.(false,true);}catch{}}list.length=0;}
-function disposeProp(p){if(!p)return;try{p.mesh?.dispose?.(false,true);}catch{}const i=G.props.indexOf(p);if(i>=0)G.props.splice(i,1);}
+function disposeProp(p){if(!p)return;try{pendingXRPropDetaches.delete(p);}catch{}try{p.mesh?.dispose?.(false,true);}catch{}const i=G.props.indexOf(p);if(i>=0)G.props.splice(i,1);}
 function makeScene(){
-  // 5.6 SAFE/LAZY START: never build the heavy hub before the start buttons unlock.
-  // Mobile Safari and Quest browsers can otherwise spend too long building models/audits and appear stuck.
-  const scene=new B.Scene(engine);scene.clearColor=new B.Color4(.025,.03,.045,1);scene.gravity=new B.Vector3(0,-9.81,0);scene.collisionsEnabled=true;try{if(PLATFORM_PROFILE.mobile)engine.setHardwareScalingLevel(Math.max(1.25,Math.min(1.65,(window.devicePixelRatio||1)*.72)));}catch{}
-  const cam=new B.UniversalCamera('previewCam',new B.Vector3(0,1.65,-5),scene);cam.attachControl(canvas,true);cam.speed=.09;cam.minZ=.05;cam.inertia=.42;cam.angularSensibility=PLATFORM_PROFILE.touch?6200:3300;try{cam.inputs.removeByType('FreeCameraKeyboardMoveInput');if(PLATFORM_PROFILE.touch)cam.inputs.removeByType('FreeCameraTouchInput');}catch{}
+  const scene=new B.Scene(engine);scene.clearColor=new B.Color4(.025,.03,.045,1);scene.gravity=new B.Vector3(0,-9.81,0);scene.collisionsEnabled=true;
+  const cam=new B.UniversalCamera('previewCam',new B.Vector3(0,1.65,-5),scene);cam.attachControl(canvas,true);cam.speed=.09;cam.minZ=.05;
   const hemi=new B.HemisphericLight('hemi',new B.Vector3(.2,1,.1),scene);hemi.intensity=.55;
   const key=new B.DirectionalLight('key',new B.Vector3(-.4,-1,.3),scene);key.position=new B.Vector3(5,8,-6);key.intensity=1.15;
-  scene.onBeforeRenderObservable.add(()=>tick(scene));return scene;
+  buildHub(scene);scene.onBeforeRenderObservable.add(()=>tick(scene));return scene;
 }
 
 
-function buildHub(scene){
-  stopShiftAudio();stopLobbyAudio();
-  if(G.endTimer){clearTimeout(G.endTimer);G.endTimer=null;}
-  G.state='hub';G.ended=false;G.blockers=[];G.hubButtons=[];G.hoveredHubButtons=new Set();G.remoteDecor=[];G.remoteDecorReduced=false;clearList(G.arenaMeshes);clearList(G.lobbyMeshes);G.props.splice(0).forEach(disposeProp);
-  for(const n of G.npcs)n.dispose();G.npcs=[];for(const h of G.hazards){try{h.mesh.dispose()}catch{}}G.hazards=[];G.boss=null;
-  if(G.flatHeldProp){try{G.flatHeldProp.heldBy=null}catch{}G.flatHeldProp=null;}if(G.batMesh){try{G.batMesh.dispose(false,true)}catch{}G.batMesh=null;G.batTip=null;}
+// CR4.9: softly deforming, layered 3D fire, rather than a column of spark sprites.
+// The particle system remains for embers; these ribbons provide the visible flame body.
+function buildSculptedFire(scene,fireRoot,light,coreLight,stillOwned=()=>G.state==='hub'){
+  const flames=[];
+  const segmentCount=13;
+  const material=new B.StandardMaterial('naturalFlameGradientMaterial',scene);
+  material.disableLighting=true;
+  material.diffuseColor=B.Color3.White();
+  material.emissiveColor=new B.Color3(.65,.28,.07);
+  material.backFaceCulling=false;
+  material.alpha=.93;
+  material.transparencyMode=B.Material.MATERIAL_ALPHABLEND;
+  material.alphaMode=B.Engine.ALPHA_ADD;
+  // Six tongues, each formed from two intersecting translucent sheets.
+  // These shapes have continuous edges, not individual spark circles.
+  for(let flame=0;flame<7;flame++){
+    for(let side=0;side<2;side++){
+      const seed=flame*1.77+side*.48;
+      const xBase=-.39+flame*.13;
+      const zBase=-.20+(flame%3)*.09;
+      const width=.11+(flame%3)*.023;
+      const height=1.04+(flame%4)*.075;
+      const angle=side*Math.PI/2+.15*flame;
+      function paths(time){
+        const columns=[[],[]];
+        for(let column=0;column<2;column++){
+          const sign=column===0?-1:1;
+          for(let row=0;row<segmentCount;row++){
+            const v=row/(segmentCount-1);
+            const taper=Math.pow(Math.max(.005,1-v),.74);
+            const breathe=.91+.10*Math.sin(time*3.7+seed+v*9.1);
+            const sway=(Math.sin(time*4.7+seed+v*7.2)*.055+Math.sin(time*2.1+seed*2+v*12)*.032)*v;
+            const roll=(Math.cos(time*3.8+seed*1.2+v*9)*.030)*v;
+            const d=sign*width*taper*breathe;
+            columns[column].push(new B.Vector3(xBase+sway+Math.cos(angle)*d,.22+height*v,zBase+roll+Math.sin(angle)*d));
+          }
+        }
+        return columns;
+      }
+      const mesh=B.MeshBuilder.CreateRibbon('naturalSculptedFire_'+flame+'_'+side,{pathArray:paths(0),updatable:true,sideOrientation:B.Mesh.FRONTSIDE},scene);
+      mesh.parent=fireRoot;
+      mesh.material=material;
+      mesh.isPickable=false;
+      mesh.useVertexColors=true;
+      mesh.hasVertexAlpha=true;
+      const colors=[];
+      for(let c=0;c<2;c++)for(let row=0;row<segmentCount;row++){
+        const v=row/(segmentCount-1);
+        const center=flame%3===0;
+        const hot=v<.20;
+        const r=1;
+        const g=hot?(center?.95:.78):Math.max(.04,.81-v*.82);
+        const bl=hot?(center?.42:.15):.012;
+        const a=(v<.09?.42+v*5.3:v<.40?.92:Math.pow(Math.max(0,(1-v)/.60),1.15)*.86)*(side===0?.90:.68);
+        colors.push(r,g,bl,a);
+      }
+      mesh.setVerticesData(B.VertexBuffer.ColorKind,new Float32Array(colors),true,4);
+      flames.push({mesh,paths,seed});
+    }
+  }
+  // Orange light reflecting off the inside of the stone fireplace.
+  const glowTex=new B.DynamicTexture('fireplaceWarmCavityGlow',{width:128,height:128},scene,true);
+  glowTex.hasAlpha=true;
+  const ctx=glowTex.getContext();
+  const gradient=ctx.createRadialGradient(64,84,5,64,76,77);
+  gradient.addColorStop(0,'rgba(255,230,140,.88)');
+  gradient.addColorStop(.26,'rgba(255,112,22,.60)');
+  gradient.addColorStop(.65,'rgba(198,34,4,.30)');
+  gradient.addColorStop(1,'rgba(120,15,0,0)');
+  ctx.clearRect(0,0,128,128);ctx.fillStyle=gradient;ctx.fillRect(0,0,128,128);glowTex.update();
+  const glow=B.MeshBuilder.CreatePlane('warmFireplaceCavity',{width:1.30,height:1.30},scene);
+  glow.parent=fireRoot;glow.position=new B.Vector3(0,.82,.33);glow.isPickable=false;
+  const glowMat=new B.StandardMaterial('warmFireplaceCavityMat',scene);
+  glowMat.disableLighting=true;glowMat.emissiveTexture=glowTex;glowMat.opacityTexture=glowTex;glowMat.backFaceCulling=false;
+  glowMat.alpha=.56;glow.material=glowMat;
+  let clock=0,elapsed=0,obs=null,stale=false;
+  const stopStale=()=>{stale=true;if(obs!==null){try{scene.onBeforeRenderObservable.remove(obs)}catch{}}};
+  obs=scene.onBeforeRenderObservable.add(()=>{
+    if(stale)return;
+    if(!stillOwned()){stopStale();return;}
+    const dt=Math.min(.05,scene.getEngine().getDeltaTime()/1000);
+    if(!stillOwned()){stopStale();return;}
+    clock+=dt;elapsed+=dt;
+    // 20-30 procedural shape updates per second save Quest GPU/CPU time.
+    const interval=(G.perfScale||1)>1.15?.055:.036;
+    if(!stillOwned()){stopStale();return;}
+    if(elapsed<interval)return;
+    elapsed=0;
+    for(const item of flames){
+      if(!stillOwned()){stopStale();return;}
+      B.MeshBuilder.CreateRibbon(null,{pathArray:item.paths(clock),instance:item.mesh},scene);
+    }
+    if(!stillOwned()){stopStale();return;}
+    glow.scaling.set(1+.025*Math.sin(clock*6.4),1+.045*Math.sin(clock*4.9),1);
+    if(!stillOwned()){stopStale();return;}
+    glowMat.alpha=.48+.12*Math.sin(clock*8.2)+.08*Math.sin(clock*13.3);
+    if(!stillOwned()){stopStale();return;}
+    if(coreLight)coreLight.intensity=.42+.13*Math.sin(clock*8.9)+.065*Math.sin(clock*14.1);
+    if(!stillOwned()){stopStale();return;}
+    if(light)light.range=5.6+.30*Math.sin(clock*3.7);
+  });
+  if(stale)stopStale(); // add() may synchronously invoke a callback.
+  const fireVisualEvidence={flameSheets:flames.length,technique:'deforming crossed gradient flame sheets',particleCapacity:FIRE_PARTICLE_CAPACITY,smokeAndEmbers:true};
+  G.fireVisualEvidence=fireVisualEvidence;
+  return {dispose:()=>{
+    try{scene.onBeforeRenderObservable.remove(obs)}catch{}
+    flames.forEach(f=>{try{f.mesh.dispose()}catch{}});
+    for(const m of [glow,material,glowMat,glowTex])try{m.dispose()}catch{}
+    if(G.fireVisualEvidence===fireVisualEvidence)G.fireVisualEvidence=null;
+  }};
+}
 
-  const hemi=scene.getLightByName?.('hemi');if(hemi)hemi.intensity=.72;
-  const key=scene.getLightByName?.('key');if(key)key.intensity=1.0;
+// A roster getter can synchronously change wave/roster AFTER earlier checks.
+// Verify the detached roster twice, then recheck scope after both reads.
+function hubNpcResetStillOwned(reset,preCleanup=false){
+  try{
+    const expectedState=preCleanup?reset.state:'hub';
+    const expectedEnded=preCleanup?reset.ended:false;
+    if(G.hubInteractionEpoch!==reset.epoch||G.waveToken!==reset.token||
+       G.wave!==reset.wave||G.state!==expectedState||
+       G.waveTransition!==reset.transition||G.ended!==expectedEnded||
+       (reset.guard&&npcRosterWriteGuard!==reset.guard))return false;
+    const first=G.npcs;
+    if(first!==reset.next)return false;
+    const second=G.npcs;
+    if(second!==reset.next)return false;
+    return G.hubInteractionEpoch===reset.epoch&&G.waveToken===reset.token&&
+       G.wave===reset.wave&&G.state===expectedState&&
+       G.waveTransition===reset.transition&&G.ended===expectedEnded&&
+       (!reset.guard||npcRosterWriteGuard===reset.guard);
+  }catch{return false;}
+}
+// CR4.9.214: Hub mesh cleanup must stop INSIDE the disposal loop when a
+// callback changes wave, hub epoch, or the owned mesh list. Never clear a
+// foreign or modified list after a callback.
+// CR4.9.227: remember attempted disposals across interrupted hub resets.
+// Key by the exact array identity; never replay an already attempted disposer.
+// CR4.9.253: One hub reset can own the SAME mesh through arena, lobby, props
+// and hazards. Share the attempt journal across those lists, not across waves.
+// Claim before reading any fallible dispose getter or invoking a disposer.
+const hubSharedMeshAttemptLedger=new WeakMap();
+function claimHubSharedMeshAttempt(reset,mesh){
+  let attempted=hubSharedMeshAttemptLedger.get(reset);
+  if(!attempted){
+    attempted=new Set();
+    hubSharedMeshAttemptLedger.set(reset,attempted);
+  }
+  if(attempted.has(mesh))return false;
+  attempted.add(mesh);
+  return true;
+}
+const hubMeshCleanupLedger=new WeakMap();
+function clearHubListGuarded(reset,key){
+  try{
+    if((key!=='arenaMeshes'&&key!=='lobbyMeshes')||!hubNpcResetStillOwned(reset))return false;
+    const list=G[key];
+    if(!hubNpcResetStillOwned(reset)||G[key]!==list||
+       !Array.isArray(list)||list.length>8192)return false;
+    const entries=[];
+    for(let i=0;i<list.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(list,i);
+      if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))return false;
+      entries.push(slot.value);
+      if(!hubNpcResetStillOwned(reset)||G[key]!==list)return false;
+    }
+    const owned=()=>{
+      if(!hubNpcResetStillOwned(reset)||G[key]!==list||list.length!==entries.length)return false;
+      for(let i=0;i<entries.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(list,i);
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||slot.value!==entries[i])return false;
+      }
+      return hubNpcResetStillOwned(reset)&&G[key]===list&&hubNpcResetStillOwned(reset);
+    };
+    // A prior partial pass must not survive a failing preflight. Keep the
+    // ledger identity even when ownership probes throw or return false.
+    let progress=hubMeshCleanupLedger.get(list);
+    let initiallyOwned=false;
+    try{initiallyOwned=owned();}catch{}
+    if(!initiallyOwned){if(progress)progress.state='failed';return false;}
+    if(progress){
+      // A mesh list may be reused by a later hub reset. Never inherit a
+      // previous reset's disposal cursor, even when its members are identical.
+      if(progress.key!==key||progress.state!=='active'||
+         progress.epoch!==reset.epoch||progress.token!==reset.token||
+         progress.wave!==reset.wave||progress.transition!==reset.transition||
+         progress.roster!==reset.next||progress.guard!==reset.guard||
+         progress.entries.length!==entries.length){progress.state='failed';return false;}
+      for(let i=0;i<entries.length;i++)if(progress.entries[i]!==entries[i]){
+        progress.state='failed';return false;
+      }
+    }else{
+      progress={key,epoch:reset.epoch,token:reset.token,wave:reset.wave,
+        transition:reset.transition,roster:reset.next,guard:reset.guard,
+        entries:entries.slice(),next:0,state:'active',inFlight:false};
+      hubMeshCleanupLedger.set(list,progress);
+    }
+    if(progress.inFlight)return false;
+    // There is no safe cross-call resume after any attempted disposal.
+    // A prior exception in a Proxy/ownership check may have escaped the
+    // inner callback guards and left next > 0 while state was still active.
+    if(progress.next!==0){progress.state='failed';return false;}
+    progress.inFlight=true;
+    try{
+      if(!owned()){progress.state='failed';return false;}
+      for(let i=progress.next;i<entries.length;i++){
+        if(!owned()){progress.state='failed';return false;}
+        // Record the attempt before invoking arbitrary disposal callbacks.
+        progress.next=i+1;
+        // A dispose getter can synchronously change the wave or replace the
+        // mesh list. Never call its returned function without rechecking ownership.
+        // Shared identity may already have been disposed by another hub list.
+        if(!claimHubSharedMeshAttempt(reset,entries[i]))continue;
+        let dispose;
+        try{dispose=entries[i]?.dispose;}catch{progress.state='failed';return false;}
+        if(!owned()){progress.state='failed';return false;}
+        if(dispose!=null&&typeof dispose!=='function'){
+          progress.state='failed';return false;
+        }
+        try{if(dispose)dispose.call(entries[i],false,true);}
+        catch{progress.state='failed';return false;}
+        // An interrupted disposal must not resume with a skipped object.
+        if(!owned()){progress.state='failed';return false;}
+      }
+      if(!owned()){progress.state='failed';return false;}
+      progress.state='clearing'; // A throwing length setter must never replay disposal.
+      try{list.length=0;}catch{progress.state='failed';return false;}
+      const finished=hubNpcResetStillOwned(reset)&&G[key]===list&&
+        list.length===0&&hubNpcResetStillOwned(reset);
+      if(finished){progress.state='done';hubMeshCleanupLedger.delete(list);}
+      else progress.state='failed';
+      return finished;
+    }catch{progress.state='failed';return false;}
+    finally{progress.inFlight=false;}
+  }catch{return false;}
+}
+// CR4.9.215: Keep the hub roster quarantine active through hazard cleanup.
+// A hazard disposal callback must not dispose later foreign-wave hazards.
+// CR4.9.228: record each hazard disposal attempt BEFORE callbacks; never replay
+// after interrupted cleanup, throwing disposers, or ambiguous roster replacement.
+const hubHazardCleanupLedger=new WeakMap();
+function clearHubHazardsGuarded(reset){
+  try{
+    if(!hubNpcResetStillOwned(reset))return false;
+    const list=G.hazards;
+    if(!hubNpcResetStillOwned(reset)||G.hazards!==list||
+       !Array.isArray(list)||list.length>4096)return false;
+    const entries=[];
+    for(let i=0;i<list.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(list,i);
+      if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))return false;
+      entries.push(slot.value);
+      if(!hubNpcResetStillOwned(reset)||G.hazards!==list)return false;
+    }
+    const owned=()=>{
+      if(!hubNpcResetStillOwned(reset)||G.hazards!==list||list.length!==entries.length)return false;
+      for(let i=0;i<entries.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(list,i);
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||slot.value!==entries[i])return false;
+      }
+      return hubNpcResetStillOwned(reset)&&G.hazards===list&&hubNpcResetStillOwned(reset);
+    };
+    if(!owned())return false;
+    let progress=hubHazardCleanupLedger.get(list);
+    if(progress){
+      if(progress.state!=='active'||progress.epoch!==reset.epoch||
+         progress.token!==reset.token||progress.wave!==reset.wave||
+         progress.roster!==reset.next||progress.transition!==reset.transition||
+         progress.guard!==reset.guard||progress.entries.length!==entries.length){
+        progress.state='failed';return false;
+      }
+      for(let i=0;i<entries.length;i++)if(progress.entries[i]!==entries[i]){
+        progress.state='failed';return false;
+      }
+    }else{
+      progress={epoch:reset.epoch,token:reset.token,wave:reset.wave,
+        roster:reset.next,transition:reset.transition,guard:reset.guard,
+        entries:entries.slice(),next:0,state:'active',inFlight:false,attempted:new Set()};
+      hubHazardCleanupLedger.set(list,progress);
+    }
+    if(progress.inFlight)return false;
+    if(!owned()){progress.state='failed';return false;}
+    progress.inFlight=true;
+    try{
+      for(let i=progress.next;i<entries.length;i++){
+        if(!owned()){progress.state='failed';return false;}
+        // Even a Proxy descriptor or a dispose getter may trigger a new wave.
+        // The attempt is recorded before any user-defined callback can run.
+        progress.next=i+1;
+        const hazard=entries[i];
+        if(hazard==null){progress.state='failed';return false;}
+        const slot=Object.getOwnPropertyDescriptor(hazard,'mesh');
+        if(!owned()){progress.state='failed';return false;}
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')){
+          progress.state='failed';return false;
+        }
+        const mesh=slot.value;
+        // A shared mesh can appear in multiple entries; never dispose it twice.
+        // Record BEFORE reading the fallible dispose getter.
+        if(progress.attempted.has(mesh))continue;
+        progress.attempted.add(mesh);
+        if(!claimHubSharedMeshAttempt(reset,mesh))continue;
+        let dispose;
+        try{dispose=mesh?.dispose;}catch{progress.state='failed';return false;}
+        if(!owned()){progress.state='failed';return false;}
+        if(dispose!=null&&typeof dispose!=='function'){
+          progress.state='failed';return false;
+        }
+        try{if(dispose)dispose.call(mesh);}catch{progress.state='failed';return false;}
+        if(!owned()){progress.state='failed';return false;}
+      }
+      if(!owned()){progress.state='failed';return false;}
+      progress.state='swapping'; // Setter may commit and then throw; never replay.
+      try{G.hazards=[];}catch{progress.state='failed';return false;}
+      const next=G.hazards;
+      const finished=hubNpcResetStillOwned(reset)&&next!==list&&
+        Array.isArray(next)&&next.length===0&&G.hazards===next&&
+        hubNpcResetStillOwned(reset);
+      if(finished){progress.state='done';hubHazardCleanupLedger.delete(list);}
+      else progress.state='failed';
+      return finished;
+    }catch{progress.state='failed';return false;}
+    finally{progress.inFlight=false;}
+  }catch{return false;}
+}
+
+// CR4.9.229: dispose props without detaching and then touching a foreign roster.
+// Track attempts before any getter/disposer callback. A failed or ambiguous
+// cleanup is terminal for this exact array; do not replay attempted disposals.
+const hubPropCleanupLedger=new WeakMap();
+function clearHubPropsGuarded(reset){
+  try{
+    if(!hubNpcResetStillOwned(reset))return false;
+    const list=G.props;
+    if(!hubNpcResetStillOwned(reset)||G.props!==list||
+       !Array.isArray(list)||list.length>4096)return false;
+    const entries=[];
+    for(let i=0;i<list.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(list,i);
+      if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))return false;
+      entries.push(slot.value);
+      if(!hubNpcResetStillOwned(reset)||G.props!==list)return false;
+    }
+    const owned=()=>{
+      if(!hubNpcResetStillOwned(reset)||G.props!==list||list.length!==entries.length)return false;
+      for(let i=0;i<entries.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(list,i);
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||slot.value!==entries[i])return false;
+      }
+      return hubNpcResetStillOwned(reset)&&G.props===list&&hubNpcResetStillOwned(reset);
+    };
+    if(!owned())return false;
+    let progress=hubPropCleanupLedger.get(list);
+    if(progress){
+      if(progress.state!=='active'||progress.epoch!==reset.epoch||
+         progress.token!==reset.token||progress.wave!==reset.wave||
+         progress.roster!==reset.next||progress.transition!==reset.transition||
+         progress.guard!==reset.guard||progress.entries.length!==entries.length){
+        progress.state='failed';return false;
+      }
+      for(let i=0;i<entries.length;i++)if(progress.entries[i]!==entries[i]){
+        progress.state='failed';return false;
+      }
+    }else{
+      progress={epoch:reset.epoch,token:reset.token,wave:reset.wave,
+        roster:reset.next,transition:reset.transition,guard:reset.guard,
+        entries:entries.slice(),next:0,state:'active',inFlight:false,attempted:new Set()};
+      hubPropCleanupLedger.set(list,progress);
+    }
+    if(progress.inFlight)return false;
+    if(!owned()){progress.state='failed';return false;}
+    progress.inFlight=true;
+    try{
+      for(let i=progress.next;i<entries.length;i++){
+        if(!owned()){progress.state='failed';return false;}
+        progress.next=i+1; // Never replay after a foreign-wave callback.
+        const prop=entries[i];
+        if(prop==null)continue; // Original disposeProp(null) was a no-op.
+        const slot=Object.getOwnPropertyDescriptor(prop,'mesh');
+        if(!owned()){progress.state='failed';return false;}
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')){
+          progress.state='failed';return false;
+        }
+        const mesh=slot.value;
+        // A shared mesh can appear in multiple entries; never dispose it twice.
+        // Record BEFORE reading the fallible dispose getter.
+        if(progress.attempted.has(mesh))continue;
+        progress.attempted.add(mesh);
+        if(!claimHubSharedMeshAttempt(reset,mesh))continue;
+        let dispose;
+        try{dispose=mesh?.dispose;}catch{progress.state='failed';return false;}
+        if(!owned()){progress.state='failed';return false;}
+        if(dispose!=null&&typeof dispose!=='function'){
+          progress.state='failed';return false;
+        }
+        try{if(dispose)dispose.call(mesh,false,true);}catch{
+          progress.state='failed';return false;
+        }
+        if(!owned()){progress.state='failed';return false;}
+      }
+      if(!owned()){progress.state='failed';return false;}
+      progress.state='clearing'; // A throwing length setter cannot replay disposal.
+      try{list.length=0;}catch{progress.state='failed';return false;}
+      const finished=hubNpcResetStillOwned(reset)&&G.props===list&&
+        list.length===0&&hubNpcResetStillOwned(reset);
+      if(finished){progress.state='done';hubPropCleanupLedger.delete(list);}
+      else progress.state='failed';
+      return finished;
+    }catch{progress.state='failed';return false;}
+    finally{progress.inFlight=false;}
+  }catch{return false;}
+}
+// CR4.9.230: detached NPCs are no longer on G.npcs, but a dispose callback
+// can still switch waves, throw, or reenter. Never replay attempted disposals.
+const hubDetachedNpcCleanupLedger=new WeakMap();
+function clearHubDetachedNpcsGuarded(reset){
+  try{
+    if(!reset||!hubNpcResetStillOwned(reset))return false;
+    const list=reset.entries;
+    if(!Array.isArray(list)||list.length>4096||
+       !hubNpcResetStillOwned(reset))return false;
+    let progress=hubDetachedNpcCleanupLedger.get(list);
+    if(!progress){
+      const entries=[];
+      for(let i=0;i<list.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(list,String(i));
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||
+           !hubNpcResetStillOwned(reset))return false;
+        entries.push(slot.value);
+      }
+      if(!hubNpcResetStillOwned(reset)||list.length!==entries.length)return false;
+      progress={list,entries,nextRoster:reset.next,guard:reset.guard,
+        epoch:reset.epoch,token:reset.token,wave:reset.wave,
+        next:0,inFlight:false,state:'active',attempted:new Set()};
+      hubDetachedNpcCleanupLedger.set(list,progress);
+    }
+    if(progress.list!==list||progress.nextRoster!==reset.next||
+       progress.guard!==reset.guard||progress.epoch!==reset.epoch||
+       progress.token!==reset.token||progress.wave!==reset.wave||
+       progress.inFlight||progress.state==='failed'||
+       list.length!==progress.entries.length)return false;
+    // Detached entries are a separate list from G.npcs. A getter or
+    // disposer can mutate that list without changing the active wave.
+    // Prove exact own-data membership across every fallible callback.
+    const owned=()=>{
+      try{
+        if(!hubNpcResetStillOwned(reset)||reset.entries!==list||
+           list.length!==progress.entries.length)return false;
+        for(let j=0;j<progress.entries.length;j++){
+          const slot=Object.getOwnPropertyDescriptor(list,String(j));
+          if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||
+             slot.value!==progress.entries[j]||!hubNpcResetStillOwned(reset)||
+             reset.entries!==list)return false;
+        }
+        return reset.entries===list&&hubNpcResetStillOwned(reset);
+      }catch{return false;}
+    };
+    // An attempted disposal must never resume on a later call.
+    if(progress.state==='active'&&progress.next!==0){
+      progress.state='failed';return false;
+    }
+    if(!owned()){progress.state='failed';return false;}
+    if(progress.state==='done')return true;
+    progress.inFlight=true;
+    try{
+      while(progress.next<progress.entries.length){
+        if(!owned()){
+          progress.state='failed';return false;
+        }
+        const i=progress.next;
+        const slot=Object.getOwnPropertyDescriptor(list,String(i));
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||
+           slot.value!==progress.entries[i]||!owned()){
+          progress.state='failed';return false;
+        }
+        // Mark BEFORE invoking a possibly hostile getter or disposer.
+        progress.next=i+1;
+        const npc=progress.entries[i];
+        // A duplicate roster reference must not dispose the same NPC twice.
+        // Mark BEFORE the fallible getter, even when it later throws.
+        if(progress.attempted.has(npc))continue;
+        progress.attempted.add(npc);
+        const dispose=npc?.dispose;
+        if(!owned()){
+          progress.state='failed';return false;
+        }
+        if(dispose!=null){
+          if(typeof dispose!=='function'){
+            progress.state='failed';return false;
+          }
+          dispose.call(npc);
+          if(!owned()){
+            progress.state='failed';return false;
+          }
+        }
+      }
+      if(!owned()){
+        progress.state='failed';return false;
+      }
+      progress.state='done';return true;
+    }catch{
+      progress.state='failed';return false;
+    }finally{progress.inFlight=false;}
+  }catch{return false;}
+}
+// CR4.9.231: A bat dispose getter, disposer or G setter can synchronously
+// switch waves, throw, or reenter. Record the attempt before calling it.
+// Never replay a failed or ambiguous bat cleanup on the same mesh.
+const hubBatCleanupLedger=new WeakMap();
+const hubBatCleanupBusy=new WeakSet();
+function clearHubBatGuarded(reset){
+  try{
+    if(!reset||!hubNpcResetStillOwned(reset)||hubBatCleanupBusy.has(reset))return false;
+    hubBatCleanupBusy.add(reset);
+    try{
+      const slots=()=>{
+        if(!hubNpcResetStillOwned(reset))return null;
+        const mesh=Object.getOwnPropertyDescriptor(G,'batMesh');
+        if(!hubNpcResetStillOwned(reset))return null;
+        const tip=Object.getOwnPropertyDescriptor(G,'batTip');
+        if(!hubNpcResetStillOwned(reset)||!mesh||!tip||
+           !Object.prototype.hasOwnProperty.call(mesh,'value')||
+           !Object.prototype.hasOwnProperty.call(tip,'value'))return null;
+        return {mesh:mesh.value,tip:tip.value};
+      };
+      const initial=slots();
+      if(!initial)return false;
+      const bat=initial.mesh,tip=initial.tip;
+      const owned=(expectedMesh,expectedTip)=>{
+        if(!hubNpcResetStillOwned(reset))return false;
+        const now=slots();
+        return !!now&&now.mesh===expectedMesh&&now.tip===expectedTip&&
+          hubNpcResetStillOwned(reset);
+      };
+      // Never continue with a dangling tip or an accessor/ambiguous mesh.
+      if(bat===null)return tip===null&&owned(null,null);
+      if((typeof bat!=='object'&&typeof bat!=='function')||!owned(bat,tip))return false;
+      let progress=hubBatCleanupLedger.get(bat);
+      if(progress){
+        if(progress.state!=='active'||progress.inFlight||
+           progress.tip!==tip||progress.epoch!==reset.epoch||
+           progress.token!==reset.token||progress.wave!==reset.wave||
+           progress.transition!==reset.transition||
+           progress.roster!==reset.next||progress.guard!==reset.guard)return false;
+      }else{
+        progress={tip,epoch:reset.epoch,token:reset.token,wave:reset.wave,
+          transition:reset.transition,roster:reset.next,guard:reset.guard,
+          state:'active',inFlight:false};
+        hubBatCleanupLedger.set(bat,progress);
+      }
+      progress.inFlight=true;
+      try{
+        if(!owned(bat,tip)){progress.state='failed';return false;}
+        progress.state='disposing'; // Before shared claim and fallible dispose getter.
+        // Bat mesh can already have been disposed by arena/lobby/props/hazards.
+        // Claim before any fallible getter/callback; never replay an attempt.
+        const needsDispose=claimHubSharedMeshAttempt(reset,bat);
+        if(!owned(bat,tip)){progress.state='failed';return false;}
+        if(needsDispose){
+          const dispose=bat.dispose;
+          if(typeof dispose!=='function'||!owned(bat,tip)){
+            progress.state='failed';return false;
+          }
+          dispose.call(bat,false,true);
+          if(!owned(bat,tip)){progress.state='failed';return false;}
+        }
+        progress.state='clearingMesh'; // Setter may commit then throw.
+        G.batMesh=null;
+        if(!owned(null,tip)){progress.state='failed';return false;}
+        progress.state='clearingTip'; // Never replay a partly cleared bat.
+        G.batTip=null;
+        if(!owned(null,null)){progress.state='failed';return false;}
+        progress.state='done';return true;
+      }catch{progress.state='failed';return false;}
+      finally{progress.inFlight=false;}
+    }finally{hubBatCleanupBusy.delete(reset);}
+  }catch{return false;}
+}
+function buildHub(scene){
+  G.hubInteractionEpoch=(G.hubInteractionEpoch||0)+1; // Invalidate pending button presses from an old hub.
+  const hubNpcReset=detachHubNpcRoster(G.hubInteractionEpoch);
+  if(!hubNpcReset)return; // No destructive hub cleanup after an unsafe roster write.
+  const hubSceneAbort=Symbol('hub-scene-ownership');
+  // Render observers outlive construction: do NOT require the construction-only NPC guard.
+  const hubRenderStillOwned=()=>{
+    try{
+      if(G.hubInteractionEpoch!==hubNpcReset.epoch||G.waveToken!==hubNpcReset.token||
+         G.wave!==hubNpcReset.wave||G.waveTransition!==hubNpcReset.transition||
+         G.state!=='hub'||G.ended!==false)return false;
+      const roster=G.npcs;
+      if(roster!==hubNpcReset.next||G.npcs!==roster)return false;
+      return G.hubInteractionEpoch===hubNpcReset.epoch&&G.waveToken===hubNpcReset.token&&
+        G.wave===hubNpcReset.wave&&G.waveTransition===hubNpcReset.transition&&
+        G.state==='hub'&&G.ended===false;
+    }catch{return false;}
+  };
+  if(hubNpcReset.guard)hubNpcReset.guard.hubCleanupActive=true;
+  try{ // A nested hub/foreign wave must not release this guard mid-cleanup.
+  // Verify ownership before and after every fallible pre-NPC cleanup stage.
+  // A callback that starts another wave must not trigger later destructive cleanup.
+  if(!hubNpcResetStillOwned(hubNpcReset,true))return;
+  stopShiftAudio();
+  if(!hubNpcResetStillOwned(hubNpcReset,true))return;
+  stopLobbyAudio();
+  if(!hubNpcResetStillOwned(hubNpcReset,true))return;
+  if(G.endTimer){clearTimeout(G.endTimer);G.endTimer=null;}
+  if(!hubNpcResetStillOwned(hubNpcReset,true))return;
+  G.state='hub';G.ended=false;
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  G.pendingWave=null;G.pendingHub=null;G.spawnPendingBoss=false;G.spawnPendingWorkers=0;G.spawnRetryT=0;G.spawnRetryCount=0;G.lightIncident=null;G.blockers=[];G.officeTargets=null;G.officeTasks=null;if(ui.tasks)ui.tasks.style.display='none';G.hubButtons=[];G.hoveredHubButtons=new Set();G.remoteDecor=[];G.remoteDecorReduced=false;
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  if(!clearHubListGuarded(hubNpcReset,'arenaMeshes'))return;
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  if(!clearHubListGuarded(hubNpcReset,'lobbyMeshes'))return;
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  if(!clearHubPropsGuarded(hubNpcReset))return;
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  // At-most-once cleanup of detached NPCs; never swallow ambiguous disposal.
+  if(!clearHubDetachedNpcsGuarded(hubNpcReset))return;
+  // Hazard and bat disposal are part of the SAME guarded hub transaction.
+  if(!clearHubHazardsGuarded(hubNpcReset))return;
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  try{G.boss=null;}catch{return;}
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  // CR4.9.231: bat disposal is an at-most-once hub transaction.
+  if(!clearHubBatGuarded(hubNpcReset))return;
+  // CR4.9.216: keep the roster quarantine during hub scene construction.
+  // A scene/light callback may synchronously start a different wave.
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  const hemi=scene.getLightByName?.('hemi');
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  if(hemi)hemi.intensity=.72;
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  const key=scene.getLightByName?.('key');
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  if(key)key.intensity=1.0;
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  // CR4.9.217: every wrapped scene-builder callback must preserve hub ownership.
+  const hubOwnedCall=(fn,...args)=>{
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    const value=fn(...args);
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    return value;
+  };
+  // Check hub ownership immediately around each fallible mesh/material setter.
+  const hubOwnedSet=(target,key,value)=>hubOwnedCall(()=>{target[key]=value;return value;});
+  // Resolve both the target and RHS under separate ownership checks before writing.
+  const hubOwnedSetEvaluated=(getTarget,key,getValue)=>{
+    const target=hubOwnedCall(getTarget);
+    const value=hubOwnedCall(getValue);
+    return hubOwnedSet(target,key,value);
+  };
+  // Capture the hub-owned list. Never append to a foreign-wave replacement.
+  if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+  const hubLobbyList=G.lobbyMeshes;
+  if(!Array.isArray(hubLobbyList)||!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+  const hubOwnedPush=(item)=>{
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    let list,n;
+    try{
+      list=G.lobbyMeshes;
+      if(list!==hubLobbyList||!Array.isArray(list))throw hubSceneAbort;
+      n=list.length;
+      if(!Number.isSafeInteger(n)||n<0||n>10000)throw hubSceneAbort;
+      if(Object.getOwnPropertyDescriptor(list,String(n))!==undefined)throw hubSceneAbort;
+      for(let i=0;i<n;i++){
+        const d=Object.getOwnPropertyDescriptor(list,String(i));
+        if(!d||!Object.prototype.hasOwnProperty.call(d,'value'))throw hubSceneAbort;
+      }
+    }catch{throw hubSceneAbort;}
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    try{Array.prototype.push.call(list,item);}catch{throw hubSceneAbort;}
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    try{
+      const d=Object.getOwnPropertyDescriptor(list,String(n));
+      if(G.lobbyMeshes!==hubLobbyList||list.length!==n+1||
+         !d||!Object.prototype.hasOwnProperty.call(d,'value')||d.value!==item)throw hubSceneAbort;
+    }catch{throw hubSceneAbort;}
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    return item;
+  };
+  // CR4.9.220: never register a button in a foreign hub's registry.
+  if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+  const hubButtonsList=G.hubButtons;
+  if(!Array.isArray(hubButtonsList)||!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+  const hubOwnedButtonPush=(button)=>{
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    let list,n;
+    try{
+      list=G.hubButtons;
+      if(list!==hubButtonsList||!Array.isArray(list))throw hubSceneAbort;
+      n=list.length;
+      if(!Number.isSafeInteger(n)||n<0||n>10000)throw hubSceneAbort;
+      if(Object.getOwnPropertyDescriptor(list,String(n))!==undefined)throw hubSceneAbort;
+      for(let i=0;i<n;i++){
+        const d=Object.getOwnPropertyDescriptor(list,String(i));
+        if(!d||!Object.prototype.hasOwnProperty.call(d,'value'))throw hubSceneAbort;
+      }
+    }catch{throw hubSceneAbort;}
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    try{Array.prototype.push.call(list,button);}catch{throw hubSceneAbort;}
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    try{
+      const d=Object.getOwnPropertyDescriptor(list,String(n));
+      if(G.hubButtons!==hubButtonsList||list.length!==n+1||
+         !d||!Object.prototype.hasOwnProperty.call(d,'value')||d.value!==button)throw hubSceneAbort;
+    }catch{throw hubSceneAbort;}
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    return button;
+  };
   const wallCol='#ddcab2',trimCol='#654731',ceilCol='#806046';
 
-  const floor=box(scene,'homeFloor',new B.Vector3(0,-.08,0),new B.Vector3(10.6,.16,9.2),'#765438');
-  floor.material=patternMaterial(scene,'homeFloorMat','#765438','#c8b38f','wood');G.lobbyMeshes.push(floor);
-  G.lobbyMeshes.push(box(scene,'homeCeil',new B.Vector3(0,4.35,0),new B.Vector3(10.6,.12,9.2),ceilCol));
-  G.lobbyMeshes.push(box(scene,'homeFront',new B.Vector3(0,2.16,-4.55),new B.Vector3(10.6,4.45,.16),wallCol));
-  G.lobbyMeshes.push(box(scene,'homeLeft',new B.Vector3(-5.2,2.16,0),new B.Vector3(.16,4.45,9.2),wallCol));
+  const floor=hubOwnedCall(box,scene,'homeFloor',new B.Vector3(0,-.08,0),new B.Vector3(10.6,.16,9.2),'#765438');
+  hubOwnedSetEvaluated(()=>floor,'material',()=>hubOwnedCall(patternMaterial,scene,'homeFloorMat','#765438','#c8b38f','wood'));hubOwnedPush(floor);
+  hubOwnedPush(hubOwnedCall(box,scene,'homeCeil',new B.Vector3(0,4.35,0),new B.Vector3(10.6,.12,9.2),ceilCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'homeFront',new B.Vector3(0,2.16,-4.55),new B.Vector3(10.6,4.45,.16),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'homeLeft',new B.Vector3(-5.2,2.16,0),new B.Vector3(.16,4.45,9.2),wallCol));
 
   // Back wall with true window opening.
-  G.lobbyMeshes.push(box(scene,'backLeft',new B.Vector3(-3.85,2.16,4.55),new B.Vector3(2.7,4.45,.16),wallCol));
-  G.lobbyMeshes.push(box(scene,'backWindowLow',new B.Vector3(-1.15,.52,4.55),new B.Vector3(2.7,1.04,.16),wallCol));
-  G.lobbyMeshes.push(box(scene,'backWindowTop',new B.Vector3(-1.15,3.55,4.55),new B.Vector3(2.7,1.65,.16),wallCol));
-  G.lobbyMeshes.push(box(scene,'backRight',new B.Vector3(2.6,2.16,4.55),new B.Vector3(4.8,4.45,.16),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'backLeft',new B.Vector3(-3.85,2.16,4.55),new B.Vector3(2.7,4.45,.16),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'backWindowLow',new B.Vector3(-1.15,.52,4.55),new B.Vector3(2.7,1.04,.16),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'backWindowTop',new B.Vector3(-1.15,3.55,4.55),new B.Vector3(2.7,1.65,.16),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'backRight',new B.Vector3(2.6,2.16,4.55),new B.Vector3(4.8,4.45,.16),wallCol));
 
   // Cosmetics-room opening in right wall.
-  G.lobbyMeshes.push(box(scene,'homeRightFront',new B.Vector3(5.2,2.16,-3.15),new B.Vector3(.16,4.45,2.35),wallCol));
-  G.lobbyMeshes.push(box(scene,'homeRightBack',new B.Vector3(5.2,2.16,3.15),new B.Vector3(.16,4.45,2.35),wallCol));
-  G.lobbyMeshes.push(box(scene,'homeRightTop',new B.Vector3(5.2,3.72,0),new B.Vector3(.16,1.25,4.0),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'homeRightFront',new B.Vector3(5.2,2.16,-3.15),new B.Vector3(.16,4.45,2.35),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'homeRightBack',new B.Vector3(5.2,2.16,3.15),new B.Vector3(.16,4.45,2.35),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'homeRightTop',new B.Vector3(5.2,3.72,0),new B.Vector3(.16,1.25,4.0),wallCol));
 
   for(const wb of [
     [0,2.1,-4.55,10.55,4.3,.18],[-5.2,2.1,0,.18,4.3,9.1],
     [-3.85,2.1,4.55,2.65,4.3,.18],[-1.15,.50,4.55,2.65,1.0,.18],[-1.15,3.60,4.55,2.65,1.50,.18],[2.6,2.1,4.55,4.75,4.3,.18],
     [5.2,2.1,-3.15,.18,4.3,2.3],[5.2,2.1,3.15,.18,4.3,2.3]
-  ]){const m=box(scene,'hubWallCollider',new B.Vector3(wb[0],wb[1],wb[2]),new B.Vector3(wb[3],wb[4],wb[5]),'#000');m.isVisible=false;m.isPickable=false;addBlocker(m,0);G.lobbyMeshes.push(m);}
+  ]){const m=hubOwnedCall(box,scene,'hubWallCollider',new B.Vector3(wb[0],wb[1],wb[2]),new B.Vector3(wb[3],wb[4],wb[5]),'#000');hubOwnedSetEvaluated(()=>m,'isVisible',()=>false);hubOwnedSetEvaluated(()=>m,'isPickable',()=>false);hubOwnedCall(addBlocker,m,0);hubOwnedPush(m);}
 
-  for(const x of [-3.45,0,3.45])G.lobbyMeshes.push(box(scene,'beam',new B.Vector3(x,4.12,0),new B.Vector3(.14,.18,8.8),trimCol));
+  for(const x of [-3.45,0,3.45])hubOwnedPush(hubOwnedCall(box,scene,'beam',new B.Vector3(x,4.12,0),new B.Vector3(.14,.18,8.8),trimCol));
 
   // Cosmetics room shell.
-  const cf=box(scene,'cosFloor',new B.Vector3(8.45,-.08,0),new B.Vector3(3.7,.16,6.0),'#433847');cf.material=patternMaterial(scene,'cosFloorMat','#433847','#a783ae','tile');G.lobbyMeshes.push(cf);
-  G.lobbyMeshes.push(box(scene,'cosCeil',new B.Vector3(8.45,4.35,0),new B.Vector3(3.7,.12,6.0),'#544458'));
-  G.lobbyMeshes.push(box(scene,'cosFar',new B.Vector3(10.25,2.16,0),new B.Vector3(.16,4.45,6.0),wallCol));
-  G.lobbyMeshes.push(box(scene,'cosFront',new B.Vector3(8.45,2.16,-2.95),new B.Vector3(3.7,4.45,.16),wallCol));
-  G.lobbyMeshes.push(box(scene,'cosBack',new B.Vector3(8.45,2.16,2.95),new B.Vector3(3.7,4.45,.16),wallCol));
+  const cf=hubOwnedCall(box,scene,'cosFloor',new B.Vector3(8.45,-.08,0),new B.Vector3(3.7,.16,6.0),'#433847');hubOwnedSetEvaluated(()=>cf,'material',()=>hubOwnedCall(patternMaterial,scene,'cosFloorMat','#433847','#a783ae','tile'));hubOwnedPush(cf);
+  hubOwnedPush(hubOwnedCall(box,scene,'cosCeil',new B.Vector3(8.45,4.35,0),new B.Vector3(3.7,.12,6.0),'#544458'));
+  hubOwnedPush(hubOwnedCall(box,scene,'cosFar',new B.Vector3(10.25,2.16,0),new B.Vector3(.16,4.45,6.0),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'cosFront',new B.Vector3(8.45,2.16,-2.95),new B.Vector3(3.7,4.45,.16),wallCol));
+  hubOwnedPush(hubOwnedCall(box,scene,'cosBack',new B.Vector3(8.45,2.16,2.95),new B.Vector3(3.7,4.45,.16),wallCol));
   for(const wb of [[10.25,2.1,0,.18,4.3,5.95],[8.45,2.1,-2.95,3.65,4.3,.18],[8.45,2.1,2.95,3.65,4.3,.18]]){
-    const m=box(scene,'cosWallCollider',new B.Vector3(wb[0],wb[1],wb[2]),new B.Vector3(wb[3],wb[4],wb[5]),'#000');m.isVisible=false;addBlocker(m,0);G.lobbyMeshes.push(m);
+    const m=hubOwnedCall(box,scene,'cosWallCollider',new B.Vector3(wb[0],wb[1],wb[2]),new B.Vector3(wb[3],wb[4],wb[5]),'#000');hubOwnedSetEvaluated(()=>m,'isVisible',()=>false);hubOwnedCall(addBlocker,m,0);hubOwnedPush(m);
   }
-  G.lobbyMeshes.push(box(scene,'cosDoorHeader',new B.Vector3(5.12,3.52,0),new B.Vector3(.18,.65,3.95),trimCol));
-  G.lobbyMeshes.push(label(scene,'COSMETICS ROOM',new B.Vector3(5.0,3.18,0),.34,'#f3e3ff'));
+  hubOwnedPush(hubOwnedCall(box,scene,'cosDoorHeader',new B.Vector3(5.12,3.52,0),new B.Vector3(.18,.65,3.95),trimCol));
+  hubOwnedPush(hubOwnedCall(label,scene,'COSMETICS ROOM',new B.Vector3(5.0,3.18,0),.34,'#f3e3ff'));
 
   // Properly seated window and curtains.
-  lobbyAsset(scene,'Window_Large2.obj','Window_Large2.mtl',{name:'windowLarge2',position:new B.Vector3(-1.15,1.17,4.49),scale:new B.Vector3(1.40,1.40,1.40),pickable:false});
-  lobbyAsset(scene,'Curtains_Double.obj','Curtains_Double.mtl',{name:'curtains',position:new B.Vector3(-1.15,.98,4.35),scale:new B.Vector3(.62,.62,.62),pickable:false});
-  const sky=box(scene,'windowSky',new B.Vector3(-1.15,2.08,4.64),new B.Vector3(2.48,2.34,.035),'#17314e');sky.material.emissiveColor=B.Color3.FromHexString('#244b74').scale(.55);G.lobbyMeshes.push(sky);
+  hubOwnedCall(lobbyAsset,scene,'Window_Large2.obj','Window_Large2.mtl',{name:'windowLarge2',position:new B.Vector3(-1.15,1.17,4.49),scale:new B.Vector3(1.40,1.40,1.40),pickable:false});
+  hubOwnedCall(lobbyAsset,scene,'Curtains_Double.obj','Curtains_Double.mtl',{name:'curtains',position:new B.Vector3(-1.15,.98,4.35),scale:new B.Vector3(.62,.62,.62),pickable:false});
+  const sky=hubOwnedCall(box,scene,'windowSky',new B.Vector3(-1.15,2.08,4.64),new B.Vector3(2.48,2.34,.035),'#17314e');hubOwnedSetEvaluated(()=>sky.material,'emissiveColor',()=>B.Color3.FromHexString('#244b74').scale(.55));hubOwnedPush(sky);
 
   // Furniture with model-derived hitboxes.
-  const couch=lobbyAsset(scene,'Couch_Large2.obj','Couch_Large2.mtl',{name:'cozyCouch',position:new B.Vector3(-2.45,0,-.05),scale:new B.Vector3(.68,.68,.68),pickable:false});
-  const table=lobbyAsset(scene,'Table_RoundSmall.obj','Table_RoundSmall.mtl',{name:'cozyTable',position:new B.Vector3(-.15,0,.85),scale:new B.Vector3(.78,.78,.78),pickable:false});
-  lobbyAsset(scene,'Carpet_Round.obj','Carpet_Round.mtl',{name:'cozyRug',position:new B.Vector3(-.25,.005,.65),scale:new B.Vector3(1.12,1,1.12),pickable:false});
-  const shelf=lobbyAsset(scene,'Bookshelf.obj','Bookshelf.mtl',{name:'bookshelf',position:new B.Vector3(-4.62,0,1.65),rotation:new B.Vector3(0,Math.PI/2,0),scale:new B.Vector3(.48,.48,.48),pickable:false});
-  const plantTall=lobbyAsset(scene,'Houseplant_3.obj','Houseplant_3.mtl',{name:'plantTall',position:new B.Vector3(-4.25,0,3.55),scale:new B.Vector3(1.25,1.25,1.25),pickable:false});
-  const plantSmall=lobbyAsset(scene,'Houseplant_2.obj','Houseplant_2.mtl',{name:'plantSmall',position:new B.Vector3(4.18,0,3.68),scale:new B.Vector3(1.6,1.6,1.6),pickable:false});
-  const floorLamp=lobbyAsset(scene,'Light_Floor2.obj','Light_Floor2.mtl',{name:'floorLamp',position:new B.Vector3(3.95,0,-2.65),scale:new B.Vector3(1.35,1.35,1.35),pickable:false});
-  const trash=lobbyAsset(scene,'Trashcan_Cylindric.obj','Trashcan_Cylindric.mtl',{name:'trashcan',position:new B.Vector3(4.4,0,-3.75),scale:new B.Vector3(.36,.36,.36),pickable:false});
-  lobbyAsset(scene,'Light_Chandelier.obj','Light_Chandelier.mtl',{name:'chandelier',position:new B.Vector3(0,4.0,.3),scale:new B.Vector3(1.15,1.15,1.15),pickable:false});
-  addModelCollider(scene,couch,'couchCollider',.005);addModelCollider(scene,table,'tableCollider',.003);addModelCollider(scene,shelf,'bookshelfCollider',.004);
-  addModelCollider(scene,plantTall,'plantTallCollider',.002);addModelCollider(scene,plantSmall,'plantSmallCollider',.002);addModelCollider(scene,floorLamp,'floorLampCollider',.002);addModelCollider(scene,trash,'trashCollider',.002);
+  const couch=hubOwnedCall(lobbyAsset,scene,'Couch_Large2.obj','Couch_Large2.mtl',{name:'cozyCouch',position:new B.Vector3(-2.45,0,-.05),scale:new B.Vector3(.68,.68,.68),pickable:false});
+  const table=hubOwnedCall(lobbyAsset,scene,'Table_RoundSmall.obj','Table_RoundSmall.mtl',{name:'cozyTable',position:new B.Vector3(-.15,0,.85),scale:new B.Vector3(.78,.78,.78),pickable:false});
+  hubOwnedCall(lobbyAsset,scene,'Carpet_Round.obj','Carpet_Round.mtl',{name:'cozyRug',position:new B.Vector3(-.25,.005,.65),scale:new B.Vector3(1.12,1,1.12),pickable:false});
+  const shelf=hubOwnedCall(lobbyAsset,scene,'Bookshelf.obj','Bookshelf.mtl',{name:'bookshelf',position:new B.Vector3(-4.62,0,1.65),rotation:new B.Vector3(0,Math.PI/2,0),scale:new B.Vector3(.48,.48,.48),pickable:false});
+  const plantTall=hubOwnedCall(lobbyAsset,scene,'Houseplant_3.obj','Houseplant_3.mtl',{name:'plantTall',position:new B.Vector3(-4.25,0,3.55),scale:new B.Vector3(1.25,1.25,1.25),pickable:false});
+  const plantSmall=hubOwnedCall(lobbyAsset,scene,'Houseplant_2.obj','Houseplant_2.mtl',{name:'plantSmall',position:new B.Vector3(4.18,0,3.68),scale:new B.Vector3(1.6,1.6,1.6),pickable:false});
+  const floorLamp=hubOwnedCall(lobbyAsset,scene,'Light_Floor2.obj','Light_Floor2.mtl',{name:'floorLamp',position:new B.Vector3(3.95,0,-2.65),scale:new B.Vector3(1.35,1.35,1.35),pickable:false});
+  const trash=hubOwnedCall(lobbyAsset,scene,'Trashcan_Cylindric.obj','Trashcan_Cylindric.mtl',{name:'trashcan',position:new B.Vector3(4.4,0,-3.75),scale:new B.Vector3(.36,.36,.36),pickable:false});
+  hubOwnedCall(lobbyAsset,scene,'Light_Chandelier.obj','Light_Chandelier.mtl',{name:'chandelier',position:new B.Vector3(0,4.0,.3),scale:new B.Vector3(1.15,1.15,1.15),pickable:false});
+  hubOwnedCall(addModelCollider,scene,couch,'couchCollider',.005);hubOwnedCall(addModelCollider,scene,table,'tableCollider',.003);hubOwnedCall(addModelCollider,scene,shelf,'bookshelfCollider',.004);
+  hubOwnedCall(addModelCollider,scene,plantTall,'plantTallCollider',.002);hubOwnedCall(addModelCollider,scene,plantSmall,'plantSmallCollider',.002);hubOwnedCall(addModelCollider,scene,floorLamp,'floorLampCollider',.002);hubOwnedCall(addModelCollider,scene,trash,'trashCollider',.002);
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
   addKayKitHubModels(scene);
-  addCuratedHubOverhaul(scene);
-  if(!PLATFORM_PROFILE.mobile)addFusionHubPass(scene);
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  addDenseHubPass(scene);
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  addUltraDenseHubPass(scene);
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
 
   // Fireplace rebuilt cleanly: no imported clipping.
-  const fpRoot=new B.TransformNode('fireplaceRebuilt',scene);fpRoot.position=new B.Vector3(2.55,0,4.12);G.lobbyMeshes.push(fpRoot);
+  const fpRoot=hubOwnedCall(()=>new B.TransformNode('fireplaceRebuilt',scene));hubOwnedSetEvaluated(()=>fpRoot,'position',()=>new B.Vector3(2.55,0,4.12));hubOwnedPush(fpRoot);
   const stone='#7f6b59',stone2='#5e4c3f',mantel='#6b432b';
   for(const spec of [
     ['fpBase',0,.16,0,2.2,.32,.76,stone2],['fpL',-.8,1.02,0,.42,1.75,.62,stone],['fpR',.8,1.02,0,.42,1.75,.62,stone],
     ['fpTop',0,1.78,0,2.0,.38,.62,stone],['fpMantel',0,2.02,-.02,2.35,.18,.82,mantel],['fpBack',0,.87,.43,1.25,1.28,.10,'#17100f'],
     ['fpHearth',0,.08,-.28,1.62,.16,1.08,stone2]
-  ])G.lobbyMeshes.push(box(scene,spec[0],new B.Vector3(spec[1],spec[2],spec[3]),new B.Vector3(spec[4],spec[5],spec[6]),spec[7],fpRoot));
-  G.lobbyMeshes.push(box(scene,'fpInnerL',new B.Vector3(-.58,.86,-.18),new B.Vector3(.16,1.18,.32),stone2,fpRoot));
-  G.lobbyMeshes.push(box(scene,'fpInnerR',new B.Vector3(.58,.86,-.18),new B.Vector3(.16,1.18,.32),stone2,fpRoot));
-  G.lobbyMeshes.push(box(scene,'fpInnerTop',new B.Vector3(0,1.42,-.18),new B.Vector3(1.30,.16,.32),stone2,fpRoot));
+  ])hubOwnedPush(hubOwnedCall(box,scene,spec[0],new B.Vector3(spec[1],spec[2],spec[3]),new B.Vector3(spec[4],spec[5],spec[6]),spec[7],fpRoot));
+  hubOwnedPush(hubOwnedCall(box,scene,'fpInnerL',new B.Vector3(-.58,.86,-.18),new B.Vector3(.16,1.18,.32),stone2,fpRoot));
+  hubOwnedPush(hubOwnedCall(box,scene,'fpInnerR',new B.Vector3(.58,.86,-.18),new B.Vector3(.16,1.18,.32),stone2,fpRoot));
+  hubOwnedPush(hubOwnedCall(box,scene,'fpInnerTop',new B.Vector3(0,1.42,-.18),new B.Vector3(1.30,.16,.32),stone2,fpRoot));
   // 3.9: small individual stone blocks make the fireplace surround read as real masonry.
   const brickMats=['#786656','#887363','#675549'];
   for(let i=0;i<8;i++){
     const y=.32+i*.19, col=brickMats[i%brickMats.length];
-    for(const x of [-.79,.79]){const b=box(scene,'fpStoneBrick',new B.Vector3(x+(i%2?-.025:.025),y,-.34),new B.Vector3(.38,.16,.27),col,fpRoot);b.rotation.z=(i%2?-.015:.015);G.lobbyMeshes.push(b);}
+    for(const x of [-.79,.79]){const b=hubOwnedCall(box,scene,'fpStoneBrick',new B.Vector3(x+(i%2?-.025:.025),y,-.34),new B.Vector3(.38,.16,.27),col,fpRoot);hubOwnedSetEvaluated(()=>b.rotation,'z',()=>(i%2?-.015:.015));hubOwnedPush(b);}
   }
-  for(let i=0;i<7;i++){const x=-.60+i*.20;const b=box(scene,'fpTopBrick',new B.Vector3(x,1.58,-.34),new B.Vector3(.18,.17,.27),brickMats[(i+1)%brickMats.length],fpRoot);b.rotation.z=(i%2?.02:-.02);G.lobbyMeshes.push(b);}
-  const fpCollider=box(scene,'fireplaceCollider',new B.Vector3(2.55,1.05,4.04),new B.Vector3(2.34,2.10,.76),'#000');fpCollider.isVisible=false;addBlocker(fpCollider,0);G.lobbyMeshes.push(fpCollider);
-  const fireLight=new B.PointLight('fireLight',new B.Vector3(2.55,.88,4.10),scene);fireLight.diffuse=B.Color3.FromHexString('#ffad61');fireLight.intensity=.68;fireLight.range=6;G.lobbyMeshes.push({dispose:()=>{try{fireLight.dispose()}catch{}}});
+  for(let i=0;i<7;i++){const x=-.60+i*.20;const b=hubOwnedCall(box,scene,'fpTopBrick',new B.Vector3(x,1.58,-.34),new B.Vector3(.18,.17,.27),brickMats[(i+1)%brickMats.length],fpRoot);hubOwnedSetEvaluated(()=>b.rotation,'z',()=>(i%2?.02:-.02));hubOwnedPush(b);}
+  const fpCollider=hubOwnedCall(box,scene,'fireplaceCollider',new B.Vector3(2.55,1.05,4.04),new B.Vector3(2.34,2.10,.76),'#000');hubOwnedSetEvaluated(()=>fpCollider,'isVisible',()=>false);hubOwnedCall(addBlocker,fpCollider,0);hubOwnedPush(fpCollider);
+  // CR4.9.224: capture disposable resources before the ownership postcheck.
+  // hubOwnedCall would lose a resource returned by a constructor that switches waves.
+  const hubOwnedConstructDisposable=(create,dispose)=>{
+    if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+    let resource;
+    try{resource=create();}
+    catch(err){
+      if(!hubNpcResetStillOwned(hubNpcReset))throw hubSceneAbort;
+      throw err;
+    }
+    if(!hubNpcResetStillOwned(hubNpcReset)){
+      try{dispose(resource);}catch{}
+      throw hubSceneAbort;
+    }
+    return resource;
+  };
+  const fireLight=hubOwnedConstructDisposable(()=>new B.PointLight('fireLight',new B.Vector3(2.55,.88,4.10),scene),r=>r?.dispose?.());hubOwnedPush({dispose:()=>{try{fireLight.dispose()}catch{}}});hubOwnedSetEvaluated(()=>fireLight,'diffuse',()=>B.Color3.FromHexString('#ffad61'));hubOwnedSetEvaluated(()=>fireLight,'intensity',()=>.68);hubOwnedSetEvaluated(()=>fireLight,'range',()=>6);
 
-  // 4.6 FIRE REBUILD: layered flame cards + controlled embers/smoke.
-  // The old 100K-particle wall could look like a flat/tall spark column and was unnecessarily expensive.
-  // This version uses animated emissive flame geometry for a continuous fire body, then particles only for fine detail.
-  const fireTex=new B.DynamicTexture('fireFlameTexture',{width:96,height:160},scene,true);fireTex.hasAlpha=true;
+  // 4.4 FIREPLACE: 100,000 tiny particles, tall layered fire instead of a flat spark carpet.
+  // GPU uses 100,000 capacity; unsupported browsers use an efficient 1,800-particle fallback instead of freezing.
+  const fireTex=hubOwnedConstructDisposable(()=>new B.DynamicTexture('tinyFireTexture',{width:48,height:96},scene,true),r=>r?.dispose?.());
+  // Register texture before any fallible canvas or particle callback.
+  hubOwnedPush({dispose:()=>{try{fireTex.dispose();}catch{}}});
+  hubOwnedSetEvaluated(()=>fireTex,'hasAlpha',()=>true);
   {
-    const c=fireTex.getContext();c.clearRect(0,0,96,160);
-    // Outer red/orange flame silhouette.
-    const outer=c.createLinearGradient(48,154,48,4);
-    outer.addColorStop(0,'rgba(255,226,115,0)');outer.addColorStop(.10,'rgba(255,226,115,.95)');outer.addColorStop(.36,'rgba(255,132,20,.98)');outer.addColorStop(.72,'rgba(245,46,4,.74)');outer.addColorStop(1,'rgba(120,0,0,0)');
-    c.fillStyle=outer;c.beginPath();c.moveTo(48,4);c.bezierCurveTo(25,32,18,54,27,79);c.bezierCurveTo(9,100,15,137,35,151);c.bezierCurveTo(45,159,62,156,70,143);c.bezierCurveTo(88,114,76,83,68,68);c.bezierCurveTo(70,42,60,22,48,4);c.closePath();c.fill();
-    // Bright inner tongue so the flame has a hot core instead of one flat orange sprite.
-    const inner=c.createLinearGradient(48,145,48,45);inner.addColorStop(0,'rgba(255,255,225,0)');inner.addColorStop(.12,'rgba(255,252,190,.98)');inner.addColorStop(.52,'rgba(255,196,55,.94)');inner.addColorStop(1,'rgba(255,78,8,0)');
-    c.fillStyle=inner;c.beginPath();c.moveTo(48,43);c.bezierCurveTo(35,67,38,80,30,98);c.bezierCurveTo(24,116,32,143,48,148);c.bezierCurveTo(64,141,68,119,61,102);c.bezierCurveTo(55,88,62,68,48,43);c.closePath();c.fill();
-    fireTex.update();
+    const c=hubOwnedCall(()=>fireTex.getContext());hubOwnedCall(()=>c.clearRect(0,0,48,96));
+    const g=hubOwnedCall(()=>c.createLinearGradient(24,88,24,4));
+    hubOwnedCall(()=>g.addColorStop(0,'rgba(255,255,210,0)'));
+    hubOwnedCall(()=>g.addColorStop(.10,'rgba(255,244,150,.94)'));
+    hubOwnedCall(()=>g.addColorStop(.34,'rgba(255,177,44,.98)'));
+    hubOwnedCall(()=>g.addColorStop(.66,'rgba(255,71,8,.78)'));
+    hubOwnedCall(()=>g.addColorStop(1,'rgba(255,15,0,0)'));
+    hubOwnedSetEvaluated(()=>c,'fillStyle',()=>g);hubOwnedCall(()=>c.beginPath());
+    hubOwnedCall(()=>c.moveTo(24,3));hubOwnedCall(()=>c.bezierCurveTo(12,20,5,47,13,75));hubOwnedCall(()=>c.bezierCurveTo(17,91,31,91,36,75));hubOwnedCall(()=>c.bezierCurveTo(45,48,36,23,24,3));hubOwnedCall(()=>c.closePath());hubOwnedCall(()=>c.fill());
+    hubOwnedCall(()=>fireTex.update());
   }
-  const flameMat=new B.StandardMaterial('fireFlameMat',scene);flameMat.diffuseTexture=fireTex;flameMat.opacityTexture=fireTex;flameMat.emissiveTexture=fireTex;flameMat.emissiveColor=new B.Color3(1,.43,.07);flameMat.disableLighting=true;flameMat.backFaceCulling=false;flameMat.alpha=.94;if(B.Material?.MATERIAL_ALPHABLEND!==undefined)flameMat.transparencyMode=B.Material.MATERIAL_ALPHABLEND;
-  const coreMat=flameMat.clone('fireCoreMat');coreMat.emissiveColor=new B.Color3(1,.72,.20);coreMat.alpha=.82;
-  const tipMat=flameMat.clone('fireTipMat');tipMat.emissiveColor=new B.Color3(1,.90,.52);tipMat.alpha=.70;
-  const fireFlameCards=[];
-  // 5.4 FIRE MICRO-CLUSTER: build the fireplace out of 50 smaller flames instead of a few large cards.
-  // The cards are distributed in a clustered bed so the fire keeps a believable body while reading as many distinct tongues.
-  function flameRand(i){const s=Math.sin(i*127.1+17.7)*43758.5453123;return s-Math.floor(s);}
-  for(let i=0;i<FIRE_SMALL_FLAME_COUNT;i++){
-    const lane=(i%10)-4.5;
-    const row=Math.floor(i/10);
-    const jitterX=(flameRand(i)-.5)*.07;
-    const jitterZ=(flameRand(i+50)-.5)*.06;
-    const jitterH=(flameRand(i+100)-.5)*.05;
-    const edge=Math.min(1,Math.abs(lane)/4.5);
-    const centerBoost=1-edge*.48;
-    const h=.22+row*.05+centerBoost*.15+flameRand(i+150)*.08+jitterH;
-    const w=Math.max(.07,Math.min(.17,h*(.34+flameRand(i+200)*.10)));
-    const x=lane*.072+jitterX;
-    const z=4.085+row*.012+jitterZ;
-    const y=.28+h*.46+row*.012+(1-centerBoost)*.008;
-    const r=(flameRand(i+250)-.5)*.22;
-    const phase=flameRand(i+300)*Math.PI*2;
-    const card=B.MeshBuilder.CreatePlane('fireFlameCard'+i,{width:w,height:h,sideOrientation:B.Mesh.DOUBLESIDE},scene);
-    card.position=new B.Vector3(2.55+x,y,z);card.rotation.z=r;card.billboardMode=B.Mesh.BILLBOARDMODE_Y;
-    card.material=i<8?tipMat:(i<24?coreMat:flameMat);card.renderingGroupId=2;
-    card.metadata={baseY:y,baseX:2.55+x,baseZ:z,baseSX:1,baseSY:1,phase,row,edge,h};
-    fireFlameCards.push(card);G.lobbyMeshes.push(card);
+  const useGPU=hubOwnedCall(()=>!!(B.GPUParticleSystem&&B.GPUParticleSystem.IsSupported));
+  const tinyFire=hubOwnedConstructDisposable(()=>useGPU
+    ? new B.GPUParticleSystem('fireplace100000TallFlames',{capacity:FIRE_PARTICLE_CAPACITY},scene)
+    : new B.ParticleSystem('fireplace100000TallFlames',FIRE_CPU_FALLBACK_CAP,scene),r=>{try{r?.stop?.()}catch{}try{r?.dispose?.()}catch{}});
+  // Register particles before setters, gradients and start() can throw or change waves.
+  hubOwnedPush({dispose:()=>{try{tinyFire.stop();}catch{}try{tinyFire.dispose();}catch{}}});
+  const hubFireGradient=(method,t,getValue)=>{
+    const value=hubOwnedCall(getValue);
+    const fn=hubOwnedCall(()=>tinyFire[method]);
+    if(typeof fn!=='function')throw new TypeError('Missing fire particle gradient method');
+    return hubOwnedCall(()=>fn.call(tinyFire,t,value));
+  };
+  hubOwnedSetEvaluated(()=>tinyFire,'particleTexture',()=>fireTex);
+  // Emit from a thin bed DEEP inside the fireplace; height comes from velocity/lifetime, not from a tall emitter box.
+  hubOwnedSetEvaluated(()=>tinyFire,'emitter',()=>new B.Vector3(2.55,.25,4.13));
+  hubOwnedSetEvaluated(()=>tinyFire,'minEmitBox',()=>new B.Vector3(-.42,0,-.045));hubOwnedSetEvaluated(()=>tinyFire,'maxEmitBox',()=>new B.Vector3(.42,.10,.055));
+  hubOwnedSetEvaluated(()=>tinyFire,'color1',()=>new B.Color4(1,.24,.012,.98));hubOwnedSetEvaluated(()=>tinyFire,'color2',()=>new B.Color4(1,.78,.10,.96));hubOwnedSetEvaluated(()=>tinyFire,'colorDead',()=>new B.Color4(.45,.018,0,0));
+  hubOwnedSetEvaluated(()=>tinyFire,'minSize',()=>.014);hubOwnedSetEvaluated(()=>tinyFire,'maxSize',()=>.060);
+  hubOwnedSetEvaluated(()=>tinyFire,'minLifeTime',()=>.72);hubOwnedSetEvaluated(()=>tinyFire,'maxLifeTime',()=>1.42);
+  // At ~100K/sec and ~1 sec average lifetime, the 100K system becomes visibly saturated.
+  hubOwnedSetEvaluated(()=>tinyFire,'emitRate',()=>useGPU?8500:450); // particle sparks are an accent; visible flame comes from volumetric ribbon sheets
+  hubOwnedSetEvaluated(()=>tinyFire,'blendMode',()=>B.ParticleSystem.BLENDMODE_ADD);
+  // Strong upward movement + modest sideways drift gives a tapered, dancing flame column instead of a flat layer.
+  hubOwnedSetEvaluated(()=>tinyFire,'direction1',()=>new B.Vector3(-.18,1.30,-.025));hubOwnedSetEvaluated(()=>tinyFire,'direction2',()=>new B.Vector3(.18,2.55,.035));
+  hubOwnedSetEvaluated(()=>tinyFire,'minEmitPower',()=>.34);hubOwnedSetEvaluated(()=>tinyFire,'maxEmitPower',()=>.78);hubOwnedSetEvaluated(()=>tinyFire,'updateSpeed',()=>.008);
+  hubOwnedSetEvaluated(()=>tinyFire,'minAngularSpeed',()=>-2.2);hubOwnedSetEvaluated(()=>tinyFire,'maxAngularSpeed',()=>2.2);
+  hubOwnedSetEvaluated(()=>tinyFire,'gravity',()=>new B.Vector3(0,.38,0));
+  if(hubOwnedCall(()=>typeof tinyFire.addColorGradient==='function')){
+    hubFireGradient('addColorGradient',0,()=>new B.Color4(1,.96,.52,.96));
+    hubFireGradient('addColorGradient',.22,()=>new B.Color4(1,.58,.07,.98));
+    hubFireGradient('addColorGradient',.62,()=>new B.Color4(1,.16,.01,.82));
+    hubFireGradient('addColorGradient',1,()=>new B.Color4(.28,.005,0,0));
   }
-  // Hot glow just above the logs prevents a visible gap below the micro-flames.
-  const hotCore=B.MeshBuilder.CreateSphere('fireHotCore',{diameter:.66,segments:14},scene);hotCore.position=new B.Vector3(2.55,.31,4.10);hotCore.scaling=new B.Vector3(1.24,.33,.50);hotCore.material=mat(scene,'fireHotCoreMat','#ff6c13',.50);hotCore.material.emissiveColor=B.Color3.FromHexString('#ff5a0b').scale(1.10);G.lobbyMeshes.push(hotCore);
+  if(hubOwnedCall(()=>typeof tinyFire.addSizeGradient==='function')){
+    hubFireGradient('addSizeGradient',0,()=>.34);hubFireGradient('addSizeGradient',.18,()=>1.0);hubFireGradient('addSizeGradient',.64,()=>.72);hubFireGradient('addSizeGradient',1,()=>.08);
+  }
+  // CPU ParticleSystem can prewarm; GPU version fills extremely quickly because emitRate is 100K.
+  if(!useGPU){hubOwnedSetEvaluated(()=>tinyFire,'preWarmCycles',()=>45);hubOwnedSetEvaluated(()=>tinyFire,'preWarmStepOffset',()=>.016);}
+  hubOwnedCall(()=>tinyFire.start());
+  // Fire resources were registered before the fallible configuration/start sequence.
 
-  // Fine ember particles. This is intentionally a small system: cards make the body of the fire, particles make it feel alive.
-  const emberTex=new B.DynamicTexture('fireEmberTexture',{width:32,height:32},scene,true);emberTex.hasAlpha=true;
-  {const c=emberTex.getContext();c.clearRect(0,0,32,32);const g=c.createRadialGradient(16,16,1,16,16,15);g.addColorStop(0,'rgba(255,255,220,1)');g.addColorStop(.24,'rgba(255,195,58,.96)');g.addColorStop(.62,'rgba(255,72,8,.58)');g.addColorStop(1,'rgba(255,40,0,0)');c.fillStyle=g;c.fillRect(0,0,32,32);emberTex.update();}
-  const embers=new B.ParticleSystem('fireEmbers',FIRE_PARTICLE_CAPACITY,scene);embers.particleTexture=emberTex;embers.emitter=new B.Vector3(2.55,.28,4.09);
-  if(typeof embers.createBoxEmitter==='function')embers.createBoxEmitter(new B.Vector3(-.20,.75,-.04),new B.Vector3(.20,1.35,.04),new B.Vector3(-.42,0,-.04),new B.Vector3(.42,.08,.04));
-  else{embers.minEmitBox=new B.Vector3(-.42,0,-.04);embers.maxEmitBox=new B.Vector3(.42,.08,.04);embers.direction1=new B.Vector3(-.20,.75,-.04);embers.direction2=new B.Vector3(.20,1.35,.04);}
-  embers.color1=new B.Color4(1,.88,.28,.96);embers.color2=new B.Color4(1,.22,.02,.72);embers.colorDead=new B.Color4(.30,.02,0,0);embers.minSize=.012;embers.maxSize=.040;embers.minLifeTime=.34;embers.maxLifeTime=.92;embers.emitRate=220;embers.minEmitPower=.25;embers.maxEmitPower=.62;embers.updateSpeed=.012;embers.gravity=new B.Vector3(0,-.16,0);embers.blendMode=B.ParticleSystem.BLENDMODE_ADD;embers.start();
-  G.lobbyMeshes.push({dispose:()=>{try{embers.stop();embers.dispose();emberTex.dispose();}catch{}}});
-
-  // Very light smoke, kept deep in the cavity so it never becomes a grey cloud in front of the room.
-  const smokeTex=new B.DynamicTexture('fireSmokeTexture',{width:40,height:40},scene,true);smokeTex.hasAlpha=true;
-  {const c=smokeTex.getContext();c.clearRect(0,0,40,40);const g=c.createRadialGradient(20,20,2,20,20,19);g.addColorStop(0,'rgba(80,66,58,.30)');g.addColorStop(.55,'rgba(62,52,49,.13)');g.addColorStop(1,'rgba(45,40,40,0)');c.fillStyle=g;c.fillRect(0,0,40,40);smokeTex.update();}
-  const smoke=new B.ParticleSystem('fireSmoke',260,scene);smoke.particleTexture=smokeTex;smoke.emitter=new B.Vector3(2.55,1.04,4.16);
-  if(typeof smoke.createBoxEmitter==='function')smoke.createBoxEmitter(new B.Vector3(-.06,.55,-.02),new B.Vector3(.06,.90,.02),new B.Vector3(-.24,0,-.02),new B.Vector3(.24,.08,.02));
-  smoke.color1=new B.Color4(.22,.18,.17,.14);smoke.color2=new B.Color4(.10,.09,.09,.08);smoke.colorDead=new B.Color4(.08,.08,.08,0);smoke.minSize=.14;smoke.maxSize=.34;smoke.minLifeTime=1.2;smoke.maxLifeTime=2.3;smoke.emitRate=16;smoke.minEmitPower=.12;smoke.maxEmitPower=.28;smoke.updateSpeed=.016;smoke.gravity=new B.Vector3(0,.10,0);smoke.start();
-  G.lobbyMeshes.push({dispose:()=>{try{smoke.stop();smoke.dispose();smokeTex.dispose();}catch{}}});
-
-  // Animate every flame independently so the fire reads as many small tongues instead of one rigid blob.
-  let fireAnimT=0;const fireObs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;const dt=Math.min(.05,engine.getDeltaTime()/1000);fireAnimT+=dt;for(let i=0;i<fireFlameCards.length;i++){const f=fireFlameCards[i],m=f.metadata||{},p=fireAnimT*(4.8+i*.13)+(m.phase||0),edge=(m.edge||0),row=(m.row||0);const centerBoost=1-edge*.42;f.scaling.y=.88+centerBoost*.16+Math.sin(p)*.11+Math.sin(p*1.91)*.05;f.scaling.x=.84+centerBoost*.10+Math.cos(p*.77)*.08;f.position.y=(m.baseY||f.position.y)+Math.sin(p*1.21)*(.010+centerBoost*.008)+row*.0015;f.position.x=(m.baseX||f.position.x)+Math.sin(p*.69)*(.006+centerBoost*.006);f.position.z=(m.baseZ||f.position.z)+Math.cos(p*.58)*.010;f.rotation.z=(Math.sin(p*.74)*.06)+((edge-.5)*.04);}});
-  G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(fireObs);fireTex.dispose();flameMat.dispose();coreMat.dispose();tipMat.dispose();}catch{}}});
-
-  // A soft orange core light follows the denser flame body and makes the cavity read as deep fire.
-  const fireCoreLight=new B.PointLight('fireCoreLight',new B.Vector3(2.55,.66,4.10),scene);fireCoreLight.diffuse=B.Color3.FromHexString('#ff7420');fireCoreLight.intensity=.64;fireCoreLight.range=4.3;G.lobbyMeshes.push({dispose:()=>{try{fireCoreLight.dispose()}catch{}}});
+  // A soft orange core light follows the vertical flame body and makes the cavity read as deep fire.
+  const fireCoreLight=hubOwnedConstructDisposable(()=>new B.PointLight('fireCoreLight',new B.Vector3(2.55,.72,4.12),scene),r=>r?.dispose?.());hubOwnedPush({dispose:()=>{try{fireCoreLight.dispose()}catch{}}});hubOwnedSetEvaluated(()=>fireCoreLight,'diffuse',()=>B.Color3.FromHexString('#ff7c25'));hubOwnedSetEvaluated(()=>fireCoreLight,'intensity',()=>.48);hubOwnedSetEvaluated(()=>fireCoreLight,'range',()=>3.8);
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  const sculptedHubFire=hubOwnedConstructDisposable(
+    ()=>buildSculptedFire(scene,fpRoot,fireLight,fireCoreLight,hubRenderStillOwned),
+    resource=>resource?.dispose?.());
+  hubOwnedPush(sculptedHubFire);
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
 
   // Ember bed + logs are also recessed so the fire reads as being IN the stove, never in front of it.
-  const emberBed=B.MeshBuilder.CreateBox('emberBed',{width:.91,height:.055,depth:.25},scene);emberBed.position=new B.Vector3(2.55,.19,4.10);emberBed.material=mat(scene,'emberBedMat','#5b180d',.55);emberBed.material.emissiveColor=B.Color3.FromHexString('#ff3e10').scale(.58);G.lobbyMeshes.push(emberBed);
-  for(const [x,r,z] of [[-.28,.18,4.08],[.04,-.22,4.13],[.30,.15,4.09],[-.12,-.10,4.16]]){const log=B.MeshBuilder.CreateCylinder('fireLog',{height:.66,diameter:.095,tessellation:10},scene);log.rotation.z=Math.PI/2+r;log.position=new B.Vector3(2.55+x,.23,z);log.material=mat(scene,'fireLogMat'+x,'#352017',.96);G.lobbyMeshes.push(log);}
-const mantleClock=B.MeshBuilder.CreateCylinder('mantleClock',{height:.11,diameter:.30,tessellation:18},scene);mantleClock.position=new B.Vector3(2.55,2.22,4.02);mantleClock.rotation.x=Math.PI/2;mantleClock.material=mat(scene,'mantleClockMat','#b48b52',.28);G.lobbyMeshes.push(mantleClock);
-const clockFace=B.MeshBuilder.CreateCylinder('clockFace',{height:.014,diameter:.24,tessellation:18},scene);clockFace.position=new B.Vector3(2.55,2.22,3.955);clockFace.rotation.x=Math.PI/2;clockFace.material=mat(scene,'clockFaceMat','#f3e7c7',.7);G.lobbyMeshes.push(clockFace);
-for(const x of [2.27,2.83]){const candle=B.MeshBuilder.CreateCylinder('mantleCandle',{height:.22,diameter:.055,tessellation:12},scene);candle.position=new B.Vector3(x,2.20,4.02);candle.material=mat(scene,'mantleCandleMat','#e8d7b4',.8);G.lobbyMeshes.push(candle);const wick=B.MeshBuilder.CreateSphere('mantleFlame',{diameter:.045,segments:7},scene);wick.position=new B.Vector3(x,2.34,4.02);wick.scaling.y=1.5;wick.material=mat(scene,'mantleFlameMat','#ffd36b',.2);wick.material.emissiveColor=B.Color3.FromHexString('#ffad45').scale(.8);G.lobbyMeshes.push(wick);}
+  const emberBed=hubOwnedCall(()=>B.MeshBuilder.CreateBox('emberBed',{width:.91,height:.055,depth:.25},scene));hubOwnedSetEvaluated(()=>emberBed,'position',()=>new B.Vector3(2.55,.19,4.10));hubOwnedSetEvaluated(()=>emberBed,'material',()=>hubOwnedCall(mat,scene,'emberBedMat','#5b180d',.55));hubOwnedSetEvaluated(()=>emberBed.material,'emissiveColor',()=>B.Color3.FromHexString('#ff3e10').scale(.58));hubOwnedPush(emberBed);
+  for(const [x,r,z] of [[-.28,.18,4.08],[.04,-.22,4.13],[.30,.15,4.09],[-.12,-.10,4.16]]){const log=hubOwnedCall(()=>B.MeshBuilder.CreateCylinder('fireLog',{height:.66,diameter:.095,tessellation:10},scene));hubOwnedSetEvaluated(()=>log.rotation,'z',()=>Math.PI/2+r);hubOwnedSetEvaluated(()=>log,'position',()=>new B.Vector3(2.55+x,.23,z));hubOwnedSetEvaluated(()=>log,'material',()=>hubOwnedCall(mat,scene,'fireLogMat'+x,'#352017',.96));hubOwnedPush(log);}
+const mantleClock=hubOwnedCall(()=>B.MeshBuilder.CreateCylinder('mantleClock',{height:.11,diameter:.30,tessellation:18},scene));hubOwnedSetEvaluated(()=>mantleClock,'position',()=>new B.Vector3(2.55,2.22,4.02));hubOwnedSetEvaluated(()=>mantleClock.rotation,'x',()=>Math.PI/2);hubOwnedSetEvaluated(()=>mantleClock,'material',()=>hubOwnedCall(mat,scene,'mantleClockMat','#b48b52',.28));hubOwnedPush(mantleClock);
+const clockFace=hubOwnedCall(()=>B.MeshBuilder.CreateCylinder('clockFace',{height:.014,diameter:.24,tessellation:18},scene));hubOwnedSetEvaluated(()=>clockFace,'position',()=>new B.Vector3(2.55,2.22,3.955));hubOwnedSetEvaluated(()=>clockFace.rotation,'x',()=>Math.PI/2);hubOwnedSetEvaluated(()=>clockFace,'material',()=>hubOwnedCall(mat,scene,'clockFaceMat','#f3e7c7',.7));hubOwnedPush(clockFace);
+for(const x of [2.27,2.83]){const candle=hubOwnedCall(()=>B.MeshBuilder.CreateCylinder('mantleCandle',{height:.22,diameter:.055,tessellation:12},scene));hubOwnedSetEvaluated(()=>candle,'position',()=>new B.Vector3(x,2.20,4.02));hubOwnedSetEvaluated(()=>candle,'material',()=>hubOwnedCall(mat,scene,'mantleCandleMat','#e8d7b4',.8));hubOwnedPush(candle);const wick=hubOwnedCall(()=>B.MeshBuilder.CreateSphere('mantleFlame',{diameter:.045,segments:7},scene));hubOwnedSetEvaluated(()=>wick,'position',()=>new B.Vector3(x,2.34,4.02));hubOwnedSetEvaluated(()=>wick.scaling,'y',()=>1.5);hubOwnedSetEvaluated(()=>wick,'material',()=>hubOwnedCall(mat,scene,'mantleFlameMat','#ffd36b',.2));hubOwnedSetEvaluated(()=>wick.material,'emissiveColor',()=>B.Color3.FromHexString('#ffad45').scale(.8));hubOwnedPush(wick);}
 
   // Cosmetics placeholders only.
   for(const [z,title] of [[-1.55,'HEAD'],[0,'BODY'],[1.55,'FX']]){
-    const sh=lobbyAsset(scene,'Shelf_Small2.obj','Shelf_Small2.mtl',{name:'cosShelf'+title,position:new B.Vector3(9.7,1.15,z),rotation:new B.Vector3(0,-Math.PI/2,0),scale:new B.Vector3(1.55,1.55,1.55),pickable:false});
-    addModelCollider(scene,sh,'cosShelfCollider'+title,.003);G.lobbyMeshes.push(label(scene,title+'\nCOMING SOON',new B.Vector3(9.15,2.0,z),.24,'#f5eaff'));
+    const sh=hubOwnedCall(lobbyAsset,scene,'Shelf_Small2.obj','Shelf_Small2.mtl',{name:'cosShelf'+title,position:new B.Vector3(9.7,1.15,z),rotation:new B.Vector3(0,-Math.PI/2,0),scale:new B.Vector3(1.55,1.55,1.55),pickable:false});
+    hubOwnedCall(addModelCollider,scene,sh,'cosShelfCollider'+title,.003);hubOwnedPush(hubOwnedCall(label,scene,title+'\nCOMING SOON',new B.Vector3(9.15,2.0,z),.24,'#f5eaff'));
   }
-  const cosPed=box(scene,'cosPed',new B.Vector3(7.15,.38,0),new B.Vector3(1.15,.76,1.15),'#5b4266');G.lobbyMeshes.push(cosPed);
-  const cosPedCol=box(scene,'cosPedCollider',new B.Vector3(7.15,.38,0),new B.Vector3(1.15,.76,1.15),'#000');cosPedCol.isVisible=false;addBlocker(cosPedCol,0);G.lobbyMeshes.push(cosPedCol);
-  const cosOrb=B.MeshBuilder.CreateSphere('cosOrb',{diameter:.48,segments:10},scene);cosOrb.position=new B.Vector3(7.15,1.08,0);cosOrb.material=mat(scene,'cosOrbMat','#c9a3f8',.28);cosOrb.material.emissiveColor=B.Color3.FromHexString('#8e5ee0').scale(.5);G.lobbyMeshes.push(cosOrb);
+  const cosPed=hubOwnedCall(box,scene,'cosPed',new B.Vector3(7.15,.38,0),new B.Vector3(1.15,.76,1.15),'#5b4266');hubOwnedPush(cosPed);
+  const cosPedCol=hubOwnedCall(box,scene,'cosPedCollider',new B.Vector3(7.15,.38,0),new B.Vector3(1.15,.76,1.15),'#000');hubOwnedSetEvaluated(()=>cosPedCol,'isVisible',()=>false);hubOwnedCall(addBlocker,cosPedCol,0);hubOwnedPush(cosPedCol);
+  const cosOrb=hubOwnedCall(()=>B.MeshBuilder.CreateSphere('cosOrb',{diameter:.48,segments:10},scene));hubOwnedSetEvaluated(()=>cosOrb,'position',()=>new B.Vector3(7.15,1.08,0));hubOwnedSetEvaluated(()=>cosOrb,'material',()=>hubOwnedCall(mat,scene,'cosOrbMat','#c9a3f8',.28));hubOwnedSetEvaluated(()=>cosOrb.material,'emissiveColor',()=>B.Color3.FromHexString('#8e5ee0').scale(.5));hubOwnedPush(cosOrb);
 
   // Physical, organized controls.
   function consolePanel(name,title,pos,width=2.25,height=2.45){
-    const root=new B.TransformNode(name+'Root',scene);root.position.copyFrom(pos);
-    const faceSign=pos.z<0?1:-1,accent=name.includes('play')?'#55c9ff':name.includes('map')?'#ffad55':name.includes('bat')?'#9ee85e':name.includes('style')?'#bd82ff':'#71d8c8';root.metadata={...(root.metadata||{}),faceSign,accent};G.lobbyMeshes.push(root);
-    const shadow=box(scene,name+'Shadow',new B.Vector3(0,-.035,-faceSign*.045),new B.Vector3(width+.12,height+.12,.10),'#0b1118',root);shadow.material.alpha=.30;G.lobbyMeshes.push(shadow);
-    const back=box(scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.13),'#263342',root);back.material.metallic=.38;back.material.roughness=.30;back.material.emissiveColor=B.Color3.FromHexString(accent).scale(.055);G.lobbyMeshes.push(back);
-    const frame=box(scene,name+'Frame',new B.Vector3(0,.01,faceSign*.078),new B.Vector3(width-.08,height-.08,.035),'#52657a',root);frame.material.metallic=.64;frame.material.roughness=.18;frame.material.emissiveColor=B.Color3.FromHexString(accent).scale(.12);G.lobbyMeshes.push(frame);
-    const face=box(scene,name+'Face',new B.Vector3(0,-.02,faceSign*.120),new B.Vector3(width-.22,height-.28,.032),'#202c39',root);face.material.metallic=.16;face.material.roughness=.27;face.material.emissiveColor=B.Color3.FromHexString('#7fa0bb').scale(.035);G.lobbyMeshes.push(face);
-    for(const sx of [-1,1]){const rail=box(scene,name+'OuterRail',new B.Vector3(sx*(width*.46),0,faceSign*.146),new B.Vector3(.026,height*.73,.014),accent,root);rail.material.emissiveColor=B.Color3.FromHexString(accent).scale(.82);rail.isPickable=false;G.lobbyMeshes.push(rail);}
-    for(const sy of [-1,1]){const rail=box(scene,name+'OuterRailH',new B.Vector3(0,sy*(height*.43),faceSign*.146),new B.Vector3(width*.72,.024,.014),accent,root);rail.material.emissiveColor=B.Color3.FromHexString(accent).scale(sy>0?.72:.42);rail.isPickable=false;G.lobbyMeshes.push(rail);}
-    const header=box(scene,name+'HeaderGlow',new B.Vector3(0,height*.28,faceSign*.154),new B.Vector3(width*.54,.040,.015),accent,root);header.material.emissiveColor=B.Color3.FromHexString(accent).scale(.88);header.material.alpha=.96;header.isPickable=false;G.lobbyMeshes.push(header);
-    for(const sx of [-1,1])for(const sy of [-1,1]){const bolt=B.MeshBuilder.CreateCylinder(name+'Bolt',{height:.018,diameter:.058,tessellation:10},scene);bolt.parent=root;bolt.rotation.x=Math.PI/2;bolt.position=new B.Vector3(sx*(width*.43),sy*(height*.42),faceSign*.160);bolt.material=mat(scene,name+'BoltMat','#e5edf4',.12);bolt.material.metallic=.88;bolt.isPickable=false;G.lobbyMeshes.push(bolt);}
-    const lamp=new B.PointLight(name+'PanelLight',new B.Vector3(pos.x,pos.y,pos.z+faceSign*.42),scene);lamp.diffuse=B.Color3.FromHexString(accent);lamp.intensity=.035;lamp.range=1.45;G.lobbyMeshes.push({dispose:()=>{try{lamp.dispose()}catch{}}});
-    fixedPanelText(scene,title,root,.30,'#f7fbff',height*.34,faceSign*.175);return root;
+    const root=hubOwnedCall(()=>new B.TransformNode(name+'Root',scene));hubOwnedCall(()=>root.position.copyFrom(pos));hubOwnedPush(root);
+    const back=hubOwnedCall(box,scene,name+'Back',B.Vector3.Zero(),new B.Vector3(width,height,.16),'#292522',root);hubOwnedSet(back.material,'metallic',.10);hubOwnedSet(back.material,'roughness',.52);hubOwnedPush(back);
+    hubOwnedPush(hubOwnedCall(box,scene,name+'Trim',new B.Vector3(0,.02,-.09),new B.Vector3(width-.10,height-.10,.035),'#6a523c',root));
+    hubOwnedPush(hubOwnedCall(box,scene,name+'Face',new B.Vector3(0,-.02,-.13),new B.Vector3(width-.22,height-.35,.035),'#34302d',root));
+    hubOwnedCall(fixedPanelText,scene,title,root,.31,'#ffdcb2',height*.34,-.19);return root;
   }
   function physicalButton(name,text,parent,x,y,color,meta,w=.86,h=.42){
-    const faceSign=parent?.metadata?.faceSign||-1;
-    const root=new B.TransformNode(name+'Root',scene);root.parent=parent;root.position=new B.Vector3(x,y,faceSign*.22);root.metadata={faceSign};G.lobbyMeshes.push(root);
+    const root=hubOwnedCall(()=>new B.TransformNode(name+'Root',scene));hubOwnedSet(root,'parent',parent);hubOwnedSet(root,'position',new B.Vector3(x,y,-.22));hubOwnedPush(root);
 
-    const shadow=box(scene,name+'Shadow',new B.Vector3(0,-.03,-faceSign*.025),new B.Vector3(w+.24,h+.22,.06),'#020305',root);
-    shadow.material.alpha=.60;shadow.isPickable=false;G.lobbyMeshes.push(shadow);
+    const shadow=hubOwnedCall(box,scene,name+'Shadow',new B.Vector3(0,-.03,-.02),new B.Vector3(w+.22,h+.20,.06),'#050505',root);
+    hubOwnedSet(shadow.material,'alpha',.55);hubOwnedSet(shadow,'isPickable',false);hubOwnedPush(shadow);
 
-    const base=box(scene,name+'Base',B.Vector3.Zero(),new B.Vector3(w+.16,h+.16,.13),'#0b0e13',root);
-    base.material.metallic=.56;base.material.roughness=.24;G.lobbyMeshes.push(base);
+    const base=hubOwnedCall(box,scene,name+'Base',B.Vector3.Zero(),new B.Vector3(w+.14,h+.14,.13),'#121212',root);
+    hubOwnedSet(base.material,'metallic',.38);hubOwnedSet(base.material,'roughness',.32);hubOwnedPush(base);
 
-    const rim=box(scene,name+'Rim',new B.Vector3(0,0,faceSign*.065),new B.Vector3(w+.07,h+.07,.075),'#cfd9e7',root);
-    rim.material.metallic=.78;rim.material.roughness=.11;rim.material.emissiveColor=B.Color3.FromHexString('#8ea0b8').scale(.11);G.lobbyMeshes.push(rim);
+    const rim=hubOwnedCall(box,scene,name+'Rim',new B.Vector3(0,0,-.06),new B.Vector3(w+.05,h+.05,.07),'#bfc8d4',root);
+    hubOwnedSet(rim.material,'metallic',.55);hubOwnedSet(rim.material,'roughness',.18);hubOwnedSet(rim.material,'emissiveColor',B.Color3.FromHexString('#4e535b').scale(.06));hubOwnedPush(rim);
 
-    const b=box(scene,name,new B.Vector3(0,0,faceSign*.105),new B.Vector3(w,h,.13),color,root);
-    b.material.metallic=.28;b.material.roughness=.20;b.material.emissiveColor=B.Color3.FromHexString(color).scale(.16);G.lobbyMeshes.push(b);
+    const b=hubOwnedCall(box,scene,name,new B.Vector3(0,0,-.09),new B.Vector3(w,h,.13),color,root);
+    hubOwnedSet(b.material,'metallic',.18);hubOwnedSet(b.material,'roughness',.28);hubOwnedSet(b.material,'emissiveColor',B.Color3.FromHexString(color).scale(.07));hubOwnedPush(b);
 
-    const inset=box(scene,name+'Inset',new B.Vector3(0,-.015,faceSign*.174),new B.Vector3(w*.90,h*.86,.016),'#0c1118',root);
-    inset.material.alpha=.18;inset.isPickable=false;G.lobbyMeshes.push(inset);
+    const inset=hubOwnedCall(box,scene,name+'Inset',new B.Vector3(0,-.015,-.135),new B.Vector3(w*.90,h*.88,.016),'#0f0f10',root);
+    hubOwnedSet(inset.material,'alpha',.16);hubOwnedSet(inset,'isPickable',false);hubOwnedPush(inset);
 
-    const gloss=box(scene,name+'Gloss',new B.Vector3(0,h*.23,faceSign*.190),new B.Vector3(w*.72,.042,.012),'#ffffff',root);
-    gloss.material.alpha=.22;gloss.material.emissiveColor=B.Color3.FromHexString('#ffffff').scale(.18);gloss.isPickable=false;G.lobbyMeshes.push(gloss);
+    const gloss=hubOwnedCall(box,scene,name+'Gloss',new B.Vector3(0,h*.22,-.168),new B.Vector3(w*.74,.035,.012),'#ffffff',root);
+    hubOwnedSet(gloss.material,'alpha',.16);hubOwnedSet(gloss.material,'emissiveColor',B.Color3.FromHexString('#ffffff').scale(.10));hubOwnedSet(gloss,'isPickable',false);hubOwnedPush(gloss);
 
-    // Accent rails make every control read as a designed VR object rather than a flat rectangle.
-    for(const sx of [-1,1]){const rail=box(scene,name+'Rail',new B.Vector3(sx*w*.455,0,faceSign*.193),new B.Vector3(.025,h*.66,.015),color,root);rail.material.emissiveColor=B.Color3.FromHexString(color).scale(.72);rail.material.alpha=.95;rail.isPickable=false;G.lobbyMeshes.push(rail);}
-    for(const sx of [-1,1])for(const sy of [-1,1]){const corner=box(scene,name+'Corner',new B.Vector3(sx*w*.46,sy*h*.40,faceSign*.198),new B.Vector3(.055,.055,.020),'#dce6ef',root);corner.material.metallic=.72;corner.material.roughness=.12;corner.material.emissiveColor=B.Color3.FromHexString(color).scale(.24);corner.isPickable=false;G.lobbyMeshes.push(corner);}
-    const statusRail=box(scene,name+'StatusRail',new B.Vector3(0,-h*.39,faceSign*.200),new B.Vector3(w*.46,.020,.015),color,root);statusRail.material.emissiveColor=B.Color3.FromHexString(color).scale(.90);statusRail.isPickable=false;G.lobbyMeshes.push(statusRail);
+    const led=hubOwnedCall(()=>B.MeshBuilder.CreateSphere(name+'Led',{diameter:Math.min(.075,h*.18),segments:8},scene));
+    hubOwnedSet(led,'parent',root);hubOwnedSet(led,'position',new B.Vector3(-w*.39,h*.24,-.17));
+    hubOwnedSet(led,'material',hubOwnedCall(mat,scene,name+'LedMat','#dff7ff',.14));hubOwnedSet(led.material,'emissiveColor',B.Color3.FromHexString('#dff7ff').scale(.45));hubOwnedSet(led,'isPickable',false);hubOwnedPush(led);
 
-    const led=B.MeshBuilder.CreateSphere(name+'Led',{diameter:Math.min(.08,h*.19),segments:10},scene);
-    led.parent=root;led.position=new B.Vector3(-w*.39,h*.24,faceSign*.202);
-    led.material=mat(scene,name+'LedMat','#e9fbff',.10);led.material.emissiveColor=B.Color3.FromHexString('#dff7ff').scale(.85);led.isPickable=false;G.lobbyMeshes.push(led);
+    const glow=hubOwnedCall(box,scene,name+'HoverGlow',new B.Vector3(0,0,-.175),new B.Vector3(w+.13,h+.13,.022),'#fff1a6',root);
+    hubOwnedSet(glow.material,'alpha',.68);hubOwnedSet(glow.material,'metallic',.02);hubOwnedSet(glow.material,'roughness',.08);hubOwnedSet(glow.material,'emissiveColor',B.Color3.FromHexString('#fff2a9').scale(.95));hubOwnedSet(glow,'isPickable',false);hubOwnedCall(()=>glow.setEnabled(false));hubOwnedPush(glow);
 
-    // 4.8 exaggerated design pass: chamfer-like side wings and a 3-dot status language visible even before hover.
-    for(const sx of [-1,1]){const wing=box(scene,name+'Wing',new B.Vector3(sx*(w*.56),0,faceSign*.185),new B.Vector3(.075,h*.46,.035),'#1b232d',root);wing.rotation.z=sx*.15;wing.material.metallic=.64;wing.material.roughness=.14;wing.material.emissiveColor=B.Color3.FromHexString(color).scale(.18);wing.isPickable=false;G.lobbyMeshes.push(wing);}
-    for(let i=0;i<3;i++){const dot=B.MeshBuilder.CreateSphere(name+'StatusDot',{diameter:.032,segments:8},scene);dot.parent=root;dot.position=new B.Vector3(w*.28+i*.06,-h*.31,faceSign*.205);dot.material=mat(scene,name+'StatusDotMat'+i,i===0?'#ffffff':color,.12);dot.material.emissiveColor=B.Color3.FromHexString(i===0?'#ffffff':color).scale(i===0?.55:.85);dot.isPickable=false;G.lobbyMeshes.push(dot);}
+    hubOwnedSet(b,'metadata',{...meta,baseColor:color,hoverGlow:glow,faceMesh:b,rimMesh:rim,glossMesh:gloss});
+    hubOwnedButtonPush(b);
 
-    const glow=box(scene,name+'HoverGlow',new B.Vector3(0,0,faceSign*.210),new B.Vector3(w+.15,h+.15,.022),'#ffffff',root);
-    glow.material.alpha=.72;glow.material.metallic=.02;glow.material.roughness=.06;glow.material.emissiveColor=B.Color3.FromHexString(color).scale(1.15);glow.isPickable=false;glow.setEnabled(false);G.lobbyMeshes.push(glow);
-
-    b.metadata={...meta,baseColor:color,hoverGlow:glow,faceMesh:b,rimMesh:rim,glossMesh:gloss,faceSign,buttonRoot:root};
-    G.hubButtons.push(b);
-
-    fixedPanelText(scene,text,root,.23,'#ffffff',0,faceSign*.218);
+    hubOwnedCall(fixedPanelText,scene,text,root,.23,'#ffffff',0,-.178);
     return b;
   }
   function selectedReadout(parent,text,y=-.50,width=1.80){
-    const fs=parent?.metadata?.faceSign||-1;const plate=box(scene,'readout',new B.Vector3(0,y,fs*.20),new B.Vector3(width,.44,.055),'#0b1110',parent);
-    plate.material.metallic=.08;plate.material.roughness=.32;G.lobbyMeshes.push(plate);
-    fixedPanelText(scene,text,parent,.205,'#baffc8',y,fs*.238);
+    const plate=hubOwnedCall(box,scene,'readout',new B.Vector3(0,y,-.20),new B.Vector3(width,.44,.055),'#0b1110',parent);
+    hubOwnedSet(plate.material,'metallic',.08);hubOwnedSet(plate.material,'roughness',.32);hubOwnedPush(plate);
+    hubOwnedCall(fixedPanelText,scene,text,parent,.205,'#baffc8',y,-.238);
   }
 
   const mapDef=CATALOG.maps.find(x=>x.id===G.meta.selectedMap)||CATALOG.maps[0],bat=selectedBatDef(),skin=selectedSkinDef();
-  const playPanel=consolePanel('playConsole','PLAY',new B.Vector3(-3.75,2.15,-4.30));
-  physicalButton('survivalBtn','SURVIVAL',playPanel,0,.28,'#d45c38',{interact:'mode',mode:'SURVIVAL'},1.25,.48);
-  physicalButton('levelsBtn','LEVELS',playPanel,0,-.34,'#4d82c4',{interact:'mode',mode:'LEVELS'},1.25,.48);
+  const playPanel=hubOwnedCall(consolePanel,'playConsole','PLAY',new B.Vector3(-3.75,2.15,-4.30));
+  hubOwnedCall(physicalButton,'survivalBtn','SURVIVAL',playPanel,0,.28,'#d45c38',{interact:'mode',mode:'SURVIVAL'},1.25,.48);
+  hubOwnedCall(physicalButton,'levelsBtn','LEVELS',playPanel,0,-.34,'#4d82c4',{interact:'mode',mode:'LEVELS'},1.25,.48);
 
-  const mapPanel=consolePanel('mapConsole','MAP SELECT',new B.Vector3(-1.25,2.15,-4.30),2.35,2.55);
-  selectedReadout(mapPanel,mapDef.name,-.16,1.92);
-  physicalButton('mapPrev','PREV',mapPanel,-.58,-.72,'#4e6f82',{interact:'station',station:'MAP_PREV'},.76,.40);
-  physicalButton('mapNext','NEXT',mapPanel,.58,-.72,'#4e6f82',{interact:'station',station:'MAP_NEXT'},.76,.40);
+  const mapPanel=hubOwnedCall(consolePanel,'mapConsole','MAP SELECT',new B.Vector3(-1.25,2.15,-4.30),2.35,2.55);
+  hubOwnedCall(selectedReadout,mapPanel,mapDef.name,-.16,1.92);
+  hubOwnedCall(physicalButton,'mapPrev','PREV',mapPanel,-.58,-.72,'#4e6f82',{interact:'station',station:'MAP_PREV'},.76,.40);
+  hubOwnedCall(physicalButton,'mapNext','NEXT',mapPanel,.58,-.72,'#4e6f82',{interact:'station',station:'MAP_NEXT'},.76,.40);
 
-  const batPanel=consolePanel('batConsole','BAT SELECT',new B.Vector3(1.25,2.15,-4.30),2.35,2.55);
-  selectedReadout(batPanel,`${bat.name}\n${bat.ability||'BALANCED'}`,-.14,1.94);
-  physicalButton('batPrev','PREV',batPanel,-.58,-.74,'#75472d',{interact:'station',station:'BAT_PREV'},.76,.40);
-  physicalButton('batNext','NEXT',batPanel,.58,-.74,'#75472d',{interact:'station',station:'BAT_NEXT'},.76,.40);
-  const batPreview=makeBatModel(scene,bat);batPreview.name='lobbyBatPreview';batPreview.position=new B.Vector3(1.25,.82,-3.42);batPreview.rotation.z=Math.PI/2;batPreview.scaling.setAll(.62);G.lobbyMeshes.push(batPreview);
+  const batPanel=hubOwnedCall(consolePanel,'batConsole','BAT SELECT',new B.Vector3(1.25,2.15,-4.30),2.35,2.55);
+  hubOwnedCall(selectedReadout,batPanel,`${bat.name}\n${bat.ability||'BALANCED'}`,-.14,1.94);
+  hubOwnedCall(physicalButton,'batPrev','PREV',batPanel,-.58,-.74,'#75472d',{interact:'station',station:'BAT_PREV'},.76,.40);
+  hubOwnedCall(physicalButton,'batNext','NEXT',batPanel,.58,-.74,'#75472d',{interact:'station',station:'BAT_NEXT'},.76,.40);
+  const batPreview=hubOwnedCall(()=>makeBatModel(scene,bat));hubOwnedSetEvaluated(()=>batPreview,'name',()=>'lobbyBatPreview');hubOwnedSetEvaluated(()=>batPreview,'position',()=>new B.Vector3(1.25,.82,-3.42));hubOwnedSetEvaluated(()=>batPreview.rotation,'z',()=>Math.PI/2);batPreview.scaling.setAll(.62);hubOwnedPush(batPreview);
 
-  const stylePanel=consolePanel('styleConsole','STYLE SELECT',new B.Vector3(3.75,2.15,-4.30),2.35,2.55);
-  selectedReadout(stylePanel,skin.name,-.10,1.92);
-  physicalButton('skinPrev','SKIN -',stylePanel,-.58,-.56,'#78507d',{interact:'station',station:'SKIN_PREV'},.80,.38);
-  physicalButton('skinNext','SKIN +',stylePanel,.58,-.56,'#78507d',{interact:'station',station:'SKIN_NEXT'},.80,.38);
-  physicalButton('colorPrev','COLOR -',stylePanel,-.58,-.98,G.meta.selectedColor||'#b9833d',{interact:'station',station:'COLOR_PREV'},.80,.34);
-  physicalButton('colorNext','COLOR +',stylePanel,.58,-.98,G.meta.selectedColor||'#b9833d',{interact:'station',station:'COLOR_NEXT'},.80,.34);
+  const stylePanel=hubOwnedCall(consolePanel,'styleConsole','STYLE SELECT',new B.Vector3(3.75,2.15,-4.30),2.35,2.55);
+  hubOwnedCall(selectedReadout,stylePanel,skin.name,-.10,1.92);
+  hubOwnedCall(physicalButton,'skinPrev','SKIN -',stylePanel,-.58,-.56,'#78507d',{interact:'station',station:'SKIN_PREV'},.80,.38);
+  hubOwnedCall(physicalButton,'skinNext','SKIN +',stylePanel,.58,-.56,'#78507d',{interact:'station',station:'SKIN_NEXT'},.80,.38);
+  hubOwnedCall(physicalButton,'colorPrev','COLOR -',stylePanel,-.58,-.98,G.meta.selectedColor||'#b9833d',{interact:'station',station:'COLOR_PREV'},.80,.34);
+  hubOwnedCall(physicalButton,'colorNext','COLOR +',stylePanel,.58,-.98,G.meta.selectedColor||'#b9833d',{interact:'station',station:'COLOR_NEXT'},.80,.34);
 
-  const utilityPanel=consolePanel('utilityConsole','UTILITY',new B.Vector3(0,2.0,4.28),3.15,1.72);
-  physicalButton('settingsBtn','SETTINGS',utilityPanel,-.82,.08,'#41684f',{interact:'station',station:'SETTINGS'},.68,.32);
-  physicalButton('crateBtn',OWNER_MODE?'FREE':'CRATE',utilityPanel,0,.08,'#a56c31',{interact:'station',station:'OPEN_CRATE'},.68,.32);
-  physicalButton('ownerBtn',OWNER_MODE?'OWNER':'CODE',utilityPanel,.82,.08,OWNER_MODE?'#927525':'#594a62',{interact:'station',station:'OWNER_CODE'},.68,.32);
-  selectedReadout(utilityPanel,`LVL ${G.meta.survivalLevel||1} • ${G.meta.coins||0} COINS`,-.43,2.30);
+  const utilityPanel=hubOwnedCall(consolePanel,'utilityConsole','UTILITY',new B.Vector3(0,2.0,4.28),3.15,1.72);
+  hubOwnedCall(physicalButton,'settingsBtn','SETTINGS',utilityPanel,-.82,.08,'#41684f',{interact:'station',station:'SETTINGS'},.68,.32);
+  hubOwnedCall(physicalButton,'crateBtn',OWNER_MODE?'FREE':'CRATE',utilityPanel,0,.08,'#a56c31',{interact:'station',station:'OPEN_CRATE'},.68,.32);
+  hubOwnedCall(physicalButton,'ownerBtn',OWNER_MODE?'OWNER':'CODE',utilityPanel,.82,.08,OWNER_MODE?'#927525':'#594a62',{interact:'station',station:'OWNER_CODE'},.68,.32);
+  hubOwnedCall(selectedReadout,utilityPanel,`LVL ${G.meta.survivalLevel||1} • ${G.meta.coins||0} COINS`,-.43,2.30);
 
-  const cosLight=new B.PointLight('cosLight',new B.Vector3(8.2,2.4,0),scene);cosLight.diffuse=B.Color3.FromHexString('#ba91ff');cosLight.intensity=.38;cosLight.range=5.2;G.lobbyMeshes.push({dispose:()=>{try{cosLight.dispose()}catch{}}});
-  const warmLamp=new B.PointLight('warmLobbyLamp',new B.Vector3(-2.1,2.25,-.1),scene);warmLamp.diffuse=B.Color3.FromHexString('#ffd0a0');warmLamp.intensity=.28;warmLamp.range=5;G.lobbyMeshes.push({dispose:()=>{try{warmLamp.dispose()}catch{}}});
+  // Showroom: existing unlockable looks plus three display hats.
+  const showroom=hubOwnedCall(consolePanel,'cosShowroom','COSMETICS',new B.Vector3(8.38,2.13,2.72),2.7,2.15);
+  hubOwnedCall(selectedReadout,showroom,skin.name,-.12,2.23);
+  hubOwnedCall(physicalButton,'showroomPrevious','LOOK -',showroom,-.61,-.67,'#8454b7',{interact:'station',station:'SKIN_PREV'},.97,.40);
+  hubOwnedCall(physicalButton,'showroomNext','LOOK +',showroom,.61,-.67,'#a05fca',{interact:'station',station:'SKIN_NEXT'},.97,.40);
+  for(const [z,col,kind] of [[-1.55,'#f9c136','CROWN'],[0,'#ff6d31','CONE'],[1.55,'#63dfff','CAP']]){
+    const stand=hubOwnedCall(box,scene,'showroomStand',new B.Vector3(9.47,1.32,z),new B.Vector3(.50,.12,.5),'#30313b');hubOwnedPush(stand);
+    const crown=kind==='CONE'?hubOwnedCall(()=>B.MeshBuilder.CreateCylinder('coneHat',{height:.46,diameterTop:0,diameterBottom:.39,tessellation:12},scene)):kind==='CROWN'?hubOwnedCall(()=>B.MeshBuilder.CreateCylinder('crownHat',{height:.34,diameterTop:.34,diameterBottom:.43,tessellation:10},scene)):hubOwnedCall(()=>B.MeshBuilder.CreateCylinder('capHat',{height:.18,diameterTop:.40,diameterBottom:.43,tessellation:16},scene));
+    hubOwnedSetEvaluated(()=>crown,'position',()=>new B.Vector3(9.47,1.66,z));hubOwnedSetEvaluated(()=>crown,'material',()=>hubOwnedCall(mat,scene,'showroomHatMat'+kind,col,.24));hubOwnedPush(crown);
+    if(kind==='CROWN')for(let j=0;j<5;j++){const a=j*Math.PI*2/5;const spike=hubOwnedCall(()=>B.MeshBuilder.CreateCylinder('crownPoint',{height:.15,diameterTop:0,diameterBottom:.10,tessellation:7},scene));hubOwnedSetEvaluated(()=>spike,'position',()=>new B.Vector3(9.47+Math.sin(a)*.145,1.91,z+Math.cos(a)*.145));hubOwnedSetEvaluated(()=>spike,'material',()=>crown.material);hubOwnedPush(spike);}
+    if(kind==='CAP')hubOwnedPush(hubOwnedCall(box,scene,'hatBrim',new B.Vector3(9.47,1.61,z-.19),new B.Vector3(.42,.045,.22),col));
+    hubOwnedPush(hubOwnedCall(label,scene,kind,new B.Vector3(9.47,2.02,z),.30,col));
+  }
+  const cosLight=hubOwnedConstructDisposable(()=>new B.PointLight('cosLight',new B.Vector3(8.2,2.4,0),scene),r=>r?.dispose?.());hubOwnedPush({dispose:()=>{try{cosLight.dispose()}catch{}}});hubOwnedSetEvaluated(()=>cosLight,'diffuse',()=>B.Color3.FromHexString('#ba91ff'));hubOwnedSetEvaluated(()=>cosLight,'intensity',()=>.38);hubOwnedSetEvaluated(()=>cosLight,'range',()=>5.2);
+  const warmLamp=hubOwnedConstructDisposable(()=>new B.PointLight('warmLobbyLamp',new B.Vector3(-2.1,2.25,-.1),scene),r=>r?.dispose?.());hubOwnedPush({dispose:()=>{try{warmLamp.dispose()}catch{}}});hubOwnedSetEvaluated(()=>warmLamp,'diffuse',()=>B.Color3.FromHexString('#ffd0a0'));hubOwnedSetEvaluated(()=>warmLamp,'intensity',()=>.28);hubOwnedSetEvaluated(()=>warmLamp,'range',()=>5);
 
-  let hubAnimT=0;const hubObs=scene.onBeforeRenderObservable.add(()=>{if(G.state!=='hub')return;updateHubButtonHover(scene);const dt=Math.min(.05,engine.getDeltaTime()/1000);hubAnimT+=dt;
-    fireLight.intensity=.66+Math.sin(hubAnimT*7.2)*.075+Math.sin(hubAnimT*13.7)*.03;fireCoreLight.intensity=.57+Math.sin(hubAnimT*8.8+1.1)*.09+Math.sin(hubAnimT*17.3)*.035;cosOrb.rotation.y+=dt*.45;
-  });G.lobbyMeshes.push({dispose:()=>{try{scene.onBeforeRenderObservable.remove(hubObs)}catch{}}});
+  let hubAnimT=0,hubObs=null,hubObsStale=false;
+  const stopHubObs=()=>{hubObsStale=true;if(hubObs!==null){try{scene.onBeforeRenderObservable.remove(hubObs)}catch{}}};
+  const hubObsTick=()=>{
+    if(hubObsStale)return;
+    if(!hubRenderStillOwned()){stopHubObs();return;}
+    updateHubButtonHover(scene);
+    if(!hubRenderStillOwned()){stopHubObs();return;}
+    const dt=Math.min(.05,engine.getDeltaTime()/1000);
+    if(!hubRenderStillOwned()){stopHubObs();return;}
+    hubAnimT+=dt;
+    fireLight.intensity=.68+Math.sin(hubAnimT*7.2)*.095+Math.sin(hubAnimT*13.7)*.045;
+    if(!hubRenderStillOwned()){stopHubObs();return;}
+    cosOrb.rotation.y+=dt*.45;
+  };
+  hubObs=hubOwnedConstructDisposable(
+    ()=>scene.onBeforeRenderObservable.add(hubObsTick),
+    observer=>{try{scene.onBeforeRenderObservable.remove(observer)}catch{}});
+  if(hubObsStale)stopHubObs(); // Handle synchronous add() callback.
+  hubOwnedPush({dispose:()=>{try{scene.onBeforeRenderObservable.remove(hubObs)}catch{}}});
 
-  startLobbyAudio();rebuildHubLabels=()=>buildHub(scene);updateHUD();if(G.desktop)ui.hud.style.display='none';hubCameraSpawn(scene);runVisualBlackoutGuard(scene);scheduleAutonomousQualityRecheck(scene);networkBroadcastSession();
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  startLobbyAudio();
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  rebuildHubLabels=()=>buildHub(scene);
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  updateHUD();
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  if(G.desktop)ui.hud.style.display='none';
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  hubCameraSpawn(scene);
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
   if(G.desktop){try{scene.activeCamera.setTarget(new B.Vector3(0,2.0,-4.35));}catch{}}
+  if(!hubNpcResetStillOwned(hubNpcReset))return;
+  // Release the guard only after all synchronous construction stages finish.
+  if(hubNpcReset.guard){
+    if(npcRosterWriteGuard!==hubNpcReset.guard)return;
+    npcRosterWriteGuard=null;
+  }
+  }catch(err){
+    if(err!==hubSceneAbort)throw err;
+  }finally{
+    if(hubNpcReset.guard)hubNpcReset.guard.hubCleanupActive=false;
+  }
 }
 
-function findSafePlayerSpawn(){const spots=[[0,-5.8],[-5.8,-5.8],[5.8,-5.8],[-5.8,5.8],[5.8,5.8],[0,0]];for(const [x,z] of spots)if(!isBlockedXZ(x,z,.42))return new B.Vector3(x,1.65,z);return new B.Vector3(0,1.65,-6);}
-function placePlayerSafe(scene){const q=findSafePlayerSpawn();const cam=G.xr?.baseExperience?.camera||scene.activeCamera;if(cam){cam.position.x=q.x;cam.position.z=q.z;if(G.desktop)cam.position.y=q.y;}}
+function findSafePlayerSpawn(){
+  const spots=[[0,-5.8],[-5.8,-5.8],[5.8,-5.8],[-5.8,5.8],[5.8,5.8],[0,0]];
+  for(const [x,z] of spots)if(!isBlockedXZ(x,z,.42))return new B.Vector3(x,1.65,z);
+  // Reuse the exhaustive arena scan, but never force the player into a blocked origin.
+  const safe=safeEnemySpawn(4,.42);
+  return safe?new B.Vector3(safe.x,1.65,safe.z):null;
+}
+function placePlayerSafe(scene){
+  const q=findSafePlayerSpawn(),cam=playerBodyCamera(scene);
+  if(!q||!cam)return false;
+  // Camera position setters may throw after writing one axis. Stage and verify
+  // the whole spawn pose; a failed placement must not start an unsafe shift.
+  try{
+    if(G.state!=='shift')return false;
+    const p=cam.position,desktop=!!G.desktop;
+    const axes=desktop?['x','z','y']:['x','z'];
+    const next=desktop?[q.x,q.z,q.y]:[q.x,q.z];
+    if(!p||!next.every(Number.isFinite))return false;
+    const before=[];
+    for(const axis of axes){
+      const d=Object.getOwnPropertyDescriptor(p,axis);
+      if(!d||!('value' in d)||!d.writable||!Number.isFinite(d.value))return false;
+      before.push(d.value);
+    }
+    if(cam.position!==p||G.state!=='shift'||!!G.desktop!==desktop)return false;
+    let committed=false;
+    try{
+      for(let i=0;i<axes.length;i++)p[axes[i]]=next[i];
+      committed=cam.position===p&&G.state==='shift'&&!!G.desktop===desktop&&
+        axes.every((axis,i)=>p[axis]===next[i]);
+    }catch{}
+    if(committed){unsafePlayerHorizontalPositions.delete(p);return true;}
+    // Best-effort rollback, including a setter that committed then threw.
+    // startShift returns to the hub when this function reports failure.
+    for(let i=0;i<axes.length;i++){try{p[axes[i]]=before[i];}catch{}}
+    return false;
+  }catch{return false;}
+}
 function startShift(scene,mode='LEVELS'){
+  G.hubInteractionEpoch=(G.hubInteractionEpoch||0)+1;G.hubButtons=[]; // Do not retain stale hub buttons after arena load.
   stopLobbyAudio();if(G.desktop)ui.hud.style.display='flex';
-  if(G.endTimer){clearTimeout(G.endTimer);G.endTimer=null;}clearList(G.lobbyMeshes);G.blockers=[];G.state='shift';G.mode=mode;G.ended=false;G.waveTransition=false;G.waveToken++;G.hp=100;G.maxHp=100;G.score=0;G.chaos=0;G.combo=0;G.kills=0;G.blocks=0;G.perfectBlocks=0;G.propHits=0;G.bestCombo=0;G.wave=1;G.shiftTime=0;G.difficulty=1;G.spawnT=0;G.directorT=0;G.incidentT=0;G.bossSpawned=false;G.boss=null;G.lastRank='D';G.attackGrace=1.4;G.musicT=0;G.lastMusicBand='';G.playerStepT=0;G.nextPromotion=4;G.net.npcSeq=0;G.upgrade={power:1,defense:1,improvised:1,durability:999,recovery:0};
-  const lvl=G.meta.survivalLevel||1;if(mode==='LEVELS')G.difficulty=1+Math.max(0,lvl-1)*.12;G.maxHp=100;if(skinAbility()==='Thick Skin')G.maxHp+=14;G.hp=G.maxHp;G.upgrade.power*=selectedBatDef().power;G.bat={durability:9999,max:9999,broken:false,respawnT:0,crack:0};chooseObjective();chooseWaveModifier();newShiftContract();buildArena(scene);startShiftAudio(G.meta.selectedMap||'FLOOR 13');placePlayerSafe(scene);if(G.net.role!=='guest'||!G.net.connections.size)spawnWave(scene,waveEnemyCount());spawnBat(scene);refreshPlayerCosmetics();networkBroadcastSession();toast(mode==='SURVIVAL'?'SURVIVAL • WAVE 1':`LEVEL ${lvl} • WAVE 1`,1500);tone(90,.3,'sawtooth',.04,150);updateHUD();
+  if(G.endTimer){clearTimeout(G.endTimer);G.endTimer=null;}clearList(G.lobbyMeshes);G.blockers=[];G.state='shift';G.mode=mode;G.ended=false;G.waveTransition=false;G.pendingWave=null;G.pendingHub=null;G.lightIncident=null;G.waveToken++;G.hp=100;G.maxHp=100;G.score=0;G.chaos=0;G.combo=0;G.kills=0;G.blocks=0;G.perfectBlocks=0;G.propHits=0;G.bestCombo=0;G.wave=1;G.shiftTime=0;G.desktopLastHit=0;G.lastNpcStepAt=0;G.spawnPendingBoss=false;G.spawnPendingWorkers=0;G.spawnRetryT=0;G.spawnRetryCount=0;G.difficulty=1;G.spawnT=0;G.directorT=0;G.incidentT=0;G.bossSpawned=false;G.boss=null;G.lastRank='D';G.attackGrace=1.4;G.musicT=0;G.lastMusicBand='';G.playerStepT=0;G.nextPromotion=4;G.upgrade={power:1,defense:1,improvised:1,durability:999,recovery:0};
+  const lvl=G.meta.survivalLevel||1;if(mode==='LEVELS')G.difficulty=1+Math.max(0,lvl-1)*.12;G.maxHp=100;if(skinAbility()==='Thick Skin')G.maxHp+=14;G.hp=G.maxHp;G.upgrade.power*=selectedBatDef().power;G.bat={durability:9999,max:9999,broken:false,respawnT:0,crack:0};chooseObjective();chooseWaveModifier();newShiftContract();buildArena(scene);initOfficeTasks();
+  if(!placePlayerSafe(scene)){
+    toast('NO SAFE PLAYER SPAWN • RETURNING TO HUB',2000);
+    buildHub(scene);
+    return;
+  }
+  startShiftAudio(G.meta.selectedMap||'FLOOR 13');beginWaveSpawns(scene,false,waveEnemyCount());spawnBat(scene);refreshPlayerCosmetics();toast(mode==='SURVIVAL'?'SURVIVAL • WAVE 1':`LEVEL ${lvl} • WAVE 1`,1500);tone(90,.3,'sawtooth',.04,150);updateHUD();
 }
 function addBlocker(mesh,pad=.34){ if(!mesh)return mesh; G.blockers.push({mesh,pad}); return mesh; }
 function fixedBox(scene,name,pos,scale,color,pad=.34){ const m=box(scene,name,pos,scale,color); G.arenaMeshes.push(m); addBlocker(m,pad); return m; }
-function isBlockedXZ(x,z,radius=.34){
-  return G.blockers.some(b=>{
-    const m=b.mesh;if(!m||m.isDisposed?.())return false;
-    try{m.computeWorldMatrix(true);const bb=m.getBoundingInfo().boundingBox;const mn=bb.minimumWorld,mx=bb.maximumWorld;const pad=(b.pad||0)+radius;return x>mn.x-pad&&x<mx.x+pad&&z>mn.z-pad&&z<mx.z+pad;}catch{return false;}
-  });
+// CR4.9.535: reuse depth-scoped packed collision snapshots; nested blocker callbacks get independent scratch.
+const blockedXZProofPool=[];
+let blockedXZProofDepth=0;
+function isBlockedXZ(x,z,radius=.34,minY=-Infinity){
+  // CR4.9.540: bounded nested geometry callbacks; recursion fails closed.
+  if(blockedXZProofDepth>=8)return true;
+  // CR4.9.485: collision is a hot path; avoid allocating a finite-check array.
+  if(!Number.isFinite(x)||!Number.isFinite(z)||!Number.isFinite(radius)||
+     radius<0||!(minY===-Infinity||Number.isFinite(minY)))return true;
+  try{
+    const blockers=G.blockers;
+    if(!Array.isArray(blockers)||blockers.length>4096)return true;
+    const count=blockers.length;
+    if(count===0)return G.blockers!==blockers||blockers.length!==0;
+    // Single world-bounds read per blocker. Freeze scalar geometry before
+    // callbacks can mutate an earlier mesh, then verify without re-fetching.
+    const proof=blockedXZProofPool[blockedXZProofDepth]||
+      (blockedXZProofPool[blockedXZProofDepth]=[]);
+    const proofDepth=blockedXZProofDepth++;
+    try{
+      proof.length=0;
+    for(let i=0;i<count;i++){
+      if(G.blockers!==blockers||blockers.length!==count)return true;
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot))return true;
+      const entry=slot.value,mesh=entry?.mesh;
+      if(!mesh)return true;
+      if(mesh.isDisposed?.()){
+        proof.push(entry,mesh,null,null,null,0,0,0,0,0,0);
+        continue;
+      }
+      mesh.computeWorldMatrix(true);
+      const bounds=mesh.getBoundingInfo()?.boundingBox;
+      const mn=bounds?.minimumWorld,mx=bounds?.maximumWorld,pad=entry.pad??0;
+      if(!mn||!mx||!Number.isFinite(mn.x)||!Number.isFinite(mn.y)||
+         !Number.isFinite(mn.z)||!Number.isFinite(mx.x)||
+         !Number.isFinite(mx.y)||!Number.isFinite(mx.z)||
+         !Number.isFinite(pad)||mn.x>mx.x||mn.y>mx.y||
+         mn.z>mx.z||pad<0)return true;
+      proof.push(entry,mesh,pad,mn,mx,mn.x,mn.y,mn.z,mx.x,mx.y,mx.z);
+      if(Number.isFinite(minY)&&minY>mx.y+.8)continue;
+      const r=pad+radius;
+      if(x>mn.x-r&&x<mx.x+r&&z>mn.z-r&&z<mx.z+r)return true;
+    }
+    if(G.blockers!==blockers||blockers.length!==count)return true;
+    for(let i=0;i<count;i++){
+      const k=i*11,slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==proof[k])return true;
+      const entry=proof[k],mesh=proof[k+1],pad=proof[k+2];
+      if(entry.mesh!==mesh)return true;
+      if(pad===null){if(!mesh.isDisposed?.())return true;continue;}
+      if(mesh.isDisposed?.()||(entry.pad??0)!==pad)return true;
+      const mn=proof[k+3],mx=proof[k+4];
+      const liveBounds=mesh.getBoundingInfo()?.boundingBox;
+      if(!liveBounds||liveBounds.minimumWorld!==mn||liveBounds.maximumWorld!==mx)return true;
+      if(mn.x!==proof[k+5]||mn.y!==proof[k+6]||mn.z!==proof[k+7]||
+         mx.x!==proof[k+8]||mx.y!==proof[k+9]||mx.z!==proof[k+10])return true;
+    }
+    // A later entry getter may mutate an earlier vector in place.
+    for(let i=0;i<count;i++){
+      const k=i*11,slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==proof[k]||
+         slot.value?.mesh!==proof[k+1])return true;
+      if(proof[k+2]===null)continue;
+      // A later blocker callback may have changed an earlier pad value.
+      if((slot.value.pad??0)!==proof[k+2])return true;
+      const mn=proof[k+3],mx=proof[k+4];
+      if(mn.x!==proof[k+5]||mn.y!==proof[k+6]||mn.z!==proof[k+7]||
+         mx.x!==proof[k+8]||mx.y!==proof[k+9]||mx.z!==proof[k+10])return true;
+    }
+    return G.blockers!==blockers||blockers.length!==count;
+    }finally{
+      proof.length=0; // Release mesh/vector references between frames.
+      blockedXZProofDepth=proofDepth;
+    }
+  }catch{return true;}
 }
+// CR4.9.536: depth-isolated reusable packed snapshots for 3D collision checks.
+const blockedPointProofPool=[];
+let blockedPointProofDepth=0;
 function isBlockedPoint(x,y,z,radius=.08){
-  return G.blockers.some(b=>{const m=b.mesh;if(!m||m.isDisposed?.())return false;try{m.computeWorldMatrix(true);const bb=m.getBoundingInfo().boundingBox,mn=bb.minimumWorld,mx=bb.maximumWorld;const pad=(b.pad||0)*.35+radius;return x>mn.x-pad&&x<mx.x+pad&&y>mn.y-radius&&y<mx.y+radius&&z>mn.z-pad&&z<mx.z+pad;}catch{return false;}});
+  // CR4.9.540: avoid unbounded recursion and scratch growth from mesh callbacks.
+  if(blockedPointProofDepth>=8)return true;
+  if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(z)||!Number.isFinite(radius)||radius<0)return true;
+  try{
+    const blockers=G.blockers;
+    if(!Array.isArray(blockers)||blockers.length>4096)return true;
+    const count=blockers.length;
+    if(count===0)return G.blockers!==blockers||blockers.length!==0;
+    const scanned=blockedPointProofPool[blockedPointProofDepth]||
+      (blockedPointProofPool[blockedPointProofDepth]=[]);
+    const proofDepth=blockedPointProofDepth++;
+    try{
+      scanned.length=0;
+    // Packed snapshot: avoid per-blocker objects while recording live world bounds.
+    // A later mesh callback may mutate an EARLIER obstacle in place.
+    for(let i=0;i<count;i++){
+      if(G.blockers!==blockers||blockers.length!==count)return true;
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot))return true;
+      const b=slot.value,m=b?.mesh;
+      if(!m)return true;
+      if(m.isDisposed?.()){
+        scanned.push(b,m,null,null,null,0,0,0,0,0,0);
+        continue;
+      }
+      m.computeWorldMatrix(true);
+      const bb=m.getBoundingInfo().boundingBox,mn=bb.minimumWorld,mx=bb.maximumWorld;
+      const pad=b.pad??0;
+      if(!Number.isFinite(mn.x)||!Number.isFinite(mn.y)||!Number.isFinite(mn.z)||
+         !Number.isFinite(mx.x)||!Number.isFinite(mx.y)||!Number.isFinite(mx.z)||
+         !Number.isFinite(pad)||mn.x>mx.x||mn.y>mx.y||mn.z>mx.z||pad<0)return true;
+      scanned.push(b,m,pad,mn,mx,mn.x,mn.y,mn.z,mx.x,mx.y,mx.z);
+      const r=pad*.35+radius;
+      if(x>mn.x-r&&x<mx.x+r&&y>mn.y-radius&&y<mx.y+radius&&z>mn.z-r&&z<mx.z+r)return true;
+    }
+    if(G.blockers!==blockers||blockers.length!==count)return true;
+    for(let i=0;i<count;i++){
+      const k=i*11,slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==scanned[k])return true;
+      const b=slot.value,m=scanned[k+1],pad=scanned[k+2];
+      if(b?.mesh!==m)return true;
+      if(pad===null){if(!m.isDisposed?.())return true;continue;}
+      if((b.pad??0)!==pad||m.isDisposed?.())return true;
+      const bb=m.getBoundingInfo().boundingBox,mn=bb.minimumWorld,mx=bb.maximumWorld;
+      if(mn!==scanned[k+3]||mx!==scanned[k+4]||
+         mn.x!==scanned[k+5]||mn.y!==scanned[k+6]||mn.z!==scanned[k+7]||
+         mx.x!==scanned[k+8]||mx.y!==scanned[k+9]||mx.z!==scanned[k+10])return true;
+    }
+    // getBoundingInfo() itself may run callbacks and mutate an earlier box
+    // after that box was verified. Finish with a scalar-only bounds pass.
+    for(let i=0;i<count;i++){
+      const k=i*11,pad=scanned[k+2];
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==scanned[k]||
+         slot.value?.mesh!==scanned[k+1])return true;
+      if(pad===null)continue;
+      // Check padding again after all fallible Babylon bounds callbacks.
+      if((slot.value.pad??0)!==pad)return true;
+      const mn=scanned[k+3],mx=scanned[k+4];
+      if(mn.x!==scanned[k+5]||mn.y!==scanned[k+6]||mn.z!==scanned[k+7]||
+         mx.x!==scanned[k+8]||mx.y!==scanned[k+9]||mx.z!==scanned[k+10])return true;
+    }
+    return G.blockers!==blockers||blockers.length!==count;
+    }finally{
+      scanned.length=0;
+      blockedPointProofDepth=proofDepth;
+    }
+  }catch{return true;}
 }
-function moveNpcWithCollision(npc,delta){
-  const old=npc.root.position.clone(),next=old.add(delta),radius=npc.type==='boss'?.52:.34;next.x=Math.max(-6.7,Math.min(6.7,next.x));next.z=Math.max(-6.7,Math.min(6.7,next.z));
-  if(!isBlockedXZ(next.x,next.z,radius)){npc.root.position.x=next.x;npc.root.position.z=next.z;return true;}
-  const slideX=new B.Vector3(next.x,old.y,old.z),slideZ=new B.Vector3(old.x,old.y,next.z);
-  if(!isBlockedXZ(slideX.x,slideX.z,radius)){npc.root.position.x=slideX.x;return true;}
-  if(!isBlockedXZ(slideZ.x,slideZ.z,radius)){npc.root.position.z=slideZ.z;return true;}return false;
+// Publish NPC horizontal coordinates together when possible; rollback on a
+// hostile or partially-throwing position setter instead of accepting half a move.
+// CR4.9.327: verify both own data slots AND original root identity after
+// each fallible position write. A proxy setter can commit, swap the root,
+// replace a slot with an accessor, or throw after partially applying a write.
+// Private quarantine survives throwing or deceptive NPC flag setters.
+const unsafeNpcHorizontalPositions=new WeakSet();
+function commitNpcHorizontalPosition(npc,p,x,z,expectedX,expectedZ,allowRecovery=false,finalClearance=null){
+  try{
+    if(!npc||(!allowRecovery&&(unsafeNpcHorizontalPositions.has(npc)||npc.horizontalPositionUnsafe))||!p||
+       !(Number.isFinite(x)&&Number.isFinite(z)&&Number.isFinite(expectedX)&&Number.isFinite(expectedZ)))return false;
+    const root=npc.root;
+    if(!root||root.isDisposed?.()||root.position!==p)return false;
+    const exact=(ex,ez)=>{
+      if(npc.root!==root||root.position!==p)return false;
+      const xd=Object.getOwnPropertyDescriptor(p,'x');
+      const zd=Object.getOwnPropertyDescriptor(p,'z');
+      if(!xd||!zd||!('value' in xd)||!('value' in zd)||
+         !xd.writable||!zd.writable||xd.value!==ex||zd.value!==ez)return false;
+      return p.x===ex&&p.z===ez&&npc.root===root&&root.position===p;
+    };
+    if(!exact(expectedX,expectedZ))return false;
+    let committed=false;
+    try{
+      p.x=x;
+      if(!exact(x,expectedZ))throw Error('stale NPC position');
+      p.z=z;
+      committed=exact(x,z);
+    }catch{}
+    if(committed){
+      // The public safety flag is fallible even after both coordinates commit.
+      // On commit-then-throw or a final setter side effect, best-effort roll
+      // back the original root and ALWAYS keep private quarantine.
+      let finalProof=false;
+      try{
+        npc.horizontalPositionUnsafe=false;
+        // CR4.9.626: recovery-specific collision proof runs AFTER
+        // fallible coordinate/flag setters, catching blockers moved by callbacks.
+        // Ordinary movement incurs no extra collision query.
+        finalProof=exact(x,z)&&(!finalClearance||finalClearance()===true)&&exact(x,z);
+      }catch{}
+      if(finalProof){
+        unsafeNpcHorizontalPositions.delete(npc);
+        return true;
+      }
+      try{
+        if(npc.root===root&&root.position===p){
+          p.x=expectedX;p.z=expectedZ;
+          exact(expectedX,expectedZ);
+        }
+      }catch{}
+      unsafeNpcHorizontalPositions.add(npc);
+      try{npc.horizontalPositionUnsafe=true;}catch{}
+      return false;
+    }
+    // Roll back only the original position object. If a setter has changed
+    // the root or descriptors, fail closed and quarantine future movement.
+    let restored=false;
+    try{
+      if(npc.root===root&&root.position===p){
+        p.x=expectedX;p.z=expectedZ;
+        restored=exact(expectedX,expectedZ);
+      }
+    }catch{}
+    // Even a restored position cannot undo arbitrary callbacks from a failed
+    // setter (including commit-then-throw). Quarantine until a safe recovery.
+    unsafeNpcHorizontalPositions.add(npc);
+    try{npc.horizontalPositionUnsafe=true;}catch{}
+    return false;
+  }catch{return false;}
 }
+// Swept NPC movement: large knockbacks must not tunnel through thin walls.
+// CR4.9.640: sweep every short NPC leg against expanded wall AABBs.
+// Endpoint-only probes could tunnel through thin walls between .18m steps.
+function npcSweptLegBlocked(bounds,clearanceY,ax,az,bx,bz){
+  if(!Number.isFinite(ax)||!Number.isFinite(az)||
+     !Number.isFinite(bx)||!Number.isFinite(bz))return true;
+  const dx=bx-ax,dz=bz-az;
+  const minX=Math.min(ax,bx),maxX=Math.max(ax,bx);
+  const minZ=Math.min(az,bz),maxZ=Math.max(az,bz);
+  for(let i=0;i<bounds.length;i+=5){
+    if(Number.isFinite(clearanceY)&&clearanceY>bounds[i+4]+.8)continue;
+    const loX=bounds[i],hiX=bounds[i+1],loZ=bounds[i+2],hiZ=bounds[i+3];
+    if(maxX<=loX||minX>=hiX||maxZ<=loZ||minZ>=hiZ)continue;
+    let enter=0,leave=1;
+    if(dx===0){if(ax<=loX||ax>=hiX)continue;}
+    else{
+      let a=(loX-ax)/dx,b=(hiX-ax)/dx;
+      if(a>b){const tmp=a;a=b;b=tmp;}
+      enter=Math.max(enter,a);leave=Math.min(leave,b);
+      if(!(enter<leave))continue;
+    }
+    if(dz===0){if(az<=loZ||az>=hiZ)continue;}
+    else{
+      let a=(loZ-az)/dz,b=(hiZ-az)/dz;
+      if(a>b){const tmp=a;a=b;b=tmp;}
+      enter=Math.max(enter,a);leave=Math.min(leave,b);
+    }
+    if(enter<leave)return true;
+  }
+  return false;
+}
+// CR4.9.643: reuse isolated packed NPC movement snapshots on the hot path.
+// Bound reentrant callbacks and release all retained Babylon references.
+const npcMoveScratchPool=[];
+let npcMoveDepth=0;
+function moveNpcWithCollision(npc,delta,airborneMinY=-Infinity){
+  if(npcMoveDepth>=8)return false;
+  const depth=npcMoveDepth;
+  const scratch=npcMoveScratchPool[depth]||
+    (npcMoveScratchPool[depth]={bounds:[],scanned:[],geometryProof:[]});
+  npcMoveDepth=depth+1;
+  try{
+  if(!npc||!delta)return false;
+  let p=null,dx=NaN,dz=NaN,initialX=NaN,initialZ=NaN;
+  try{
+    const root=npc.root;
+    if(!root||root.isDisposed?.())return false;
+    p=root.position;dx=delta.x;dz=delta.z;
+    initialX=p?.x;initialZ=p?.z;
+    if(!p||!Number.isFinite(initialX)||!Number.isFinite(initialZ)||!Number.isFinite(dx)||!Number.isFinite(dz))return false;
+  }catch{return false;}
+  const distance=Math.hypot(dx,dz);
+  if(!(distance>0))return false;
+  // Collision padding includes NPC radius, so .18m substeps cannot jump a blocker.
+  // Reject runaway impulses rather than skipping the collision checks.
+  const steps=Math.ceil(distance/.18);
+  if(steps>128)return false;
+  const sx=dx/steps,sz=dz/steps,radius=npc.type==='boss'?.52:.34;
+  // Only dead airborne ragdolls can bypass a low obstacle; live NPCs stay grounded.
+  const clearanceY=npc.dead&&npc.ragdollT>0&&Number.isFinite(airborneMinY)?airborneMinY:-Infinity;
+  // Conservative horizontal broadphase for repeated ragdoll/worker collision steps.
+  // Do not cull when the root begins outside the arena: clamping can move it
+  // farther than the nominal endpoint over several substeps.
+  const cull=initialX>=-6.7&&initialX<=6.7&&initialZ>=-6.7&&initialZ<=6.7;
+  const ex=Math.max(-6.7,Math.min(6.7,initialX+dx)),ez=Math.max(-6.7,Math.min(6.7,initialZ+dz));
+  const loX=Math.min(initialX,ex),hiX=Math.max(initialX,ex),loZ=Math.min(initialZ,ez),hiZ=Math.max(initialZ,ez);
+  // A synchronous swept move cannot move furniture; snapshot its world bounds once.
+  // This avoids recomputing every blocker mesh matrix for each .18m step.
+  // CR4.9.542: descriptor-verified, immutable swept obstacle roster.
+  // A callback must not turn a disposed obstacle live, replace a mesh/pad,
+  // or mutate world bounds between collision planning and the final move.
+  const bounds=scratch.bounds;bounds.length=0;
+  let snapshotIntact=()=>false;
+  try{
+    const blockers=G.blockers;
+    if(!Array.isArray(blockers)||blockers.length>4096)return false;
+    const count=blockers.length,scanned=scratch.scanned,geometryProof=scratch.geometryProof;
+    scanned.length=0;geometryProof.length=0;
+    snapshotIntact=()=>{
+      try{
+        if(G.blockers!==blockers||blockers.length!==count)return false;
+        for(let i=0;i<count;i++){
+          const k=i*4,slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+          const b=scanned[k],m=scanned[k+1],pad=scanned[k+2],wasDisposed=scanned[k+3];
+          if(!slot||!('value' in slot)||slot.value!==b)return false;
+          const ms=Object.getOwnPropertyDescriptor(b,'mesh');
+          const ps=Object.getOwnPropertyDescriptor(b,'pad');
+          if(!ms||!('value' in ms)||ms.value!==m||
+             (ps&&!('value' in ps))||(ps?ps.value:0)!==pad||
+             !!m.isDisposed?.()!==wasDisposed)return false;
+        }
+        for(let i=0;i<geometryProof.length;i+=9){
+          const mesh=geometryProof[i],mn=geometryProof[i+1],mx=geometryProof[i+2];
+          // CR4.9.642: replacing the Babylon bounding-box vectors without
+          // mutating the old ones must invalidate an in-flight NPC move.
+          const bb=mesh.getBoundingInfo()?.boundingBox;
+          if(!bb||bb.minimumWorld!==mn||bb.maximumWorld!==mx)return false;
+        }
+        // CR4.9.660: a descriptor trap in the final roster pass may
+        // mutate earlier blocker geometry. Do the scalar-only proof AFTER
+        // that pass, without adding another collision/mesh-matrix query.
+        for(let i=0;i<count;i++){
+          const k=i*4,slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+          const b=scanned[k],m=scanned[k+1],pad=scanned[k+2];
+          if(!slot||!('value' in slot)||slot.value!==b)return false;
+          const ms=Object.getOwnPropertyDescriptor(b,'mesh');
+          const ps=Object.getOwnPropertyDescriptor(b,'pad');
+          if(!ms||!('value' in ms)||ms.value!==m||
+             (ps&&!('value' in ps))||(ps?ps.value:0)!==pad)return false;
+        }
+        for(let i=0;i<geometryProof.length;i+=9){
+          const mn=geometryProof[i+1],mx=geometryProof[i+2];
+          if(mn.x!==geometryProof[i+3]||mn.y!==geometryProof[i+4]||
+             mn.z!==geometryProof[i+5]||mx.x!==geometryProof[i+6]||
+             mx.y!==geometryProof[i+7]||mx.z!==geometryProof[i+8])return false;
+        }
+        return G.blockers===blockers&&blockers.length===count;
+      }catch{return false;}
+    };
+    for(let i=0;i<count;i++){
+      if(G.blockers!==blockers||blockers.length!==count)return false;
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||!slot.value)return false;
+      const b=slot.value,ms=Object.getOwnPropertyDescriptor(b,'mesh');
+      const ps=Object.getOwnPropertyDescriptor(b,'pad');
+      if(!ms||!('value' in ms)||!ms.value||
+         (ps&&!('value' in ps)))return false;
+      const m=ms.value,pad=ps?ps.value:0;
+      if(!Number.isFinite(pad)||pad<0)return false;
+      try{
+        if(m.isDisposed?.()){
+          scanned.push(b,m,pad,true);
+          continue;
+        }
+        m.computeWorldMatrix(true);
+        const bb=m.getBoundingInfo()?.boundingBox;
+        const mn=bb?.minimumWorld,mx=bb?.maximumWorld;
+        if(!mn||!mx)return false;
+        const minX=mn.x,minY=mn.y,minZ=mn.z,maxX=mx.x,maxY=mx.y,maxZ=mx.z;
+        scanned.push(b,m,pad,false);
+        geometryProof.push(m,mn,mx,minX,minY,minZ,maxX,maxY,maxZ);
+        if(!Number.isFinite(minX)||!Number.isFinite(minY)||!Number.isFinite(minZ)||
+           !Number.isFinite(maxX)||!Number.isFinite(maxY)||!Number.isFinite(maxZ)||
+           minX>maxX||minY>maxY||minZ>maxZ)return false;
+        const r=pad+radius;
+        if(cull&&(maxX+r<=loX||minX-r>=hiX||maxZ+r<=loZ||minZ-r>=hiZ))continue;
+        bounds.push(minX-r,maxX+r,minZ-r,maxZ+r,maxY);
+      }catch{return false;}
+    }
+    if(!snapshotIntact())return false;
+  }catch{return false;}
+  // CR4.9.642: a continuously clear NPC corridor needs only ONE swept
+  // segment, even when nearby furniture was included in the broadphase.
+  // A blocked corridor retains the old substep/axis-slide behavior.
+  if(cull&&!npcSweptLegBlocked(bounds,clearanceY,initialX,initialZ,ex,ez)){
+    if(ex===initialX&&ez===initialZ)return false;
+    if(!snapshotIntact())return false;
+    // Recheck geometry AFTER fallible position/flag setters.
+    return commitNpcHorizontalPosition(npc,p,ex,ez,initialX,initialZ,false,snapshotIntact);
+  }
+  // Segment-vs-wall probes preserve the original axis-slide behavior while
+  // preventing a fast worker or ragdoll from crossing a thin obstacle.
+  // Simulate all substeps locally and publish the final position only once.
+  // Repeated property writes can invoke observers or throw halfway through a sweep.
+  let cx=initialX,cz=initialZ;
+  const startX=cx,startZ=cz;
+  for(let i=0;i<steps;i++){
+    const ox=cx,oz=cz;
+    const nx=Math.max(-6.7,Math.min(6.7,ox+sx));
+    const nz=Math.max(-6.7,Math.min(6.7,oz+sz));
+    if(!npcSweptLegBlocked(bounds,clearanceY,ox,oz,nx,nz)){cx=nx;cz=nz;}
+    else if(!npcSweptLegBlocked(bounds,clearanceY,ox,oz,nx,oz))cx=nx;
+    else if(!npcSweptLegBlocked(bounds,clearanceY,ox,oz,ox,nz))cz=nz;
+    else break;
+  }
+  if(cx===startX&&cz===startZ)return false;
+  if(!snapshotIntact())return false;
+  return commitNpcHorizontalPosition(npc,p,cx,cz,startX,startZ,false,snapshotIntact);
+  }finally{
+    scratch.bounds.length=0;
+    scratch.scanned.length=0;
+    scratch.geometryProof.length=0;
+    npcMoveDepth=depth;
+  }
+}
+// CR4.9.544: bound reentrant A* requests triggered by hostile mesh callbacks.
+// CR4.9.575: share immutable A* direction offsets across all NPC requests.
+const NPC_PATH_DIRS=Object.freeze([[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]].map(Object.freeze));
+let npcPathQueryDepth=0;
+const npcPathScratchPool=[];
+// CR4.9.598: keep one lazily cleared occupancy cache per nested A* depth.
+const npcPathBlockedCachePool=[];
 function findNpcPath(start,target,radius=.34){
-  const step=.75,min=-6.3,max=6.3,key=(x,z)=>`${x},${z}`,toGrid=v=>Math.max(0,Math.min(Math.round((max-min)/step),Math.round((v-min)/step))),toWorld=i=>min+i*step;
-  const sx=toGrid(start.x),sz=toGrid(start.z),tx=toGrid(target.x),tz=toGrid(target.z),open=[[sx,sz]],came=new Map(),seen=new Set([key(sx,sz)]),dirs=[[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
-  let found=null,loops=0;while(open.length&&loops++<1200){open.sort((a,b)=>(Math.hypot(a[0]-tx,a[1]-tz))-(Math.hypot(b[0]-tx,b[1]-tz)));const cur=open.shift();if(Math.abs(cur[0]-tx)<=1&&Math.abs(cur[1]-tz)<=1){found=cur;break;}for(const d of dirs){const nx=cur[0]+d[0],nz=cur[1]+d[1];if(nx<0||nz<0||toWorld(nx)>max||toWorld(nz)>max)continue;const k=key(nx,nz);if(seen.has(k)||isBlockedXZ(toWorld(nx),toWorld(nz),radius+.08))continue;seen.add(k);came.set(k,cur);open.push([nx,nz]);}}
-  if(!found)return[];const path=[];let cur=found;while(cur&&(cur[0]!==sx||cur[1]!==sz)){path.push(new B.Vector3(toWorld(cur[0]),0,toWorld(cur[1])));cur=came.get(key(cur[0],cur[1]));}return path.reverse();
+  if(npcPathQueryDepth>=4)return [];
+  npcPathQueryDepth++;
+  try{
+  const step=.75,min=-6.3,max=6.3,maxIndex=Math.round((max-min)/step);
+  // Grid keys are unique bounded integers: avoid repeated string allocations in A*.
+  const key=(x,z)=>z*(maxIndex+1)+x,toGrid=v=>Math.max(0,Math.min(maxIndex,Math.round((v-min)/step))),toWorld=i=>min+i*step;
+  // CR4.9.513: avoid a temporary finite-check array on each A* query.
+  // CR4.9.543: anchor each route to one immutable start/target snapshot.
+  // Geometry callbacks must not silently change the requested endpoints.
+  let startX,startZ,targetX,targetZ;
+  try{
+    startX=start?.x;startZ=start?.z;targetX=target?.x;targetZ=target?.z;
+  }catch{return [];}
+  if(!Number.isFinite(startX)||!Number.isFinite(startZ)||
+     !Number.isFinite(targetX)||!Number.isFinite(targetZ)||
+     !Number.isFinite(radius)||radius<0)return [];
+  const endpointsIntact=()=>{
+    try{return start.x===startX&&start.z===startZ&&
+      target.x===targetX&&target.z===targetZ;}catch{return false;}
+  };
+  let sx=toGrid(startX),sz=toGrid(startZ);
+  const tx=toGrid(targetX),tz=toGrid(targetZ);
+  // Cache world-space blocker bounds once per synchronous A* query.
+  // Recomputing every mesh matrix for every 20cm edge probe is expensive in VR.
+  // CR4.9.645: isolate reusable path snapshots by recursion depth.
+  // Release all mesh references in finally; retain only numeric proof buffers.
+  const pathScratchIndex=npcPathQueryDepth-1;
+  const pathBuffers=npcPathScratchPool[pathScratchIndex]||
+    (npcPathScratchPool[pathScratchIndex]={});
+  const expandedBounds=pathBuffers.expandedBounds||(pathBuffers.expandedBounds=[]);
+  const scanned=pathBuffers.scanned||(pathBuffers.scanned=[]);
+  const scannedRows=pathBuffers.scannedRows||(pathBuffers.scannedRows=[]);
+  const proofRows=pathBuffers.proofRows||(pathBuffers.proofRows=[]);
+  expandedBounds.length=0;scanned.length=0;
+  let rosterIntact=()=>false,pathGeometryIntact=()=>false;
+  try{
+    const blockers=G.blockers;
+    if(!Array.isArray(blockers)||blockers.length>4096)return [];
+    const blockerCount=blockers.length;
+    rosterIntact=()=>{
+      try{
+        if(G.blockers!==blockers||blockers.length!==blockerCount)return false;
+        for(let i=0;i<blockerCount;i++){
+          const entry=scanned[i];
+          const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+          if(!entry||!slot||!('value' in slot)||slot.value!==entry[0])return false;
+          const meshSlot=Object.getOwnPropertyDescriptor(entry[0],'mesh');
+          const padSlot=Object.getOwnPropertyDescriptor(entry[0],'pad');
+          if(!meshSlot||!('value' in meshSlot)||meshSlot.value!==entry[1]||
+             (padSlot&&!('value' in padSlot))||
+             (entry[2]!==null&&(padSlot?padSlot.value:0)!==entry[2]))return false;
+        }
+        return G.blockers===blockers&&blockers.length===blockerCount;
+      }catch{return false;}
+    };
+    // CR4.9.328: a Vector3 constructor or mesh callback may mutate a
+    // blocker in place without changing its identity. Validate exact world
+    // bounds before returning a route; do not silently use a stale path.
+    pathGeometryIntact=()=>{
+      try{
+        if(!rosterIntact())return false;
+        const exactBounds=(entry,refresh)=>{
+          const m=entry[1],proof=entry[3];
+          // A previously disposed blocker becoming live invalidates the path.
+          if(entry[4]===true)return !!m&&m.isDisposed?.()===true;
+          if(!proof)return true;
+          if(m.isDisposed?.())return false;
+          if(refresh)m.computeWorldMatrix(true);
+          const bb=m.getBoundingInfo().boundingBox;
+          // Compare Babylon world bounds directly: no temporary vector array
+          // on either geometry-integrity pass.
+          const mn=bb.minimumWorld,mx=bb.maximumWorld;
+          // Replaced bounds vectors invalidate even equal-coordinate routes.
+          if(mn!==entry[7]||mx!==entry[8])return false;
+          entry[5]=mn;entry[6]=mx;
+          return Number.isFinite(mn.x)&&Number.isFinite(mn.y)&&Number.isFinite(mn.z)&&
+            Number.isFinite(mx.x)&&Number.isFinite(mx.y)&&Number.isFinite(mx.z)&&
+            mn.x===proof[0]&&mn.y===proof[1]&&mn.z===proof[2]&&
+            mx.x===proof[3]&&mx.y===proof[4]&&mx.z===proof[5];
+        };
+        // First refresh world matrices; then read all bounds again so a later
+        // mesh callback cannot silently move an earlier obstacle.
+        for(const entry of scanned)if(!exactBounds(entry,true))return false;
+        if(!rosterIntact())return false;
+        for(const entry of scanned)if(!exactBounds(entry,false))return false;
+        // The final getBoundingInfo callback can mutate an earlier vector.
+        // Finish with a callback-free scalar check of all last-read vectors.
+        for(const entry of scanned){
+          if(entry[4]===true)continue;
+          const proof=entry[3],mn=entry[5],mx=entry[6];
+          if(!proof||!mn||!mx||mn.x!==proof[0]||mn.y!==proof[1]||
+             mn.z!==proof[2]||mx.x!==proof[3]||mx.y!==proof[4]||
+             mx.z!==proof[5])return false;
+        }
+        // CR4.9.646: getters in the FINAL roster/endpoint witness may
+        // mutate earlier blocker vectors. End with a callback-free scalar
+        // witness, never return a stale A* route after such side effects.
+        if(!rosterIntact()||!endpointsIntact())return false;
+        for(const entry of scanned){
+          if(entry[4]===true)continue;
+          const proof=entry[3],mn=entry[5],mx=entry[6];
+          if(!proof||!mn||!mx||mn.x!==proof[0]||mn.y!==proof[1]||
+             mn.z!==proof[2]||mx.x!==proof[3]||mx.y!==proof[4]||
+             mx.z!==proof[5])return false;
+        }
+        return G.blockers===blockers&&blockers.length===blockerCount;
+      }catch{return false;}
+    };
+    for(let i=0;i<blockerCount;i++){
+    // A path must not depend on accessor-backed or missing obstacle slots.
+    const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+    if(!slot||!('value' in slot))return [];
+    const b=slot.value;
+    const meshSlot=Object.getOwnPropertyDescriptor(b,'mesh');
+    const padSlot=Object.getOwnPropertyDescriptor(b,'pad');
+    if(!meshSlot||!('value' in meshSlot)||!meshSlot.value||
+       (padSlot&&!('value' in padSlot)))return [];
+    const m=meshSlot.value;
+    try{
+      if(m.isDisposed?.()){
+        const k=scanned.length,row=scannedRows[k]||(scannedRows[k]=[]);
+        row.length=0;row.push(b,m,null,null,true);scanned.push(row);continue;
+      }
+      m.computeWorldMatrix(true);
+      const bb=m.getBoundingInfo().boundingBox,pad=padSlot?padSlot.value:0;
+      // CR4.9.557: packed path bounds avoid a temporary AABB array per
+      // obstacle on every A* request; retain separate immutable geometry proof.
+      const mn=bb.minimumWorld,mx=bb.maximumWorld;
+      const minX=mn.x,minY=mn.y,minZ=mn.z,maxX=mx.x,maxY=mx.y,maxZ=mx.z;
+      const k=scanned.length;
+      const proof=proofRows[k]||(proofRows[k]=new Array(6));
+      proof[0]=minX;proof[1]=minY;proof[2]=minZ;
+      proof[3]=maxX;proof[4]=maxY;proof[5]=maxZ;
+      // Unknown live geometry cannot establish a safe route. Wait for valid bounds.
+      if(!Number.isFinite(minX)||!Number.isFinite(minY)||!Number.isFinite(minZ)||
+         !Number.isFinite(maxX)||!Number.isFinite(maxY)||!Number.isFinite(maxZ)||
+         !Number.isFinite(pad)||minX>maxX||minY>maxY||minZ>maxZ||
+         pad<0)return [];
+      const row=scannedRows[k]||(scannedRows[k]=[]);
+      row.length=0;row.push(b,m,pad,proof,false,mn,mx,mn,mx);
+      scanned.push(row);
+      // Expand while reading each proven blocker: avoid a second packed array and pass.
+      const clearance=pad+radius+.08;
+      expandedBounds.push(minX-clearance,maxX+clearance,minZ-clearance,maxZ+clearance);
+    }catch{return [];}
+    }
+    if(!rosterIntact())return [];
+  }catch{return [];}
+  // CR4.9.329: all route probes use the same clearance. Expand each
+  // blocker only once, then use an allocation-free inner loop for A* edges.
+  // Expanded blocker bounds are already packed in the geometry snapshot.
+  const pathBlocked=(x,z)=>{
+    for(let i=0;i<expandedBounds.length;i+=4){
+      if(x>expandedBounds[i]&&x<expandedBounds[i+1]&&
+         z>expandedBounds[i+2]&&z<expandedBounds[i+3])return true;
+    }
+    return false;
+  };
+  // 0 = unknown, 1 = clear, 2 = blocked; one compact cell per grid coordinate.
+  let blockedCache=null;
+  const cacheDepth=npcPathQueryDepth-1;
+  const blockedCell=(gx,gz)=>{
+    // A direct clear corridor needs no occupancy cache. Reuse storage only
+    // when A* actually asks for a grid cell; nested queries use other slots.
+    if(!blockedCache){
+      blockedCache=npcPathBlockedCachePool[cacheDepth]||
+        (npcPathBlockedCachePool[cacheDepth]=new Uint8Array((maxIndex+1)*(maxIndex+1)));
+      blockedCache.fill(0);
+    }
+    const k=key(gx,gz),state=blockedCache[k];
+    if(state!==0)return state===2;
+    const blocked=pathBlocked(toWorld(gx),toWorld(gz));
+    blockedCache[k]=blocked?2:1;
+    return blocked;
+  };
+  // The rounded grid center can be inside a desk even while the actual NPC is clear.
+  // Anchor the route to a free grid cell reachable from the NPC's real position.
+  if(pathBlocked(startX,startZ))return [];
+  // Exact continuous segment sweep against the already expanded 2D blockers.
+  // Replaces repeated sample probes: thin office walls cannot fall between samples.
+  const routeSegmentClear=(x0,z0,x1,z1)=>{
+    const dx=x1-x0,dz=z1-z0;
+    // CR4.9.513: compute the segment broadphase once, not per obstacle.
+    const loX=Math.min(x0,x1),hiX=Math.max(x0,x1);
+    const loZ=Math.min(z0,z1),hiZ=Math.max(z0,z1);
+    for(let i=0;i<expandedBounds.length;i+=4){
+      const minX=expandedBounds[i],maxX=expandedBounds[i+1];
+      const minZ=expandedBounds[i+2],maxZ=expandedBounds[i+3];
+      // Broadphase: no overlap even with the segment's complete bounding box.
+      if(hiX<=minX||loX>=maxX||hiZ<=minZ||loZ>=maxZ)continue;
+      let enter=0,leave=1;
+      if(dx===0){if(x0<=minX||x0>=maxX)continue;}
+      else{
+        let a=(minX-x0)/dx,b=(maxX-x0)/dx;
+        if(a>b){const t=a;a=b;b=t;}
+        enter=Math.max(enter,a);leave=Math.min(leave,b);
+        if(enter>=leave)continue;
+      }
+      if(dz===0){if(z0<=minZ||z0>=maxZ)continue;}
+      else{
+        let a=(minZ-z0)/dz,b=(maxZ-z0)/dz;
+        if(a>b){const t=a;a=b;b=t;}
+        enter=Math.max(enter,a);leave=Math.min(leave,b);
+        if(enter>=leave)continue;
+      }
+      return false;
+    }
+    return true;
+  };
+  // CR4.9.556: chase directly when the actual NPC and target have a
+  // continuously clear corridor. Avoid A* allocations for open office lanes,
+  // while still proving the entire blocker snapshot before returning.
+  if(startX>=min&&startX<=max&&startZ>=min&&startZ<=max&&
+     targetX>=min&&targetX<=max&&targetZ>=min&&targetZ<=max&&
+     ((targetX-startX)*(targetX-startX)+(targetZ-startZ)*(targetZ-startZ))>.000625&&
+     !pathBlocked(targetX,targetZ)&&
+     routeSegmentClear(startX,startZ,targetX,targetZ)){
+    const direct=new B.Vector3(targetX,0,targetZ);
+    if(!endpointsIntact()||!pathGeometryIntact())return [];
+    return [direct];
+  }
+  const startSegmentClear=(wx,wz)=>routeSegmentClear(startX,startZ,wx,wz);
+  let startAdjusted=false;
+  if(blockedCell(sx,sz)||!startSegmentClear(toWorld(sx),toWorld(sz))){
+    // CR4.9.610: keep candidate coordinates in scalars instead of
+    // allocating a new [gx,gz] pair for each improved blocked-start choice.
+    let candidateX=-1,candidateZ=-1,bestDistance=Infinity;
+    for(let ox=-3;ox<=3;ox++)for(let oz=-3;oz<=3;oz++){
+      const gx=sx+ox,gz=sz+oz;
+      if(gx<0||gz<0||gx>maxIndex||gz>maxIndex||blockedCell(gx,gz))continue;
+      // CR4.9.622: compare squared distances; no sqrt for each candidate.
+      const wx=toWorld(gx),wz=toWorld(gz),dx=wx-startX,dz=wz-startZ,distanceSq=dx*dx+dz*dz;
+      if(distanceSq>12.25||distanceSq>=bestDistance||!startSegmentClear(wx,wz))continue;
+      candidateX=gx;candidateZ=gz;bestDistance=distanceSq;
+    }
+    if(candidateX<0)return [];
+    sx=candidateX;sz=candidateZ;startAdjusted=true;
+  }
+  const dirs=NPC_PATH_DIRS;
+  // A* grid cell centers may be clear even when a thin wall cuts the edge between them.
+  const edgeClear=(ax,az,bx,bz)=>routeSegmentClear(toWorld(ax),toWorld(az),toWorld(bx),toWorld(bz));
+  const heuristic=(x,z)=>{const dx=Math.abs(x-tx),dz=Math.abs(z-tz);return Math.max(dx,dz)+(Math.SQRT2-1)*Math.min(dx,dz);};
+  // CR4.9.578: binary min-heap keeps the A* frontier ordered without an
+  // O(frontier length) scan on every NPC path expansion. Stable insertion
+  // order resolves equal f/g scores deterministically.
+  // CR4.9.582: bounded 18x18 NPC grid uses dense numeric storage instead
+  // of three per-query hash tables. -1 marks an absent predecessor.
+  const cells=(maxIndex+1)*(maxIndex+1);
+  // CR4.9.595: reuse isolated per-depth A* scratch arrays for busy NPCs.
+  const scratchIndex=npcPathQueryDepth-1;
+  const scratch=npcPathScratchPool[scratchIndex]||
+    (npcPathScratchPool[scratchIndex]={});
+  if(!scratch.came){scratch.came=new Int16Array(cells);
+    scratch.gScore=new Float64Array(cells);scratch.closed=new Uint8Array(cells);}
+  const {came,gScore,closed}=scratch,open=scratch.open||(scratch.open=[]);
+  open.length=0;
+  came.fill(-1);gScore.fill(Infinity);closed.fill(0);gScore[key(sx,sz)]=0;
+  // Reuse at most 512 heap nodes per recursion depth; overflow remains
+  // transient, bounding retained memory on unusually crowded maps.
+  const nodePool=scratch.nodes||(scratch.nodes=[]);
+  let nodeCount=0;
+  let insertion=0;
+  const better=(a,b)=>a.f<b.f||(a.f===b.f&&(a.g<b.g||(a.g===b.g&&a.order<b.order)));
+  const openPush=(x,z,g,f)=>{
+    const index=nodeCount++;
+    const node=index<512?(nodePool[index]||(nodePool[index]={x,z,g,f,order:0})):
+      {x,z,g,f,order:0};
+    node.x=x;node.z=z;node.g=g;node.f=f;
+    node.order=insertion++;
+    let i=open.length;open.push(node);
+    while(i>0){const parent=(i-1)>>1;if(!better(node,open[parent]))break;
+      open[i]=open[parent];i=parent;}
+    open[i]=node;
+  };
+  const openPop=()=>{
+    const first=open[0],last=open.pop();
+    if(open.length){
+      let i=0;
+      while(true){
+        const left=i*2+1;if(left>=open.length)break;
+        const right=left+1;
+        const child=right<open.length&&better(open[right],open[left])?right:left;
+        if(!better(open[child],last))break;
+        open[i]=open[child];i=child;
+      }
+      open[i]=last;
+    }
+    return first;
+  };
+  openPush(sx,sz,0,heuristic(sx,sz));
+  // CR4.9.585: keep best and found cells as packed grid IDs.
+  let foundKey=-1,bestKey=key(sx,sz),bestDistance=heuristic(sx,sz),loops=0;
+  // A*: unlike greedy nearest-first, this keeps the shortest known cost and can reroute around desks.
+  while(open.length&&loops++<1200){
+    // Heap pop is O(log n), including deterministic f/g tie-breaking.
+    const cur=openPop();
+    const ck=key(cur.x,cur.z);
+    if(closed[ck])continue;
+    closed[ck]=1;
+    const distance=heuristic(cur.x,cur.z);
+    if(distance<bestDistance){bestDistance=distance;bestKey=ck;}
+    if(cur.x===tx&&cur.z===tz){foundKey=ck;break;}
+    for(const d of dirs){
+      const nx=cur.x+d[0],nz=cur.z+d[1];
+      if(nx<0||nz<0||nx>maxIndex||nz>maxIndex)continue;
+      const nk=key(nx,nz);
+      if(closed[nk]||blockedCell(nx,nz)||!edgeClear(cur.x,cur.z,nx,nz))continue;
+      // No diagonal cutting through furniture corners.
+      if(d[0]&&d[1]&&(blockedCell(cur.x+d[0],cur.z)||blockedCell(cur.x,cur.z+d[1])))continue;
+      const nextG=cur.g+(d[0]&&d[1]?Math.SQRT2:1);
+      if(nextG>=gScore[nk])continue;
+      // CR4.9.576: store predecessor grid IDs, not a new coordinate array
+      // for every relaxed A* edge (hundreds of allocations per busy query).
+      gScore[nk]=nextG;came[nk]=ck;
+      openPush(nx,nz,nextG,nextG+heuristic(nx,nz));
+    }
+  }
+  // If the target is enclosed, stop at the closest reachable cell instead of walking into a wall.
+  const reachedGridTarget=foundKey>=0;
+  if(foundKey<0)foundKey=bestKey;
+  const path=[];let curKey=foundKey,guard=0;
+  const originKey=key(sx,sz),stride=maxIndex+1;
+  // CR4.9.579: a missing or cyclic predecessor must never yield a partial
+  // route. Bound the walk by the complete grid, not maxIndex squared.
+  const totalCells=stride*stride;
+  while(curKey!==originKey&&guard++<totalCells){
+    if(!Number.isInteger(curKey)||curKey<0||curKey>=totalCells)return [];
+    // CR4.9.594: store packed grid IDs until final vector construction.
+    path.push(curKey);
+    const parent=came[curKey];
+    if(!Number.isInteger(parent)||parent<0||parent>=totalCells)return [];
+    curKey=parent;
+  }
+  if(curKey!==originKey)return [];
+  const result=path.reverse();
+  if(startAdjusted)result.unshift(originKey);
+  // CR4.9.587 gameplay: simplify jagged NPC routes by taking the furthest
+  // proven clear waypoint in a bounded 10-cell lookahead. Every shortcut uses
+  // the exact same swept obstacle test as A*; never cut through a wall.
+  if(result.length>1){
+    let fromX=startX,fromZ=startZ,read=0,write=0;
+    while(read<result.length){
+      let furthest=read;
+      const limit=Math.min(result.length-1,read+10);
+      // CR4.9.589: try the furthest candidate first; a clear corridor
+      // needs only one LOS test instead of ten without changing the path.
+      for(let j=limit;j>read;j--){
+        const candidate=result[j];
+        if(routeSegmentClear(fromX,fromZ,toWorld(candidate%stride),toWorld(Math.floor(candidate/stride)))){
+          furthest=j;break;
+        }
+      }
+      const pointKey=result[furthest];
+      result[write++]=pointKey;
+      fromX=toWorld(pointKey%stride);fromZ=toWorld(Math.floor(pointKey/stride));read=furthest+1;
+    }
+    result.length=write;
+  }
+  // CR4.9.590: only allocate Babylon vectors for the final smoothed route.
+  // Smoothing can discard many A* nodes; preserve the same final geometry
+  // proof AFTER vector constructors, which may invoke external callbacks.
+  for(let i=0;i<result.length;i++){
+    const pointKey=result[i];
+    result[i]=new B.Vector3(toWorld(pointKey%stride),0,toWorld(Math.floor(pointKey/stride)));
+  }
+  // CR4.9.596 gameplay: complete a reachable NPC chase at the real target,
+  // not an offset grid-cell center. An enclosed target keeps the fallback.
+  if(reachedGridTarget&&targetX>=min&&targetX<=max&&
+     targetZ>=min&&targetZ<=max&&!pathBlocked(targetX,targetZ)){
+    const last=result[result.length-1],fromX=last?last.x:startX,fromZ=last?last.z:startZ;
+    // CR4.9.624: append the real target without a final sqrt per A* chase.
+    const finalDx=targetX-fromX,finalDz=targetZ-fromZ;
+    if(finalDx*finalDx+finalDz*finalDz>.000625&&
+       routeSegmentClear(fromX,fromZ,targetX,targetZ)){
+      result.push(new B.Vector3(targetX,0,targetZ));
+    }
+  }
+  if(!endpointsIntact()||!pathGeometryIntact())return [];
+  return result;
+  }finally{
+    const buffers=npcPathScratchPool[npcPathQueryDepth-1];
+    if(buffers){
+      if(buffers.scanned){for(const row of buffers.scanned)row.length=0;buffers.scanned.length=0;}
+      if(buffers.expandedBounds)buffers.expandedBounds.length=0;
+      if(buffers.open)buffers.open.length=0;
+    }
+    npcPathQueryDepth--;
+  }
 }
-function moveNpcToward(npc,target,dt){npc.pathT=(npc.pathT||0)-dt;if(npc.pathT<=0||!npc.path||!npc.path.length){npc.path=findNpcPath(npc.root.position,target,npc.type==='boss'?.52:.34);npc.pathT=.45+Math.random()*.2;}let dest=npc.path?.[0]||target;if(B.Vector3.DistanceSquared(npc.root.position,dest)<.35&&npc.path?.length>1){npc.path.shift();dest=npc.path[0];}let d=dest.subtract(npc.root.position);d.y=0;if(d.lengthSquared()<.001)return;d.normalize();moveNpcWithCollision(npc,d.scale(npc.speed*(npc.slowT>0?.62:1)*dt));}
+// CR4.9.621: reuse fixed recovery directions across all 288 candidate probes.
+// Keep exactly the same angular order and IEEE-754 trig values as before.
+const NPC_RECOVERY_DIRECTIONS=Object.freeze(Array.from({length:24},(_,k)=>
+  Object.freeze([Math.cos(k*Math.PI/12),Math.sin(k*Math.PI/12)])));
+// Recover a live NPC only when a ragdoll or moved obstacle leaves its body inside a blocker.
+// CR4.9.632: route cleanup follows a committed recovery teleport.
+// A read-only or commit-then-throw route setter must not crash the NPC tick
+// or leave the moved NPC eligible for another unverified movement.
+// CR4.9.637: route setters may invalidate landing clearance AFTER a
+// successful NPC teleport. Recheck before releasing movement quarantine.
+function finalizeNpcRecoveryRoute(npc,root,p,x,z,finalClearance=null){
+  const freshPath=[];
+  try{
+    npc.path=freshPath;
+    npc.pathT=0;
+    npc.pathStableT=0;
+    npc.pathBlockT=0;
+    if(npc.path!==freshPath||npc.pathT!==0||
+       npc.pathStableT!==0||npc.pathBlockT!==0||
+       npc.root!==root||root.position!==p||p.x!==x||p.z!==z||
+       (finalClearance&&finalClearance()!==true)||
+       npc.root!==root||root.position!==p||p.x!==x||p.z!==z)
+      throw Error('stale NPC recovery route');
+    return true;
+  }catch{
+    unsafeNpcHorizontalPositions.add(npc);
+    try{npc.horizontalPositionUnsafe=true;}catch{}
+    return false;
+  }
+}
+function recoverNpcFromBlocker(npc,dt){
+  if(!npc||npc.dead||npc.ragdollT>0||!npc.root||npc.root.isDisposed?.()||!Number.isFinite(dt)||dt<=0)return false;
+  const root=npc.root,p=root.position,radius=npc.type==='boss'?.52:.34;
+  // CR4.9.612: no temporary coordinate array in the frequent NPC
+  // recovery probe; reject nonfinite world positions before collision work.
+  if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.z))return false;
+  const originX=p.x,originZ=p.z;
+  npc.blockerRecoveryT=Math.max(0,(Number.isFinite(npc.blockerRecoveryT)?npc.blockerRecoveryT:0)-Math.min(dt,.1));
+  if(npc.blockerRecoveryT>0)return false;
+  npc.blockerRecoveryT=.65;
+  // Never probe or teleport with a missing, unbounded or unreadable blocker list.
+  let blockers,blockerCount;
+  try{
+    blockers=G.blockers;
+    if(!Array.isArray(blockers)||blockers.length>4096)return false;
+    blockerCount=blockers.length;
+  }catch{return false;}
+  if(!isBlockedXZ(originX,originZ,radius+.08)){
+    // CR4.9.627: a collision callback may move/replace the root while
+    // reporting clear. Never lift quarantine on stale coordinates or a
+    // throwing/ambiguous public safety flag.
+    try{
+      if(npc.root!==root||root.position!==p||
+         p.x!==originX||p.z!==originZ)return false;
+      npc.horizontalPositionUnsafe=false;
+      if(npc.root!==root||root.position!==p||
+         p.x!==originX||p.z!==originZ||
+         npc.horizontalPositionUnsafe!==false)return false;
+    }catch{return false;}
+    unsafeNpcHorizontalPositions.delete(npc);
+    return false;
+  }
+  const cam=playerBodyCamera(scene),player=cam?.globalPosition||cam?.position;
+  // CR4.9.623: keep one player-clearance anchor for the entire rescue sweep.
+  // A collision callback may move the player; never rescue using stale clearance.
+  let playerX,playerZ;
+  try{playerX=player?.x;playerZ=player?.z;}catch{return false;}
+  if(!Number.isFinite(playerX)||!Number.isFinite(playerZ))return false;
+  // CR4.9.627: freeze blocker slots, meshes, pads and world bounds. A
+  // collision callback can mutate an existing vector without changing the
+  // G.blockers identity, making an earlier broadphase snapshot stale.
+  const bounds=[],blockerProof=[];
+  const blockerSnapshotIntact=()=>{
+    try{
+      if(G.blockers!==blockers||blockers.length!==blockerCount)return false;
+      for(let i=0;i<blockerCount;i++){
+        const slot=Object.getOwnPropertyDescriptor(blockers,String(i)),q=blockerProof[i];
+        if(!q||!slot||!('value' in slot)||slot.value!==q[0])return false;
+        const b=q[0],m=q[1],pad=q[2],mn=q[3],mx=q[4];
+        if(b?.mesh!==m||(b?.pad??0)!==pad)return false;
+        if(!m)continue;
+        if(!!m.isDisposed?.()!==q[5])return false;
+        if(q[5])continue;
+        const bb=m.getBoundingInfo()?.boundingBox;
+        if(!bb||bb.minimumWorld!==mn||bb.maximumWorld!==mx||
+           mn.x!==q[6]||mn.y!==q[7]||mn.z!==q[8]||
+           mx.x!==q[9]||mx.y!==q[10]||mx.z!==q[11])return false;
+      }
+      // A later mesh callback can change an EARLIER box after its first
+      // check; this second pass uses only frozen vector references.
+      for(let i=0;i<blockerProof.length;i++){
+        const q=blockerProof[i],mn=q[3],mx=q[4];
+        if(mn&&(mn.x!==q[6]||mn.y!==q[7]||mn.z!==q[8]||
+                mx.x!==q[9]||mx.y!==q[10]||mx.z!==q[11]))return false;
+      }
+      return G.blockers===blockers&&blockers.length===blockerCount;
+    }catch{return false;}
+  };
+  try{
+    if(G.blockers!==blockers||blockers.length!==blockerCount)return false;
+    for(let i=0;i<blockerCount;i++){
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot))return false;
+      const b=slot.value,m=b?.mesh,pad=b?.pad??0;
+      if(!Number.isFinite(pad)||pad<0)return false;
+      if(!m){blockerProof.push([b,m,pad,null,null,false]);continue;}
+      if(m.isDisposed?.()){blockerProof.push([b,m,pad,null,null,true]);continue;}
+      m.computeWorldMatrix(true);
+      const bb=m.getBoundingInfo()?.boundingBox,mn=bb?.minimumWorld,mx=bb?.maximumWorld;
+      if(!mn||!mx||!Number.isFinite(mn.x)||!Number.isFinite(mn.y)||
+         !Number.isFinite(mn.z)||!Number.isFinite(mx.x)||
+         !Number.isFinite(mx.y)||!Number.isFinite(mx.z)||
+         mn.x>mx.x||mn.y>mx.y||mn.z>mx.z)return false;
+      blockerProof.push([b,m,pad,mn,mx,false,mn.x,mn.y,mn.z,mx.x,mx.y,mx.z]);
+      bounds.push([mn.x,mx.x,mn.z,mx.z,pad]);
+    }
+    if(!blockerSnapshotIntact())return false;
+  }catch{return false;}
+  // CR4.9.614: compare squared separation in the 288-candidate rescue
+  // sweep; avoid repeated square roots for nearby players and NPCs.
+  const playerClearance=radius+1.54,playerClearanceSq=playerClearance*playerClearance;
+  // Bounded local rescue only: no arena-wide teleport, no overlap with player or live NPCs.
+  for(let ring=1;ring<=12;ring++){
+    const distance=ring*.2;
+    for(let k=0;k<24;k++){
+      const dir=NPC_RECOVERY_DIRECTIONS[k],x=originX+dir[0]*distance,z=originZ+dir[1]*distance;
+      if(x<-6.6||x>6.6||z<-6.6||z>6.6)continue;
+      const playerDx=x-playerX,playerDz=z-playerZ;
+      if(playerDx*playerDx+playerDz*playerDz<playerClearanceSq)continue;
+      // CR4.9.620: scan live NPCs without creating a closure for each
+      // rescue candidate. Reject a replaced roster or unreadable entry.
+      const others=G.npcs;
+      if(!Array.isArray(others)||others.length>128)return false;
+      const otherCount=others.length;
+      let overlapsNpc=false;
+      for(let oi=0;oi<otherCount;oi++){
+        try{
+          const other=others[oi];
+          if(!other||other===npc||other.dead||!other.root||other.root.isDisposed?.())continue;
+          const q=other.root.position;
+          if(!q||!Number.isFinite(q.x)||!Number.isFinite(q.z))continue;
+          const dx=x-q.x,dz=z-q.z,clearance=radius+(other.type==='boss'?.52:.34)+.12;
+          if(dx*dx+dz*dz<clearance*clearance){overlapsNpc=true;break;}
+        }catch{overlapsNpc=true;break;} // Unknown live NPC: fail closed.
+      }
+      if(G.npcs!==others||others.length!==otherCount)return false;
+      if(overlapsNpc)continue;
+      // CR4.9.619: no per-candidate Array.some callback or destructuring
+      // allocation in the hot NPC unstuck sweep (up to 288 probes).
+      let hitsBlocker=false;
+      for(let bi=0;bi<bounds.length;bi++){
+        const b=bounds[bi],r=b[4]+radius+.08;
+        if(x>b[0]-r&&x<b[1]+r&&z>b[2]-r&&z<b[3]+r){hitsBlocker=true;break;}
+      }
+      if(hitsBlocker||isBlockedXZ(x,z,radius+.08))continue;
+      // Candidate probes can invoke callbacks; never commit to a changed
+      // obstacle roster or a position modified during the search.
+      // CR4.9.623: isBlockedXZ may invoke mesh callbacks that move the player
+      // or swap the NPC roster. A stale clearance proof must not teleport NPCs.
+      try{
+        if(player.x!==playerX||player.z!==playerZ||G.npcs!==others||
+           others.length!==otherCount||G.blockers!==blockers||
+           blockers.length!==blockerCount)return false;
+      }catch{return false;}
+      // CR4.9.628: capture actual NPC membership only for a viable landing
+      // candidate, avoiding per-probe roster allocations.
+      const otherProof=[];
+      try{
+        for(let oi=0;oi<otherCount;oi++){
+          const slot=Object.getOwnPropertyDescriptor(others,String(oi));
+          if(!slot||!('value' in slot))return false;
+          otherProof.push(slot.value);
+        }
+      }catch{return false;}
+      const finalClearance=()=>{
+        try{
+          if(!blockerSnapshotIntact()||
+             G.blockers!==blockers||blockers.length!==blockerCount||
+             G.npcs!==others||others.length!==otherCount||
+             player.x!==playerX||player.z!==playerZ)return false;
+          if(isBlockedXZ(x,z,radius+.08)||!blockerSnapshotIntact())return false;
+          // A setter or collision callback may replace an NPC slot or move
+          // a live NPC into the landing position after the initial scan.
+          for(let oi=0;oi<otherCount;oi++){
+            const slot=Object.getOwnPropertyDescriptor(others,String(oi));
+            if(!slot||!('value' in slot)||slot.value!==otherProof[oi])return false;
+            const other=slot.value;
+            if(!other||other===npc||other.dead)continue;
+            const otherRoot=other.root;
+            if(!otherRoot||otherRoot.isDisposed?.())continue;
+            const q=otherRoot.position;
+            if(!q||!Number.isFinite(q.x)||!Number.isFinite(q.z))return false;
+            const dx=x-q.x,dz=z-q.z;
+            const clearance=radius+(other.type==='boss'?.52:.34)+.12;
+            if(dx*dx+dz*dz<clearance*clearance)return false;
+          }
+          return G.blockers===blockers&&blockers.length===blockerCount&&
+            G.npcs===others&&others.length===otherCount&&
+            player.x===playerX&&player.z===playerZ;
+        }catch{return false;}
+      };
+      if(!blockerSnapshotIntact()||
+         !commitNpcHorizontalPosition(npc,p,x,z,originX,originZ,true,finalClearance))return false;
+      return finalizeNpcRecoveryRoute(npc,root,p,x,z,finalClearance);
+    }
+  }
+  return false;
+}
+function moveNpcToward(npc,target,dt){
+  // Ignore invalid or paused simulation steps before mutating route timers.
+  if(!Number.isFinite(dt)||dt<=0)return;
+  npc.pathT=(npc.pathT||0)-dt;
+  // CR4.9.562: hostile/stale path vectors must never crash the NPC tick.
+  // Fail closed on invalid target/goal reads, and replan if a cached
+  // waypoint getter throws during route reuse.
+  let goalMoved=false;
+  try{
+    if(!target||!Number.isFinite(target.x)||!Number.isFinite(target.z))return;
+    goalMoved=!!npc.pathGoal&&B.Vector3.DistanceSquared(npc.pathGoal,target)>.81;
+  }catch{return;}
+  if(npc.pathT<=0||!Array.isArray(npc.path)||(goalMoved&&(!npc.path?.length||npc.pathT<.2))){
+    const nextWait=.45+Math.random()*.2;
+    let routeStillUseful=false;
+    try{
+      const path=npc.path,last=Array.isArray(path)?path[path.length-1]:null;
+      routeStillUseful=!!last&&!!npc.pathGoal&&!goalMoved&&
+        (npc.pathStableT||0)<1.25&&
+        B.Vector3.DistanceSquared(npc.root.position,last)>.35;
+    }catch{routeStillUseful=false;}
+    if(routeStillUseful){
+      // Furniture may cut a later waypoint segment even if the first is still clear.
+      // Inspect up to three upcoming legs only at route refresh, with a strict probe budget.
+      const pos=npc.root?.position;
+      if(!pos||!Array.isArray(npc.path)||!npc.path.length)routeStillUseful=false;
+      else{
+        // Cache blocker bounds once per scheduled route validation, never per probe.
+        // Lazy construction avoids world-matrix work when a segment exceeds the budget.
+        let blockerBounds=null;
+        let unsafeBlockerBounds=false;
+        let blockerRosterIntact=()=>false;
+        const pathBlockedLeg=(from,to)=>{
+          if(!blockerBounds){
+            blockerBounds=[];
+            try{
+              const blockers=G.blockers;
+              if(!Array.isArray(blockers)||blockers.length>4096)unsafeBlockerBounds=true;
+              else{
+                const blockerCount=blockers.length,scanned=[];
+                // CR4.9.555: prove every reused route blocker by own data
+                // descriptors. Accessor-backed rosters cannot silently validate.
+                blockerRosterIntact=()=>{
+                  try{
+                    if(G.blockers!==blockers||blockers.length!==blockerCount||
+                       scanned.length!==blockerCount)return false;
+                    for(let i=0;i<blockerCount;i++){
+                      const e=scanned[i],slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+                      if(!e||!slot||!('value' in slot)||slot.value!==e[0])return false;
+                      const ms=Object.getOwnPropertyDescriptor(e[0],'mesh');
+                      const ps=Object.getOwnPropertyDescriptor(e[0],'pad');
+                      if(!ms||!('value' in ms)||ms.value!==e[1]||
+                         (ps&&!('value' in ps))||(ps?ps.value:0)!==e[2]||
+                         !!e[1].isDisposed?.()!==e[11])return false;
+                    }
+                    // A later mesh callback may edit earlier world vectors in place.
+                    // Finish with scalar-only reads, after all disposal callbacks.
+                    for(let i=0;i<scanned.length;i++){
+                      const e=scanned[i];if(e[11])continue;
+                      const mn=e[3],mx=e[4];
+                      if(!mn||!mx||mn.x!==e[5]||mn.y!==e[6]||mn.z!==e[7]||
+                         mx.x!==e[8]||mx.y!==e[9]||mx.z!==e[10])return false;
+                    }
+                    return G.blockers===blockers&&blockers.length===blockerCount;
+                  }catch{return false;}
+                };
+                for(let i=0;i<blockerCount;i++){
+                  try{
+                    const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+                    if(!slot||!('value' in slot)||!slot.value){unsafeBlockerBounds=true;break;}
+                    const b=slot.value,ms=Object.getOwnPropertyDescriptor(b,'mesh');
+                    const ps=Object.getOwnPropertyDescriptor(b,'pad');
+                    if(!ms||!('value' in ms)||!ms.value||
+                       (ps&&!('value' in ps))){unsafeBlockerBounds=true;break;}
+                    const m=ms.value,pad=ps?ps.value:0;
+                    if(!Number.isFinite(pad)||pad<0){unsafeBlockerBounds=true;break;}
+                    if(m.isDisposed?.()){
+                      scanned.push([b,m,pad,null,null,0,0,0,0,0,0,true]);
+                      continue;
+                    }
+                    m.computeWorldMatrix(true);
+                    const bb=m.getBoundingInfo()?.boundingBox;
+                    const mn=bb?.minimumWorld,mx=bb?.maximumWorld;
+                    if(!mn||!mx||!Number.isFinite(mn.x)||!Number.isFinite(mn.y)||
+                       !Number.isFinite(mn.z)||!Number.isFinite(mx.x)||
+                       !Number.isFinite(mx.y)||!Number.isFinite(mx.z)||
+                       mn.x>mx.x||mn.y>mx.y||mn.z>mx.z){unsafeBlockerBounds=true;break;}
+                    scanned.push([b,m,pad,mn,mx,mn.x,mn.y,mn.z,mx.x,mx.y,mx.z,false]);
+                    // Packed AABBs: five scalars, no per-blocker array allocation.
+                    blockerBounds.push(mn.x,mx.x,mn.z,mx.z,pad);
+                  }catch{unsafeBlockerBounds=true;break;}
+                }
+                if(!blockerRosterIntact())unsafeBlockerBounds=true;
+              }
+            }catch{unsafeBlockerBounds=true;}
+          }
+          if(unsafeBlockerBounds)return true;
+          const clearance=(npc.type==='boss'?.52:.34)+.08;
+          // Exact segment-vs-expanded-AABB sweep: one blocker scan per leg,
+          // instead of up to 48 scans of the same bounds for sampled points.
+          const dx=to.x-from.x,dz=to.z-from.z;
+          // Reject non-overlapping route/blocker AABBs before slab divisions.
+          // A simple loop avoids allocating a callback for each path leg.
+          const segLoX=Math.min(from.x,to.x),segHiX=Math.max(from.x,to.x);
+          const segLoZ=Math.min(from.z,to.z),segHiZ=Math.max(from.z,to.z);
+          for(let i=0;i<blockerBounds.length;i+=5){
+            const r=blockerBounds[i+4]+clearance;
+            const loX=blockerBounds[i]-r,hiX=blockerBounds[i+1]+r;
+            const loZ=blockerBounds[i+2]-r,hiZ=blockerBounds[i+3]+r;
+            if(segHiX<=loX||segLoX>=hiX||segHiZ<=loZ||segLoZ>=hiZ)continue;
+            let t0=0,t1=1;
+            if(Math.abs(dx)<1e-12){
+              if(from.x<=loX||from.x>=hiX)continue;
+            }else{
+              const a=(loX-from.x)/dx,b=(hiX-from.x)/dx;
+              t0=Math.max(t0,Math.min(a,b));t1=Math.min(t1,Math.max(a,b));
+              if(!(t0<t1))continue;
+            }
+            if(Math.abs(dz)<1e-12){
+              if(from.z<=loZ||from.z>=hiZ)continue;
+            }else{
+              const a=(loZ-from.z)/dz,b=(hiZ-from.z)/dz;
+              t0=Math.max(t0,Math.min(a,b));t1=Math.min(t1,Math.max(a,b));
+            }
+            if(t0<t1)return true;
+          }
+          return false;
+        };
+        for(let leg=0;leg<Math.min(3,npc.path.length);leg++){
+          const from=leg===0?pos:npc.path[leg-1],to=npc.path[leg];
+          // CR4.9.560: snapshot endpoints once without allocating a temporary
+          // four-element array per leg; hostile waypoint getters fail closed.
+          if(!from||!to){routeStillUseful=false;break;}
+          let a,b;
+          try{a={x:from.x,z:from.z};b={x:to.x,z:to.z};}
+          catch{routeStillUseful=false;break;}
+          if(!Number.isFinite(a.x)||!Number.isFinite(a.z)||
+             !Number.isFinite(b.x)||!Number.isFinite(b.z)){
+            routeStillUseful=false;break;
+          }
+          if(pathBlockedLeg(a,b)||from.x!==a.x||from.z!==a.z||
+             to.x!==b.x||to.z!==b.z){
+            routeStillUseful=false;break;
+          }
+        }
+        // Check once after all legs; never scan the roster per segment.
+        if(routeStillUseful&&blockerBounds&&!blockerRosterIntact())routeStillUseful=false;
+      }
+    }
+    if(routeStillUseful){
+      // Keep a valid route to a nearly stationary target; periodically refresh for moved furniture.
+      npc.pathStableT=(npc.pathStableT||0)+nextWait;
+    }else{
+      npc.path=findNpcPath(npc.root.position,target,npc.type==='boss'?.52:.34);
+      npc.pathGoal=new B.Vector3(target.x,target.y||0,target.z);
+      npc.pathStableT=0;
+    }
+    // Unreachable grid goals should not trigger a full A* search twice per second
+    // for every NPC. Still refresh immediately if the player changes grid position.
+    npc.pathT=npc.path?.length?nextWait:Math.max(1.2,nextWait);
+  }
+  // Grid paths can be empty when the NPC and player share a cell, or stop at the
+  // final cell center without reaching the player's actual position.
+  const closeGoalGap=(maxDist=1.1)=>{
+    const pos=npc.root?.position;
+    if(!pos||!(Number.isFinite(pos.x)&&Number.isFinite(pos.z)&&Number.isFinite(target.x)&&Number.isFinite(target.z)&&Number.isFinite(dt)&&Number.isFinite(npc.speed)))return false;
+    const targetX=target.x,targetZ=target.z;
+    const dx=targetX-pos.x,dz=targetZ-pos.z,dist=Math.hypot(dx,dz);
+    if(dist<=.025)return true;
+    if(!(dist<=maxDist))return false;
+    // A short swept move checks collisions once; no per-probe matrix scans.
+    const travel=Math.min(dist,Math.max(0,npc.speed*(npc.slowT>0?.62:1)*Math.min(Math.max(dt,0),.05)));
+    if(Number.isFinite(travel)&&travel>0){
+      const moved=moveNpcWithCollision(npc,new B.Vector3(dx*travel/dist,0,dz*travel/dist));
+      // A sideways collision slide is not progress toward the real player position.
+      let remaining=NaN;
+      try{
+        const current=npc.root?.position;
+        if(current===pos&&target.x===targetX&&target.z===targetZ)
+          remaining=Math.hypot(targetX-current.x,targetZ-current.z);
+      }catch{return false;}
+      return !!moved&&Number.isFinite(remaining)&&dist-remaining>=Math.min(.004,travel*.08);
+    }
+    return false;
+  };
+  if(!npc.path?.length){
+    // A* can return no waypoint when the grid goal is blocked, even though
+    // the actual player position is nearby and directly reachable.
+    // closeGoalGap checks both distance and swept obstacle clearance itself.
+    // When A* returns no route because a rounded grid cell is obstructed,
+    // a nearby real player may still be reachable by a collision-swept straight step.
+    // Bound this rescue to 2.4m to avoid long per-frame blocker scans.
+    closeGoalGap(2.4);
+    return;
+  }
+  let dest=npc.path[0];
+  if(B.Vector3.DistanceSquared(npc.root.position,dest)<.35&&npc.path.length>1){npc.path.shift();dest=npc.path[0];}
+  if(npc.path.length===1&&
+     (npc.root.position.x-dest.x)**2+(npc.root.position.z-dest.z)**2<.36&&
+     (dest.x-target.x)**2+(dest.z-target.z)**2<.4225){
+    if(closeGoalGap())return;
+    // If the shortcut is blocked, continue toward the safe waypoint and replan soon.
+    npc.pathT=Math.min(npc.pathT,.25);
+    npc.pathStableT=1.25;
+  }
+  let d=dest.subtract(npc.root.position);d.y=0;
+  const distSq=d.lengthSquared();
+  if(distSq<.001)return;
+  // Do not overshoot short waypoints on low-FPS frames or speed-boosted enemies.
+  const dist=Math.sqrt(distSq);
+  const travel=Math.min(dist,Math.max(0,npc.speed*(npc.slowT>0?.62:1)*dt));
+  if(travel<=0)return;
+  const moved=moveNpcWithCollision(npc,d.scale(travel/dist));
+  // Sliding along a wall may move the NPC without getting closer to the waypoint.
+  // Treat that as a blocked route too, or the NPC can slide forever without replanning.
+  const remaining=Math.hypot(dest.x-npc.root.position.x,dest.z-npc.root.position.z);
+  const advance=dist-remaining,minProgress=Math.min(.004,travel*.08);
+  if(!moved||!Number.isFinite(advance)||advance<minProgress){
+    npc.pathBlockT=(npc.pathBlockT||0)+Math.min(dt,.05);
+    if(npc.pathBlockT>=.18){
+      // Retry a blocked route soon, but cap retries to avoid A* on every frame.
+      npc.pathT=Math.min(npc.pathT,.35);
+      npc.pathStableT=1.25;
+      npc.pathBlockT=0;
+    }
+  }else npc.pathBlockT=0;
+}
 
-function safeEnemySpawn(i=0,radius=.38){
+function safeEnemySpawn(i=0,radius=.38,avoidNpcs=false,blockerCache=null){
   const spots=[[-5.9,-5.7],[5.9,-5.7],[-5.9,5.4],[5.9,5.4],[0,-6.0],[0,5.8],[-6.0,0],[6.0,0],[-4.8,0],[4.8,0],[0,-4.8],[0,4.8]];
-  for(let k=0;k<spots.length;k++){const q=spots[(i+k)%spots.length];if(!isBlockedXZ(q[0],q[1],radius))return new B.Vector3(q[0]+(Math.random()-.5)*.22,0,q[1]+(Math.random()-.5)*.22);}
-  return new B.Vector3((Math.random()-.5)*2,0,(Math.random()-.5)*2);
+  const seed=Number.isFinite(i)?Math.max(0,Math.floor(i)):0;
+  const clearance=Number.isFinite(radius)?Math.max(.1,Math.min(1,radius)):.38;
+  // Snapshot live NPC positions for this spawn request. Dead/disposed NPCs must not reserve space.
+  const occupied=[];
+  if(avoidNpcs){
+    try{
+      for(const n of G.npcs||[]){
+        if(!n||n.dead)continue;
+        const root=n.root;
+        if(!root||root.isDisposed?.())continue;
+        const p=root.position;
+        if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.z))return null;
+        occupied.push([p.x,p.z,n.type==='boss'?.55:.38]);
+      }
+    }catch{return null;} // Unknown NPC occupancy must not be treated as free space.
+  }
+  if(avoidNpcs){
+    // Spawn only with a known player pose; never assume the arena origin is empty.
+    try{
+      const cam=playerBodyCamera(scene);
+      const p=cam?.globalPosition||cam?.position;
+      if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.z))return null;
+      // Body radius (.42m) plus 1m extra clearance from newly spawned enemies.
+      occupied.push([p.x,p.z,1.42]);
+    }catch{return null;}
+  }
+  const clearOfNpcs=(x,z)=>occupied.every(([nx,nz,nr])=>{
+    const gap=clearance+nr+.12;
+    return (x-nx)**2+(z-nz)**2>=gap*gap;
+  });
+  // Snapshot inexpensive transform fingerprints so same-length blocker swaps,
+  // local/parent movement, scaling, rotation and changed pads invalidate cached bounds.
+  // No forced world-matrix/bounding-box calculation on an unchanged batch.
+  const blockerStamp=(b,m)=>{
+    const pad=b.pad??0;
+    if(!Number.isFinite(pad)||pad<0)throw Error('invalid blocker padding');
+    const disposed=!!m.isDisposed?.();
+    const out=[b,m,pad,disposed,m.geometry,m._geometry];
+    // A mesh can refresh its vertex bounds without changing geometry identity or pose.
+    // Reading existing local bounds does not force a world-matrix recomputation.
+    if(!disposed){
+      const box=m.getBoundingInfo?.()?.boundingBox;
+      const lo=box?.minimum??box?.minimumWorld,hi=box?.maximum??box?.maximumWorld;
+      if(!lo||!hi||![lo.x,lo.y,lo.z,hi.x,hi.y,hi.z].every(Number.isFinite)||
+         lo.x>hi.x||lo.y>hi.y||lo.z>hi.z)throw Error('invalid blocker bounds stamp');
+      out.push(lo.x,lo.y,lo.z,hi.x,hi.y,hi.z);
+    }
+    let node=m,depth=0;
+    while(node){
+      if(++depth>24)throw Error('blocker parent cycle');
+      const pos=node.position,rot=node.rotation,scale=node.scaling,q=node.rotationQuaternion;
+      out.push(node);
+      for(const v of [pos,rot,scale]){
+        if(v){
+          if(!Number.isFinite(v.x)||!Number.isFinite(v.y)||!Number.isFinite(v.z))throw Error('invalid blocker transform');
+          out.push(v.x,v.y,v.z);
+        }else out.push(null,null,null);
+      }
+      if(q){
+        if(![q.x,q.y,q.z,q.w].every(Number.isFinite))throw Error('invalid blocker quaternion');
+        out.push(q.x,q.y,q.z,q.w);
+      }else out.push(null,null,null,null);
+      // Catch direct matrix/pivot edits even when local position is unchanged.
+      for(const mat of [node._pivotMatrix,node._worldMatrix]){
+        const a=mat?.m;
+        if(a){
+          if(a.length!==16)throw Error('invalid blocker matrix');
+          for(let k=0;k<16;k++){
+            if(!Number.isFinite(a[k]))throw Error('invalid blocker matrix entry');
+            out.push(a[k]);
+          }
+        }else for(let k=0;k<16;k++)out.push(null);
+      }
+      node=node.parent;
+    }
+    return out;
+  };
+  const sameStamp=(a,b)=>{
+    if(!Array.isArray(a)||a.length!==b.length)return false;
+    for(let k=0;k<b.length;k++)if(a[k]!==b[k])return false;
+    return true;
+  };
+  // Cache bounds only while the blocker roster AND the actual geometry pose are stable.
+  let spawnBounds=null,unsafeBounds=false;
+  try{
+    spawnBounds=blockerCache?.bounds||null;
+    unsafeBounds=!!blockerCache?.unsafeBounds;
+    if(spawnBounds){
+      if(!Array.isArray(spawnBounds))return null;
+      // Inspect real indices, not a potentially overridden array iterator.
+      for(let j=0;j<spawnBounds.length;j++){
+        const box=spawnBounds[j];
+        if(!Array.isArray(box)||box.length!==5||![0,1,2,3,4].every(k=>Number.isFinite(box[k]))||
+           box[0]>box[1]||box[2]>box[3]||box[4]<0)return null;
+      }
+      // An earlier batch snapshot must not outlive a replaced or extended blocker roster.
+      const blockers=G.blockers;
+      if(!Array.isArray(blockers))return null;
+      if(blockerCache?.blockerRoster!==blockers||blockerCache?.blockerCount!==blockers.length)spawnBounds=null;
+      else{
+        const stamps=blockerCache?.blockerStamps;
+        if(!Array.isArray(stamps)||stamps.length!==blockers.length)spawnBounds=null;
+        else for(let j=0;j<blockers.length;j++){
+          const b=blockers[j],m=b?.mesh;
+          if(!m||!sameStamp(stamps[j],blockerStamp(b,m))){spawnBounds=null;break;}
+        }
+      }
+    }
+    if(unsafeBounds)return null;
+  }catch{return null;}
+  const blockedAt=(x,z,radius)=>{
+    if(!spawnBounds){
+      spawnBounds=[];
+      const blockerStamps=[];
+      let blockers=null;
+      try{
+        blockers=G.blockers;
+        if(!Array.isArray(blockers)){unsafeBounds=true;}
+        else for(let j=0;j<blockers.length;j++){
+          const b=blockers[j];
+          try{
+            const m=b?.mesh;
+            if(!m){unsafeBounds=true;break;} // An unknown blocker cannot prove clear space.
+            if(m.isDisposed?.()){
+              blockerStamps.push(blockerStamp(b,m));
+              continue;
+            }
+            m.computeWorldMatrix(true);
+            const bb=m.getBoundingInfo().boundingBox;
+            const mn=bb.minimumWorld,mx=bb.maximumWorld,pad=b.pad??0;
+            const box=[mn.x,mx.x,mn.z,mx.z,pad];
+            // Unknown live geometry or negative padding cannot prove safe spawn space.
+            // Validate vertical bounds too: corrupt 3D data must never be treated as empty.
+            if(![mn.x,mn.y,mn.z,mx.x,mx.y,mx.z,pad].every(Number.isFinite)||
+               mn.x>mx.x||mn.y>mx.y||mn.z>mx.z||pad<0){unsafeBounds=true;break;}
+            spawnBounds.push(box);
+            blockerStamps.push(blockerStamp(b,m));
+          }catch{unsafeBounds=true;break;}
+        }
+      }catch{unsafeBounds=true;} // A malformed blocker collection cannot prove safe space.
+      try{
+        if(blockerCache){blockerCache.bounds=spawnBounds;blockerCache.unsafeBounds=unsafeBounds;blockerCache.blockerRoster=blockers;blockerCache.blockerCount=Array.isArray(blockers)?blockers.length:-1;blockerCache.blockerStamps=blockerStamps;}
+      }catch{unsafeBounds=true;} // Never spawn after an unreadable cache setter.
+    }
+    if(unsafeBounds)return true;
+    try{
+      for(let j=0;j<spawnBounds.length;j++){
+        const box=spawnBounds[j];
+        if(!Array.isArray(box)||box.length!==5)return true;
+        const [minX,maxX,minZ,maxZ,pad]=box;
+        if(![minX,maxX,minZ,maxZ,pad].every(Number.isFinite)||minX>maxX||minZ>maxZ||pad<0)return true;
+        const r=pad+radius;
+        if(x>minX-r&&x<maxX+r&&z>minZ-r&&z<maxZ+r)return true;
+      }
+      return false;
+    }catch{return true;}
+  };
+  for(let k=0;k<spots.length;k++){
+    const q=spots[(seed+k)%spots.length],x=q[0]+(Math.random()-.5)*.22,z=q[1]+(Math.random()-.5)*.22;
+    // Check the final randomized position: a safe center may jitter into a wall.
+    if(!blockedAt(x,z,clearance)&&clearOfNpcs(x,z))return new B.Vector3(x,0,z);
+    if(!blockedAt(q[0],q[1],clearance)&&clearOfNpcs(q[0],q[1]))return new B.Vector3(q[0],0,q[1]);
+  }
+  // Dense maps may block all preset spawn points while leaving a narrow clearing.
+  // Snapshot world bounds once, then scan the arena without recalculating every mesh per probe.
+  // An unreadable obstacle must also block the fallback grid.
+  if(unsafeBounds)return null;
+  // Reuse the guarded collision probe for the fallback grid as well.
+  // Never trust an overridden Array.some on cached bounds.
+  const free=(x,z)=>clearOfNpcs(x,z)&&!blockedAt(x,z,clearance);
+  const preferred=spots[seed%spots.length];
+  let best=null,bestDist=Infinity;
+  for(let gx=0;gx<=31;gx++)for(let gz=0;gz<=31;gz++){
+    const x=-6.2+gx*.4,z=-6.2+gz*.4;
+    if(!free(x,z))continue;
+    const dist=(x-preferred[0])**2+(z-preferred[1])**2;
+    if(dist<bestDist){bestDist=dist;best=[x,z];}
+  }
+  if(best)return new B.Vector3(best[0],0,best[1]);
+  // Never spawn inside a blocker. The wave retry guard handles a fully obstructed arena.
+  return null;
 }
 function waveEnemyCount(){const lvl=G.mode==='LEVELS'?(G.meta.survivalLevel||1):1;return Math.min(13,3+G.wave+Math.floor((lvl-1)*.4));}
 function awardWaveCoins(){
@@ -10485,11 +14037,88 @@ function awardWaveCoins(){
   if(G.mode==='SURVIVAL')G.meta.survivalBestWave=Math.max(G.meta.survivalBestWave||0,G.wave);
   saveMeta();announce(`WAVE ${G.wave} • +10 COINS`,'good');tone(430,.16,'triangle',.04,180);
 }
+// 4.9.186: retry partial LEVEL completion without double-paying meta rewards.
+let levelCompletionJournal=null;
+let levelCompletionRunning=false;
 function completeLevel(){
-  if(G.ended||G.state!=='shift')return;
-  G.meta.survivalLevel=(G.meta.survivalLevel||1)+1;G.meta.shifts=(G.meta.shifts||0)+1;G.meta.bestRank=rank();G.meta.bestCombo=Math.max(G.meta.bestCombo||0,G.bestCombo);
-  saveMeta();G.ended=true;G.waveTransition=false;G.state='ending';toast(`LEVEL COMPLETE • NEXT LEVEL ${G.meta.survivalLevel}`,2200);tone(420,.18,'triangle',.04,240);
-  G.endTimer=setTimeout(()=>{G.endTimer=null;buildHub(scene);},2000);
+  if(levelCompletionRunning)return false;
+  levelCompletionRunning=true;
+  try{
+    let j=levelCompletionJournal;
+    if(!j){
+      let token,wave,meta,level,shifts,best,combo;
+      try{
+        if(G.ended||G.state!=='shift'||G.waveTransition!==false||G.pendingWave!==null)return false;
+        token=G.waveToken;wave=G.wave;meta=G.meta;
+        if(!Number.isSafeInteger(token)||token<0||!Number.isSafeInteger(wave)||wave<1||
+           !meta||(typeof meta!=='object'&&typeof meta!=='function'))return false;
+        level=meta.survivalLevel||1;shifts=meta.shifts||0;
+        best=meta.bestCombo||0;combo=G.bestCombo;
+        if(!Number.isSafeInteger(level)||level<1||level>=Number.MAX_SAFE_INTEGER||
+           !Number.isSafeInteger(shifts)||shifts<0||shifts>=Number.MAX_SAFE_INTEGER||
+           !Number.isFinite(best)||!Number.isFinite(combo))return false;
+        if(G.waveToken!==token||G.wave!==wave||G.state!=='shift'||G.ended||
+           G.waveTransition!==false||G.pendingWave!==null||G.meta!==meta)return false;
+      }catch{return false;}
+      j={token,wave,meta,hub:{remaining:2.0},level:level+1,shifts:shifts+1,
+         bestCombo:Math.max(best,combo),rankPrepared:false,rankAvailable:false,
+         saveStarted:false,effectsStarted:false};
+      levelCompletionJournal=j;
+    }
+    const snapshot=()=>{
+      try{
+        const t1=G.waveToken,w1=G.wave,s1=G.state;
+        const ended=G.ended,transition=G.waveTransition,pending=G.pendingWave;
+        const hub=G.pendingHub,meta=G.meta;
+        const t2=G.waveToken,w2=G.wave,s2=G.state;
+        if(t1!==t2||w1!==w2||s1!==s2)return null;
+        return {token:t1,wave:w1,state:s1,ended,transition,pending,hub,meta};
+      }catch{return null;}
+    };
+    const valid=(v)=>v&&v.token===j.token&&v.wave===j.wave&&v.meta===j.meta&&
+      (v.state==='shift'||v.state==='ending')&&typeof v.ended==='boolean'&&
+      v.transition===false&&v.pending===null&&
+      (v.hub===null||v.hub===undefined||v.hub===j.hub);
+    let v=snapshot();
+    if(!valid(v)){
+      // A genuinely different wave invalidates an old in-memory journal.
+      if(v&&v.token!==j.token&&Number.isSafeInteger(v.token))levelCompletionJournal=null;
+      return false;
+    }
+    const verifiedSet=(object,key,value)=>{
+      try{if(Object.is(object[key],value))return true;}catch{return false;}
+      try{object[key]=value;}catch{}
+      try{return Object.is(object[key],value);}catch{return false;}
+    };
+    if(!verifiedSet(G,'ended',true)||!valid(snapshot()))return false;
+    if(!verifiedSet(G,'state','ending')||!valid(snapshot()))return false;
+    if(!verifiedSet(j.meta,'survivalLevel',j.level)||!valid(snapshot()))return false;
+    if(!verifiedSet(j.meta,'shifts',j.shifts)||!valid(snapshot()))return false;
+    if(!j.rankPrepared){
+      j.rankPrepared=true; // A callback may have effects; do not call twice.
+      try{j.rankValue=rank();j.rankAvailable=true;}catch{}
+      if(!valid(snapshot()))return false;
+    }
+    if(j.rankAvailable&&(!verifiedSet(j.meta,'bestRank',j.rankValue)||!valid(snapshot())))return false;
+    if(!verifiedSet(j.meta,'bestCombo',j.bestCombo)||!valid(snapshot()))return false;
+    if(!j.saveStarted){
+      j.saveStarted=true; // A failed persistence callback may already have saved.
+      try{saveMeta();}catch{}
+      if(!valid(snapshot()))return false;
+    }
+    v=snapshot();if(!valid(v))return false;
+    if(v.hub!==j.hub){
+      if(v.hub!==null&&v.hub!==undefined)return false;
+      if(!verifiedSet(G,'pendingHub',j.hub)||!valid(snapshot()))return false;
+    }
+    if(!j.effectsStarted){
+      j.effectsStarted=true;
+      try{toast(`LEVEL COMPLETE • NEXT LEVEL ${j.level}`,2200);}catch{}
+      try{tone(420,.18,'triangle',.04,240);}catch{}
+    }
+    levelCompletionJournal=null;
+    return true;
+  }catch{return false;}finally{levelCompletionRunning=false;}
 }
 function newShiftContract(){
   const pool=[
@@ -10501,14 +14130,35 @@ function newShiftContract(){
   ];
   G.contract={...pool[Math.floor(Math.random()*pool.length)],done:false,progress:0};G.contractStartKills=G.kills||0;G.contractStartPropHits=G.propHits||0;G.contractStartWave=G.wave||1;G.contractStartBlocks=G.blocks||0;
 }
+// CR4.9.476: a contract must never credit a replacement wave after a
+// hostile progress, coin or persistence callback; completion is at-most-once.
 function updateContract(){
-  const c=G.contract;if(!c||c.done||G.state!=='shift')return;
-  if(c.id==='KO')c.progress=Math.max(0,G.kills-G.contractStartKills);
-  else if(c.id==='PROP')c.progress=Math.max(0,G.propHits-G.contractStartPropHits);
-  else if(c.id==='WAVE')c.progress=Math.max(0,G.wave-G.contractStartWave);
-  else if(c.id==='CHAOS')c.progress=Math.round(G.chaos);
-  else if(c.id==='BLOCK')c.progress=Math.max(0,G.blocks-(G.contractStartBlocks||0));
-  if(c.progress>=c.goal){c.done=true;G.meta.coins=(G.meta.coins||0)+c.reward;saveMeta();announce(`CONTRACT COMPLETE • +${c.reward} COINS`,'good');}
+  let c,token,wave,meta;
+  try{c=G.contract;token=G.waveToken;wave=G.wave;meta=G.meta;}catch{return;}
+  if(!c||c.done||G.state!=='shift'||G.waveTransition||G.ended)return;
+  const owned=()=>{try{return G.state==='shift'&&!G.waveTransition&&!G.ended&&
+    G.waveToken===token&&G.wave===wave&&G.contract===c&&G.meta===meta&&!!meta;}catch{return false;}};
+  let progress,goal,reward;
+  try{
+    if(c.id==='KO')progress=Math.max(0,G.kills-G.contractStartKills);
+    else if(c.id==='PROP')progress=Math.max(0,G.propHits-G.contractStartPropHits);
+    else if(c.id==='WAVE')progress=Math.max(0,G.wave-G.contractStartWave);
+    else if(c.id==='CHAOS')progress=Math.round(G.chaos);
+    else if(c.id==='BLOCK')progress=Math.max(0,G.blocks-(G.contractStartBlocks||0));
+    else return;
+    goal=c.goal;reward=c.reward;
+  }catch{return;}
+  if(!owned()||!Number.isFinite(progress)||!Number.isFinite(goal)||
+     !Number.isFinite(reward)||reward<0)return;
+  try{c.progress=progress;}catch{return;}
+  if(!owned()||c.progress!==progress||progress<goal)return;
+  try{c.done=true;}catch{return;}
+  if(!owned()||c.done!==true)return;
+  try{meta.coins=(meta.coins||0)+reward;}catch{return;}
+  if(!owned())return;
+  try{saveMeta();}catch{}
+  if(!owned())return;
+  try{announce(`CONTRACT COMPLETE • +${reward} COINS`,'good');}catch{}
 }
 function chooseWaveModifier(){
   const pool=['NORMAL','FAST','ARMORED','BERSERK','LOW LIGHT','PROP STORM'];const pick=pool[Math.floor(Math.random()*pool.length)];G.waveMod=pick;G.waveStartT=performance.now();
@@ -10517,9 +14167,325 @@ function chooseWaveModifier(){
 function waveHpMul(){return G.waveMod==='ARMORED'?1.32:1;}
 function waveSpeedMul(){return G.waveMod==='FAST'?1.20:1;}
 function waveDamageMul(){return G.waveMod==='BERSERK'?1.25:1;}
-function queueNextWave(){if(G.waveTransition||G.ended||G.state!=='shift')return;G.waveTransition=true;const cleared=G.wave,token=++G.waveToken;awardWaveCoins();for(const h of G.hazards){try{h.mesh.dispose()}catch{}}G.hazards=[];
-  if(G.mode==='LEVELS'&&cleared>=5){setTimeout(()=>{if(token!==G.waveToken)return;G.waveTransition=false;completeLevel();},1100);return;}
-  toast(`WAVE ${cleared} CLEAR`,900);G.attackGrace=1.8;setTimeout(()=>{if(token!==G.waveToken||G.state!=='shift'||G.ended)return;G.wave=cleared+1;G.waveTransition=false;G.bossSpawned=false;G.boss=null;chooseWaveModifier();const bossWave=(G.mode==='LEVELS'&&G.wave===5)||(G.mode==='SURVIVAL'&&G.wave%5===0);if(bossWave){spawnBoss(scene);spawnWave(scene,Math.min(5,1+Math.floor(G.wave/5)));}else spawnWave(scene,waveEnemyCount());toast(`${G.mode==='SURVIVAL'?'SURVIVAL':'LEVEL'} • WAVE ${G.wave}`,900);updateHUD();},1500);
+// An in-memory transition journal survives a setter that throws BEFORE its
+// write. Never guess whether a hostile getter changed the wave: repair only
+// exact same-wave stages, and refuse foreign pending transitions.
+let wavePublicationJournal=null;
+let wavePublicationRepairing=false;
+function resumeWavePublication(){
+  if(!wavePublicationJournal||wavePublicationRepairing)return;
+  wavePublicationRepairing=true;
+  try{
+    const j=wavePublicationJournal;
+    const snapshot=()=>{
+      try{
+        const t1=G.waveToken,w1=G.wave,s1=G.state;
+        const p=G.pendingWave,tr=G.waveTransition,ended=G.ended;
+        const t2=G.waveToken,w2=G.wave,s2=G.state;
+        if(t1!==t2||w1!==w2||s1!==s2)return null;
+        return {token:t1,wave:w1,state:s1,pending:p,transition:tr,ended};
+      }catch{return null;}
+    };
+    const safe=(v)=>v&&v.state==='shift'&&!v.ended&&v.wave===j.cleared&&
+      (v.token===j.baseToken||v.token===j.token)&&
+      (v.pending==null||v.pending===j.pending);
+    let v=snapshot();
+    if(!v)return;
+    // A different game/wave or foreign pending is not ours to repair.
+    if(!safe(v)){wavePublicationJournal=null;return;}
+    if(v.token===j.baseToken){
+      if(v.pending!=null){wavePublicationJournal=null;return;}
+      if(v.transition!==true){
+        if(v.transition!==false)return;
+        try{G.waveTransition=true;}catch{}
+        v=snapshot();if(!v)return;
+        if(!safe(v)){wavePublicationJournal=null;return;}
+        if(v.token!==j.baseToken||v.transition!==true)return;
+      }
+      try{G.waveToken=j.token;}catch{}
+      v=snapshot();if(!v)return;
+      if(!safe(v)){wavePublicationJournal=null;return;}
+      if(v.token!==j.token||v.transition!==true)return;
+    }
+    v=snapshot();if(!v)return;
+    if(!safe(v)){wavePublicationJournal=null;return;}
+    // Never reinstate an externally cancelled transition.
+    if(v.token!==j.token||v.transition!==true)return;
+    if(v.pending==null){
+      try{G.pendingWave=j.pending;}catch{}
+      v=snapshot();if(!v)return;
+      if(!safe(v)){wavePublicationJournal=null;return;}
+    }
+    if(v.pending!==j.pending||v.token!==j.token||v.transition!==true)return;
+    const committed=()=>{
+      const s=snapshot();
+      return !!s&&safe(s)&&s.token===j.token&&s.transition===true&&s.pending===j.pending;
+    };
+    // Mark before callbacks: reentrant or throwing rewards must not duplicate.
+    if(!j.rewardStarted){
+      j.rewardStarted=true;
+      try{awardWaveCoins();}catch{}
+    }
+    if(!committed()){wavePublicationJournal=null;return;}
+    let hazards;
+    try{hazards=G.hazards;}catch{hazards=null;}
+    if(Array.isArray(hazards)&&hazards.length<=4096){
+      for(const h of hazards){
+        if(!committed()||G.hazards!==hazards)break;
+        try{h?.mesh?.dispose?.();}catch{}
+      }
+      if(committed()&&G.hazards===hazards){try{G.hazards=[];}catch{}}
+    }
+    if(committed()&&!j.finish){
+      try{G.attackGrace=1.8;}catch{}
+      if(committed())try{toast(`WAVE ${j.cleared} CLEAR`,900);}catch{}
+    }
+    // Never attempt the reward/effects again, even after a hostile callback.
+    wavePublicationJournal=null;
+  }catch{return;}finally{wavePublicationRepairing=false;}
+}
+let queueNextWavePublishing=false;
+function queueNextWave(){
+  // Never publish twice from a synchronous getter, recovery or reward callback.
+  if(queueNextWavePublishing||wavePublicationJournal||waveCompletionJournal||levelCompletionJournal)return;
+  queueNextWavePublishing=true;
+  try{
+    let cleared,baseToken;
+    try{cleared=G.wave;baseToken=G.waveToken;}catch{return;}
+    if(!Number.isSafeInteger(cleared)||cleared<1||
+       !Number.isSafeInteger(baseToken)||baseToken<0||baseToken>=Number.MAX_SAFE_INTEGER)return;
+    const stable=()=>{
+      try{
+        const t1=G.waveToken,w1=G.wave,s1=G.state;
+        const t2=G.waveToken,w2=G.wave,s2=G.state,tr=G.waveTransition,ended=G.ended;
+        const t3=G.waveToken,w3=G.wave,s3=G.state;
+        return t1===baseToken&&t2===baseToken&&t3===baseToken&&
+          w1===cleared&&w2===cleared&&w3===cleared&&
+          s1==='shift'&&s2==='shift'&&s3==='shift'&&!tr&&!ended;
+      }catch{return false;}
+    };
+    if(!stable())return;
+    const bossRepair=bossPendingRepairNeeded();
+    if(!stable()||bossRepair)return;
+    const workerRepair=workerPendingRepairNeeded();
+    if(!stable()||workerRepair)return;
+    if(orphanRecoveryQueue.size){
+      const unresolved=drainOrphanRecoveryQueue();
+      if(!stable()||unresolved)return;
+    }
+    const workers=G.spawnPendingWorkers;
+    if(!stable())return;
+    const boss=G.spawnPendingBoss;
+    if(!stable()||!Number.isSafeInteger(workers)||workers<0||workers>4096||
+       typeof boss!=='boolean'||boss||workers>0)return;
+    // A previous count may have become stale during the pending-counter reads.
+    const alive=countActiveNpcsForWave();
+    if(!stable()||alive!==0)return;
+    const mode=G.mode;
+    if(!stable())return;
+    const finish=mode==='LEVELS'&&cleared>=5;
+    // Pre-arm the exact wave transition before fallible setters. The next
+    // frame can resume a verified partial publication without re-awarding.
+    const token=baseToken+1;
+    const pending={token,cleared,remaining:finish?1.1:1.5,finish};
+    wavePublicationJournal={baseToken,token,cleared,pending,finish,rewardStarted:false};
+    resumeWavePublication();
+  }catch{return;}finally{queueNextWavePublishing=false;}
+}
+// 4.9.185: wave completion journal. Never replay an ambiguous spawn callback.
+let waveCompletionJournal=null;
+let waveCompletionRepairing=false;
+function resumeWaveCompletion(scene){
+  if(!waveCompletionJournal||waveCompletionRepairing)return;
+  waveCompletionRepairing=true;
+  try{
+    const j=waveCompletionJournal;
+    const snapshot=()=>{
+      try{
+        const t1=G.waveToken,w1=G.wave,s1=G.state;
+        const p=G.pendingWave,tr=G.waveTransition,ended=G.ended;
+        const t2=G.waveToken,w2=G.wave,s2=G.state;
+        if(t1!==t2||w1!==w2||s1!==s2)return null;
+        return {token:t1,wave:w1,state:s1,pending:p,transition:tr,ended};
+      }catch{return null;}
+    };
+    const valid=(v)=>v&&v.token===j.token&&v.state==='shift'&&!v.ended&&
+      (v.wave===j.wave||(!j.finish&&v.wave===j.wave+1))&&
+      (v.pending===j.pending||v.pending===null)&&
+      (v.transition===true||v.transition===false);
+    const check=(v)=>{
+      if(!v)return false;
+      if(!valid(v)){waveCompletionJournal=null;return false;}
+      return true;
+    };
+    let v=snapshot();if(!check(v))return;
+    if(v.pending===j.pending){
+      if(v.wave!==j.wave||v.transition!==true)return;
+      try{G.pendingWave=null;}catch{}
+      v=snapshot();if(!check(v)||v.pending!==null)return;
+    }
+    if(v.transition===true){
+      if(v.wave!==j.wave)return;
+      try{G.waveTransition=false;}catch{}
+      v=snapshot();if(!check(v)||v.transition!==false)return;
+    }
+    if(j.finish){
+      if(v.wave!==j.wave||v.pending!==null||v.transition!==false)return;
+      // Completion may perform non-idempotent persistence. Call only once.
+      waveCompletionJournal=null;
+      try{completeLevel();}catch{}
+      return;
+    }
+    if(v.wave===j.wave){
+      try{G.wave=j.wave+1;}catch{}
+      v=snapshot();if(!check(v)||v.wave!==j.wave+1)return;
+    }
+    if(v.wave!==j.wave+1||v.pending!==null||v.transition!==false)return;
+    // Once spawning has begun, NEVER reset a newly spawned boss on retry.
+    if(j.spawnsStarted){
+      if(!j.spawnsCompleted){
+        if(j.workersStarted){
+          // A successful spawnWave result is a debit, never a replay instruction.
+          // Reconcile ONLY the same wave's verified publication/owned repair.
+          const proof=j.workerDebit;
+          if(!proof||proof!==j.workerDebit||proof.token!==v.token||proof.wave!==v.wave||
+             !Number.isSafeInteger(proof.pending)||proof.pending<0||proof.pending>4096)return;
+          if(!check(snapshot())||j!==waveCompletionJournal)return;
+          if(!proof.verified){
+            const repair=proof.repair;
+            if(!repair||repair.unsafe||repair.token!==proof.token||
+               repair.wave!==proof.wave||repair.pending!==proof.pending)return;
+            // A prior retry tick may already have verified and cleared OUR ledger.
+            if(repair.verified!==true){
+              if(workerPendingRepair!==repair)return;
+              try{if(retryWorkerPendingRepair())return;}catch{return;}
+              if(!check(snapshot())||j!==waveCompletionJournal||workerPendingRepair!==null||
+                 repair.verified!==true)return;
+            }else if(workerPendingRepair!==null)return;
+            proof.verified=true;
+          }
+          if(workerPendingRepair!==null)return;
+          let remaining;
+          try{remaining=G.spawnPendingWorkers;}catch{return;}
+          if(!check(snapshot())||j!==waveCompletionJournal||
+             remaining!==proof.pending||workerPendingRepair!==null)return;
+          let workerUnsafe=true,bossUnsafe=true;
+          try{workerUnsafe=!!workerPendingRepairNeeded();bossUnsafe=!!bossPendingRepairNeeded();}catch{return;}
+          if(!check(snapshot())||j!==waveCompletionJournal||workerUnsafe||bossUnsafe||
+             workerPendingRepair!==null||
+             !workerPendingCounterStable({token:proof.token,wave:proof.wave},proof.pending))return;
+          j.spawnsCompleted=true;
+        }else{
+          // The initial attempt may be repeated only if it never entered spawnWave.
+          if(!check(snapshot())||j!==waveCompletionJournal)return;
+          try{if(retryBossPendingRepair())return;}catch{return;}
+          if(!check(snapshot())||j!==waveCompletionJournal)return;
+          try{
+            if(beginWaveSpawns(scene,j.bossWave,j.workers,j)!==true)return;
+            j.spawnsCompleted=true;
+          }catch{return;}
+        }
+      }
+      v=snapshot();if(!check(v)||v.wave!==j.wave+1||v.pending!==null||v.transition!==false)return;
+      waveCompletionJournal=null;
+      try{toast((j.mode==='SURVIVAL'?'SURVIVAL':'LEVEL')+' • WAVE '+(j.wave+1),900);}catch{}
+      try{updateHUD();}catch{}
+      return;
+    }
+    if(!j.prepared){
+      try{G.bossSpawned=false;}catch{}
+      v=snapshot();if(!check(v)||v.wave!==j.wave+1)return;
+      let spawned;
+      try{spawned=G.bossSpawned;}catch{return;}
+      if(spawned!==false)return;
+      try{G.boss=null;}catch{}
+      v=snapshot();if(!check(v)||v.wave!==j.wave+1)return;
+      let boss;
+      try{boss=G.boss;}catch{return;}
+      if(boss!==null)return;
+      if(!j.modifierStarted){
+        j.modifierStarted=true;
+        try{chooseWaveModifier();}catch{try{G.waveMod='NORMAL';}catch{}}
+      }
+      v=snapshot();if(!check(v)||v.wave!==j.wave+1)return;
+      let mode;
+      try{mode=G.mode;}catch{return;}
+      v=snapshot();if(!check(v)||v.wave!==j.wave+1)return;
+      const bossWave=(mode==='LEVELS'&&v.wave===5)||(mode==='SURVIVAL'&&v.wave%5===0);
+      let workers;
+      try{workers=bossWave?Math.min(5,1+Math.floor(v.wave/5)):waveEnemyCount();}catch{return;}
+      v=snapshot();if(!check(v)||v.wave!==j.wave+1)return;
+      let modeAgain;
+      try{modeAgain=G.mode;}catch{return;}
+      if(modeAgain!==mode||!check(snapshot()))return;
+      j.mode=mode;j.bossWave=bossWave;j.workers=workers;j.prepared=true;
+    }
+    if(!check(snapshot()))return;
+    let bossNow,spawnedNow,modeNow;
+    try{bossNow=G.boss;spawnedNow=G.bossSpawned;modeNow=G.mode;}catch{return;}
+    if(bossNow!==null||spawnedNow!==false||modeNow!==j.mode||!check(snapshot()))return;
+    j.workersStarted=false;
+    j.spawnsStarted=true; // A partial worker spawn cannot safely be repeated.
+    try{if(beginWaveSpawns(scene,j.bossWave,j.workers,j)!==true)return;j.spawnsCompleted=true;}catch{return;}
+    v=snapshot();if(!check(v)||v.wave!==j.wave+1||v.pending!==null||v.transition!==false)return;
+    waveCompletionJournal=null;
+    try{toast((j.mode==='SURVIVAL'?'SURVIVAL':'LEVEL')+' • WAVE '+(j.wave+1),900);}catch{}
+    try{updateHUD();}catch{}
+  }catch{return;}finally{waveCompletionRepairing=false;}
+}
+let advanceWaveTransitionRunning=false;
+function advanceWaveTransition(scene,dt){
+  // Finish a partially committed level ending before any wave transition.
+  if(levelCompletionJournal){completeLevel();return;}
+  // A synchronous pending getter/setter must not reenter and advance twice.
+  // Repair an interrupted queue publication before ticking its countdown.
+  if(wavePublicationJournal){
+    resumeWavePublication();
+    if(wavePublicationJournal)return;
+  }
+  if(advanceWaveTransitionRunning)return;
+  advanceWaveTransitionRunning=true;
+  try{
+    if(waveCompletionJournal){resumeWaveCompletion(scene);return;}
+    let token,wave,pending;
+    try{token=G.waveToken;wave=G.wave;pending=G.pendingWave;}catch{return;}
+    if(!Number.isSafeInteger(token)||token<0||!Number.isSafeInteger(wave)||wave<1||
+       !pending||(typeof pending!=='object'&&typeof pending!=='function'))return;
+    const active=()=>{
+      try{
+        const t1=G.waveToken,w1=G.wave,s1=G.state;
+        const t2=G.waveToken,w2=G.wave,s2=G.state,tr=G.waveTransition,ended=G.ended;
+        const t3=G.waveToken,w3=G.wave,s3=G.state;
+        // Inspect pending identity fields without invoking hostile accessors.
+        const pd=Object.getOwnPropertyDescriptor(pending,'token');
+        const cd=Object.getOwnPropertyDescriptor(pending,'cleared');
+        const p=G.pendingWave;
+        const t4=G.waveToken,w4=G.wave,s4=G.state;
+        return t1===token&&t2===token&&t3===token&&t4===token&&
+          w1===wave&&w2===wave&&w3===wave&&w4===wave&&
+          s1==='shift'&&s2==='shift'&&s3==='shift'&&s4==='shift'&&tr===true&&!ended&&
+          p===pending&&pd&&cd&&Object.hasOwn(pd,'value')&&Object.hasOwn(cd,'value')&&
+          pd.value===token&&cd.value===wave;
+      }catch{return false;}
+    };
+    if(!active())return;
+    let finish,remaining;
+    try{finish=pending.finish===true;remaining=pending.remaining;}catch{return;}
+    if(!active())return;
+    const step=Number.isFinite(dt)&&dt>0?dt:0;
+    const next=(Number.isFinite(remaining)?remaining:(finish?1.1:1.5))-step;
+    // Setter may throw before or after writing. Only verified writes are credited.
+    try{pending.remaining=next;}catch{}
+    if(!active())return;
+    let confirmed;
+    try{confirmed=pending.remaining;}catch{return;}
+    if(!active()||confirmed!==next)return;
+    if(next>0)return;
+    // Pre-arm before fallible completion setters. Never replay ambiguous spawns.
+    waveCompletionJournal={token,wave,pending,finish,prepared:false,modifierStarted:false,
+      spawnsStarted:false,spawnsCompleted:false};
+    resumeWaveCompletion(scene);
+  }catch{return;}finally{advanceWaveTransitionRunning=false;}
 }
 
 
@@ -10641,11 +14607,78 @@ function add2_4MapDetails(scene,map,t){
   }
 }
 
+
+// Warm city-window depth and joke signage based on the office mood reference boards.
+// Each window is a grouped flat illustrated scene, rather than dozens of live transparent planes.
+function addReferenceOfficeWindows(scene,map){
+  if(!['FLOOR 13','CONFERENCE','IT LAB','PENTHOUSE','HR MAZE','LEGAL'].includes(map))return;
+  for(const x of [-5.05,5.05]){
+    const root=new B.TransformNode('City view office window',scene);root.position=new B.Vector3(x,2.52,7.16);G.arenaMeshes.push(root);
+    const frame=box(scene,'dark office window frame',new B.Vector3(0,0,.013),new B.Vector3(3.2,2.64,.06),'#2e3644',root);
+    const sky=box(scene,'sunny city skyline',new B.Vector3(0,0,-.038),new B.Vector3(2.96,2.40,.018),'#79b5df',root);
+    sky.material.emissiveColor=B.Color3.FromHexString('#79b5df').scale(.58);
+    const clouds=box(scene,'horizon haze',new B.Vector3(0,-.70,-.060),new B.Vector3(2.94,.66,.016),'#a6cbdc',root);
+    clouds.material.emissiveColor=B.Color3.FromHexString('#96c7e8').scale(.25);
+    for(let i=0;i<7;i++){
+      const h=.55+(Math.sin(i*7.29+x)*.5+.5)*.97;
+      const building=box(scene,'cartoon city building',new B.Vector3(-1.30+i*.43,-1.22+h*.5,-.085),new B.Vector3(.30,h,.03),i%3?'#647c92':'#486a86',root);
+      building.material.emissiveColor=B.Color3.FromHexString(i%3?'#647c92':'#486a86').scale(.12);
+      for(let f=0;f<2;f++)for(let c=0;c<2;c++){
+        if(i%2===0&&f===1)continue;
+        const dot=box(scene,'office skyline lit windows',new B.Vector3(-1.36+i*.43+c*.08,-1.19+h*.45+f*.16,-.109),new B.Vector3(.035,.08,.005),'#ffdd95',root);
+        dot.material.emissiveColor=B.Color3.FromHexString('#ffc572').scale(.3);
+      }
+    }
+    for(const fx of [-1.48,0,1.48])box(scene,'window mullion',new B.Vector3(fx,0,-.13),new B.Vector3(.07,2.65,.06),'#3d4756',root);
+    box(scene,'window crossbar',new B.Vector3(0,-.49,-.13),new B.Vector3(3.10,.065,.06),'#3d4756',root);
+  }
+  const slogans=['MONDAY. SURVIVE. REPEAT.','MEETING? IT COULD BE AN EMAIL.','WORLD\'S BEST BOSS','PLEASE DO NOT PANIC','EMPLOYEE OF THE MONTH'];
+  const slogan=slogans[(CATALOG.maps.findIndex(m=>m.id===map)+slogans.length)%slogans.length];
+  const sign=label(scene,slogan,new B.Vector3(0,2.45,-7.23),.48,'#efb93b');sign.rotation.y=Math.PI;G.arenaMeshes.push(sign);
+}
+// Reference-map identity: strong visual landmarks, office humor and readable 3D signs.
+function addReferenceMapIdentity(scene,map,t){
+  const add=(n,x,y,z,w,h,d,c)=>{const q=box(scene,'ref_'+n,new B.Vector3(x,y,z),new B.Vector3(w,h,d),c);G.arenaMeshes.push(q);return q;};
+  const poster=(text,x,y,z,color='#ffdb82',size=.48)=>{const q=label(scene,text,new B.Vector3(x,y,z),size,color);G.arenaMeshes.push(q);return q;};
+  const neon=(text,color)=>{add('venueSignBacking',0,3.25,6.98,5.9,.64,.08,'#141d30');poster(text,0,3.27,6.87,color,.78);};
+  if(map==='FLOOR 13'){
+    neon('OPEN PLAN MAYHEM','#ffb831');
+    const zones=[[-4.25,'SPORTS DESK','#66dbff'],[0,'GAMER DESK','#ae72ff'],[4.25,'CONSPIRACY','#ffca48']];
+    for(const [x,name,col] of zones){add('workstationFrame',x,2.57,-7.10,3.5,.67,.11,col);poster(name,x,2.57,-6.99,'#182331',.59);}
+    add('cautionStripe',0,.012,-5.93,2.6,.013,.18,'#f8bb3e');add('cautionStripe',0,.012,-5.64,2.6,.013,.07,'#2c3542');
+    poster('GOOD IDEAS / BAD DECISIONS',0,3.57,-6.98,'#ffe694',.42);
+  }else if(map==='CONFERENCE'){
+    neon('MEETING MADNESS','#6ce7ff');
+    add('slideDisplay',0,2.02,6.47,5.30,2.1,.12,'#eff7f8');
+    poster('TEAM SYNERGY!',0,2.65,6.28,'#1764ad',.69);
+    for(let i=0;i<5;i++)add('presentationBar',-1.70+i*.80,1.35+(i*.12),6.29,.38,.25+i*.25,.035,['#43baca','#fdbb47','#f37356','#9585e4','#44c6a8'][i]);
+    poster('MORE MEETINGS = MORE CHAOS',0,.67,6.26,'#27435b',.40);
+    poster('COFFEE FIRST!',-6.63,2.42,0,'#f2d56a',.55);
+  }else if(map==='PENTHOUSE'){
+    neon('CEO SHOWDOWN','#ffe07b');
+    add('executivePlaque',0,1.65,6.66,4,.66,.12,'#aa7031');
+    poster('THE BOSS',0,1.66,6.53,'#fff2bf',.72);
+    for(let i=0;i<5;i++){
+      const x=-4.9+i*2.45;
+      add('goldTrophyPlinth',x,2.45,7.02,.38,.13,.22,'#6a4922');
+      const cup=B.MeshBuilder.CreateCylinder('goldTrophy',{height:.26,diameterTop:.31,diameterBottom:.12,tessellation:10},scene);
+      cup.position=new B.Vector3(x,2.70,6.95);cup.material=mat(scene,'goldTrophyMat','#f7bb49',.2);G.arenaMeshes.push(cup);
+    }
+    poster('WORLD DOMINATION PLAN',-5.40,2.55,6.6,'#e7cbff',.42);
+    poster('SECRET CEO ROOM',5.20,2.55,6.6,'#db96ff',.42);
+  }else if(map==='BREAKROOM'||map==='CAFETERIA'){
+    neon('COFFEE FUELS CHAOS','#ff9b62');
+    poster('CAFFEINE 100%',0,2.73,-7.07,'#ffc18d',.55);
+  }else{
+    const titles={'COPY':'PRINTER PANIC','IT LAB':'TECH SUPPORT MAYHEM','SERVER':'SYSTEM ERROR 404','ROOFTOP':'ROOFTOP OVERTIME','HR MAZE':'HR NIGHTMARE','WAREHOUSE':'SUPPLY CHAOS','PARKING':'PARKING PANIC','MAILROOM':'LOST IN THE MAIL','ELEVATOR':'GOING DOWN','ARCHIVE':'CLASSIFIED FILES','LEGAL':'OBJECTION!'};
+    neon(titles[map]||'OFFICE CHAOS',t.accent);
+  }
+}
 function buildArena(scene){
   G.blockers=[];G.remoteDecor=[];G.remoteDecorReduced=false;
   const map=G.meta.selectedMap||'FLOOR 13';
   const themes={
-    'FLOOR 13':{floor:'#19364a',wall:'#102737',accent:'#5ee8ff',name:'FLOOR 13 • OPEN OFFICE'},
+    'FLOOR 13':{floor:'#936b51',wall:'#ddd4c6',accent:'#ffbd42',name:'FLOOR 13 • OPEN OFFICE'},
     'ARCHIVE':{floor:'#4b3425',wall:'#23392f',accent:'#9ce0a9',name:'ARCHIVE LOCKDOWN'},
     'BREAKROOM':{floor:'#6a4738',wall:'#f0d1aa',accent:'#ff765f',name:'BREAKROOM AFTER HOURS'},
     'SERVER':{floor:'#102d3c',wall:'#071821',accent:'#38ffd7',name:'SERVER BASEMENT'},
@@ -10733,12 +14766,13 @@ function buildArena(scene){
     fixedBox(scene,'legalDivider',new B.Vector3(0,1.0,4.8),new B.Vector3(5.5,2.0,.32),'#6d7784',.18);
     pillar(-2.8,-4.2,'#5a6471');pillar(2.8,-4.2,'#5a6471');
   }
+  addReferenceOfficeWindows(scene,map);
   addMapPolish(scene,map,t);
   add2_4MapDetails(scene,map,t);
-  if(!PLATFORM_PROFILE.mobile)addKayKitArenaModels(scene,map);
-  addCuratedArenaOverhaul(scene,map,t);
-  scheduleArenaQualityRecheck(scene,map);
-  if(!PLATFORM_PROFILE.mobile)addFusionArenaPass(scene,map,t);
+  addKayKitArenaModels(scene,map);
+  addDenseArenaPass(scene,map,t);
+  addUltraDenseArenaPass(scene,map,t);
+  addReferenceMapIdentity(scene,map,t);
   // 2.4 map-aware melee props: keeps each location visually distinct
   
 const propSets={
@@ -10761,39 +14795,131 @@ const propSets={
   };
 
 const extraPropSets={
-  'FLOOR 13':[['deskphone',3.8,5.25],['calculator',-3.8,-5.1],['scissors',1.5,-5.0],['binder',-1.5,5.0]],
-  'ARCHIVE':[['tapedispenser',-2.1,-5.2],['nameplate',3.1,5.1],['binder',1.5,-5.0],['newspaper',-1.5,5.0]],
-  'BREAKROOM':[['calculator',3.7,5.1],['firstaid',-3.8,-5.1],['donutbox',1.6,5.0],['rubberduck',-1.6,-5.0]],
-  'SERVER':[['deskphone',3.7,5.15],['firstaid',-3.6,-5.2],['wrench',1.6,-5.0],['binder',-1.6,5.0]],
-  'ROOFTOP':[['cone',3.4,-5.1],['firstaid',-3.5,5.1],['broom',1.6,5.0],['newspaper',-1.6,-5.0]],
-  'PARKING':[['cone',3.2,5.15],['cone',-3.1,-5.15],['wrench',1.6,5.0],['toolbox',-1.6,-5.0]],
+  'FLOOR 13':[['deskphone',3.8,5.25],['calculator',-3.8,-5.1],['scissors',1.5,-5.0],['binder',-1.5,5.0],['papercannon',0,-3.9],['rubberhammer',2.8,-4.2],['boxingglove',-2.8,-4.2]],
+  'ARCHIVE':[['tapedispenser',-2.1,-5.2],['nameplate',3.1,5.1],['binder',1.5,-5.0],['newspaper',-1.5,5.0],['suctioncannon',0,-4.2],['gluegun',-3.1,-4.3]],
+  'BREAKROOM':[['calculator',3.7,5.1],['firstaid',-3.8,-5.1],['donutbox',1.6,5.0],['rubberduck',-1.6,-5.0],['vendingmachine',0,4.1]],
+  'SERVER':[['deskphone',3.7,5.15],['firstaid',-3.6,-5.2],['wrench',1.6,-5.0],['binder',-1.6,5.0],['aircannon',0,-4.1]],
+  'ROOFTOP':[['cone',3.4,-5.1],['firstaid',-3.5,5.1],['broom',1.6,5.0],['newspaper',-1.6,-5.0],['aircannon',0,-4.1]],
+  'PARKING':[['cone',3.2,5.15],['cone',-3.1,-5.15],['wrench',1.6,5.0],['toolbox',-1.6,-5.0],['magnetgun',0,-4.2]],
   'HR MAZE':[['deskphone',3.4,5.1],['nameplate',-3.3,-5.1],['binder',1.6,5.0],['deskbell',-1.6,-5.0]],
-  'IT LAB':[['calculator',3.3,5.1],['tapedispenser',-3.3,-5.1],['wrench',1.7,5.0],['scissors',-1.7,-5.0]],
-  'CAFETERIA':[['firstaid',3.3,5.1],['calculator',-3.3,-5.1],['donutbox',1.6,5.0],['rubberduck',-1.6,-5.0]],
-  'PENTHOUSE':[['deskphone',3.1,5.15],['nameplate',-3.1,-5.15],['deskbell',1.6,5.0],['newspaper',-1.6,-5.0]],
-  'WAREHOUSE':[['cone',3.3,5.1],['firstaid',-3.3,-5.1],['broom',1.7,5.0],['wrench',-1.7,-5.0]],
-  'CONFERENCE':[['deskphone',3.2,5.1],['nameplate',-3.2,-5.1],['binder',1.6,5.0],['deskbell',-1.6,-5.0]],
-  'COPY':[['tapedispenser',3.2,5.1],['calculator',-3.2,-5.1],['scissors',1.6,5.0],['newspaper',-1.6,-5.0]],
+  'IT LAB':[['calculator',3.3,5.1],['tapedispenser',-3.3,-5.1],['wrench',1.7,5.0],['scissors',-1.7,-5.0],['magnetgun',0,-4.2],['gluegun',3.1,-4.3]],
+  'CAFETERIA':[['firstaid',3.3,5.1],['calculator',-3.3,-5.1],['donutbox',1.6,5.0],['rubberduck',-1.6,-5.0],['vendingmachine',0,4.1]],
+  'PENTHOUSE':[['deskphone',3.1,5.15],['nameplate',-3.1,-5.15],['deskbell',1.6,5.0],['newspaper',-1.6,-5.0],['confetticannon',0,-4.1],['projector',0,3.6]],
+  'WAREHOUSE':[['cone',3.3,5.1],['firstaid',-3.3,-5.1],['broom',1.7,5.0],['wrench',-1.7,-5.0],['suctioncannon',0,-4.2],['bowlingball',2.7,-3.8],['chaircatapult',0,4.2],['chair',0,3.3],['rubberhammer',-2.8,-3.8]],
+  'CONFERENCE':[['deskphone',3.2,5.1],['nameplate',-3.2,-5.1],['binder',1.6,5.0],['deskbell',-1.6,-5.0],['confetticannon',0,-4.1],['projector',-3.8,5.0],['boxingglove',2.9,-3.8]],
+  'COPY':[['tapedispenser',3.2,5.1],['calculator',-3.2,-5.1],['scissors',1.6,5.0],['newspaper',-1.6,-5.0],['papercannon',0,-4.2],['photocopier',0,4.0]],
   'ELEVATOR':[['cone',3.0,5.1],['firstaid',-3.0,-5.1],['wrench',1.6,5.0],['broom',-1.6,-5.0]],
-  'MAILROOM':[['tapedispenser',3.0,5.1],['nameplate',-3.0,-5.1],['binder',1.8,-5.0],['newspaper',-1.8,5.0]],
+  'MAILROOM':[['tapedispenser',3.0,5.1],['nameplate',-3.0,-5.1],['binder',1.8,-5.0],['newspaper',-1.8,5.0],['papercannon',0,-4.1]],
   'LEGAL':[['deskphone',3.0,5.1],['nameplate',-3.0,-5.1],['binder',1.8,5.0],['deskbell',-1.8,-5.0]]
 };
-  const propY=t=>({watercooler:.8,chair:.5,trashcan:.42,desklamp:.72,plantpot:.58,fan:.62,storagebox:.42,coffeepot:.58,toolbox:.44,stapler:.58,clipboard:.56,cart:.55,extinguisher:.55,deskphone:.58,calculator:.56,tapedispenser:.56,firstaid:.55,cone:.48,nameplate:.56,scissors:.56,deskbell:.56,binder:.56,donutbox:.50,wrench:.56,rubberduck:.56,broom:.72,newspaper:.56,briefcase:.48,mouse:.56,harddrive:.56,router:.56,thermos:.58,trophy:.56,headset:.56,umbrella:.70}[t]??.55);
-  const propMat=t=>(t==='mug'||t==='coffeepot'?'ceramic':t==='folder'||t==='paperball'||t==='clipboard'?'paper':['chair','cart','extinguisher','trashcan','desklamp','fan','toolbox','firstaid','cone','briefcase','umbrella'].includes(t)?'metal':t==='nameplate'||t==='binder'||t==='broom'?'wood':t==='newspaper'?'paper':['wrench','scissors','deskbell'].includes(t)?'metal':'plastic');
-  const propMass=t=>({watercooler:10,chair:6,printer:8,cart:9,monitor:5,laptop:3,mug:.6,folder:.4,extinguisher:4,stapler:1.5,desklamp:3.5,trashcan:4.8,plantpot:3.8,storagebox:5.5,fan:4.2,clipboard:1.2,coffeepot:2.2,toolbox:5.8,deskphone:2.4,calculator:1.2,tapedispenser:1.4,firstaid:3.3,cone:2.1,nameplate:1.5,scissors:.8,deskbell:1.0,binder:1.4,donutbox:1.0,wrench:2.0,rubberduck:.4,broom:2.4,newspaper:.5,briefcase:3.2,mouse:.5,harddrive:1.2,router:1.4,thermos:1.1,trophy:2.0,headset:.7,umbrella:1.0}[t]??4);
-  const propDamage=t=>({watercooler:34,printer:30,chair:24,cart:30,extinguisher:24,monitor:20,laptop:18,mug:14,folder:10,paperball:8,stapler:16,desklamp:22,trashcan:20,plantpot:21,storagebox:19,fan:23,clipboard:13,coffeepot:17,toolbox:26,deskphone:18,calculator:14,tapedispenser:15,firstaid:19,cone:17,nameplate:15,scissors:14,deskbell:15,binder:16,donutbox:12,wrench:22,rubberduck:9,broom:18,newspaper:8,briefcase:20,mouse:10,harddrive:15,router:14,thermos:16,trophy:20,headset:12,umbrella:15}[t]??18);
-  const propSize=t=>({watercooler:[.55,.95,.55],chair:[.55,1,.55],printer:[.75,.5,.62],monitor:[.62,.42,.12],keyboard:[.58,.08,.22],laptop:[.48,.4,.34],mug:[.2,.25,.2],folder:[.38,.05,.28],cart:[.8,1.05,.58],extinguisher:[.28,.85,.28],stapler:[.22,.12,.16],desklamp:[.42,.7,.42],trashcan:[.36,.52,.36],plantpot:[.36,.58,.36],storagebox:[.52,.4,.42],fan:[.5,.58,.18],clipboard:[.3,.04,.42],coffeepot:[.28,.35,.22],toolbox:[.48,.28,.26],deskphone:[.34,.22,.28],calculator:[.28,.08,.22],tapedispenser:[.26,.13,.18],firstaid:[.38,.32,.16],cone:[.28,.48,.28],nameplate:[.38,.16,.12],scissors:[.28,.05,.13],deskbell:[.18,.14,.18],binder:[.28,.38,.08],donutbox:[.38,.14,.30],wrench:[.34,.08,.10],rubberduck:[.20,.20,.18],broom:[.18,.78,.18],newspaper:[.30,.05,.42],briefcase:[.48,.32,.16],mouse:[.22,.14,.30],harddrive:[.30,.10,.22],router:[.34,.30,.24],thermos:[.18,.50,.18],trophy:[.32,.48,.28],headset:[.34,.28,.20],umbrella:[.52,.80,.52],paperball:[.24,.24,.24]}[t]||[.55,.55,.55]);
+  const propY=t=>({boxingglove:.58,photocopier:.54,gluegun:.62,rubberhammer:.60,chaircatapult:.40,projector:.64,vendingmachine:.83,bowlingball:.30,confetticannon:.64,suctioncannon:.64,magnetgun:.64,aircannon:.68,papercannon:.64,watercooler:.8,chair:.5,trashcan:.42,desklamp:.72,plantpot:.58,fan:.62,storagebox:.42,coffeepot:.58,toolbox:.44,stapler:.58,clipboard:.56,cart:.55,extinguisher:.55,deskphone:.58,calculator:.56,tapedispenser:.56,firstaid:.55,cone:.48,nameplate:.56,scissors:.56,deskbell:.56,binder:.56,donutbox:.50,wrench:.56,rubberduck:.56,broom:.72,newspaper:.56,briefcase:.48,mouse:.56,harddrive:.56,router:.56,thermos:.58,trophy:.56,headset:.56,umbrella:.70}[t]??.55);
+  const propMat=t=>(t==='mug'||t==='coffeepot'?'ceramic':t==='folder'||t==='paperball'||t==='clipboard'?'paper':['chair','cart','extinguisher','trashcan','desklamp','fan','toolbox','firstaid','cone','briefcase','umbrella','papercannon','aircannon','suctioncannon','magnetgun','vendingmachine','bowlingball','confetticannon','rubberhammer','chaircatapult','gluegun','photocopier','boxingglove'].includes(t)?'metal':t==='nameplate'||t==='binder'||t==='broom'?'wood':t==='newspaper'?'paper':['wrench','scissors','deskbell'].includes(t)?'metal':'plastic');
+  const propMass=t=>({boxingglove:2.1,photocopier:14,gluegun:2.8,rubberhammer:2.3,chaircatapult:30,vendingmachine:25,bowlingball:15,confetticannon:3.2,suctioncannon:3.8,magnetgun:3.0,aircannon:6.5,papercannon:3.2,watercooler:10,chair:6,printer:8,cart:9,monitor:5,laptop:3,mug:.6,folder:.4,extinguisher:4,stapler:1.5,desklamp:3.5,trashcan:4.8,plantpot:3.8,storagebox:5.5,fan:4.2,clipboard:1.2,coffeepot:2.2,toolbox:5.8,deskphone:2.4,calculator:1.2,tapedispenser:1.4,firstaid:3.3,cone:2.1,nameplate:1.5,scissors:.8,deskbell:1.0,binder:1.4,donutbox:1.0,wrench:2.0,rubberduck:.4,broom:2.4,newspaper:.5,briefcase:3.2,mouse:.5,harddrive:1.2,router:1.4,thermos:1.1,trophy:2.0,headset:.7,umbrella:1.0}[t]??4);
+  const propDamage=t=>({boxingglove:11,photocopier:30,gluegun:9,rubberhammer:10,chaircatapult:22,vendingmachine:25,bowlingball:42,confetticannon:12,suctioncannon:15,magnetgun:13,aircannon:26,watercooler:34,printer:30,chair:24,cart:30,extinguisher:24,monitor:20,laptop:18,mug:14,folder:10,paperball:8,stapler:16,desklamp:22,trashcan:20,plantpot:21,storagebox:19,fan:23,clipboard:13,coffeepot:17,toolbox:26,deskphone:18,calculator:14,tapedispenser:15,firstaid:19,cone:17,nameplate:15,scissors:14,deskbell:15,binder:16,donutbox:12,wrench:22,rubberduck:9,broom:18,newspaper:8,briefcase:20,mouse:10,harddrive:15,router:14,thermos:16,trophy:20,headset:12,umbrella:15}[t]??18);
+  const propSize=t=>({boxingglove:[.44,.40,.48],photocopier:[.87,.68,.78],gluegun:[.38,.42,.52],rubberhammer:[.43,.63,.30],chaircatapult:[.8,.4,1.06],vendingmachine:[.74,1.55,.62],bowlingball:[.48,.48,.48],confetticannon:[.34,.27,.55],suctioncannon:[.46,.35,.68],magnetgun:[.35,.28,.52],aircannon:[.52,.45,.72],watercooler:[.55,.95,.55],chair:[.55,1,.55],printer:[.75,.5,.62],monitor:[.62,.42,.12],keyboard:[.58,.08,.22],laptop:[.48,.4,.34],mug:[.2,.25,.2],folder:[.38,.05,.28],cart:[.8,1.05,.58],extinguisher:[.28,.85,.28],stapler:[.22,.12,.16],desklamp:[.42,.7,.42],trashcan:[.36,.52,.36],plantpot:[.36,.58,.36],storagebox:[.52,.4,.42],fan:[.5,.58,.18],clipboard:[.3,.04,.42],coffeepot:[.28,.35,.22],toolbox:[.48,.28,.26],deskphone:[.34,.22,.28],calculator:[.28,.08,.22],tapedispenser:[.26,.13,.18],firstaid:[.38,.32,.16],cone:[.28,.48,.28],nameplate:[.38,.16,.12],scissors:[.28,.05,.13],deskbell:[.18,.14,.18],binder:[.28,.38,.08],donutbox:[.38,.14,.30],wrench:[.34,.08,.10],rubberduck:[.20,.20,.18],broom:[.18,.78,.18],newspaper:[.30,.05,.42],briefcase:[.48,.32,.16],mouse:[.22,.14,.30],harddrive:[.30,.10,.22],router:[.34,.30,.24],thermos:[.18,.50,.18],trophy:[.32,.48,.28],headset:[.34,.28,.20],umbrella:[.52,.80,.52],paperball:[.24,.24,.24]}[t]||[.55,.55,.55]);
   for(const [type,x,z] of (propSets[map]||propSets['FLOOR 13']))makeProp(scene,type,new B.Vector3(x,propY(type),z),{material:propMat(type),mass:propMass(type),damage:propDamage(type),size:propSize(type)});
   for(const [type,x,z] of (extraPropSets[map]||[]))makeProp(scene,type,new B.Vector3(x,propY(type),z),{material:propMat(type),mass:propMass(type),damage:propDamage(type),size:propSize(type)});
   const gauntletProps={'FLOOR 13':[['mouse',-2.2,5.7],['headset',2.2,5.7]],'ARCHIVE':[['briefcase',-1.6,5.6],['umbrella',1.6,5.6]],'BREAKROOM':[['thermos',-1.6,-5.5],['mouse',1.6,-5.5]],'SERVER':[['harddrive',-1.6,-5.5],['router',1.6,-5.5]],'ROOFTOP':[['umbrella',-1.6,5.5],['trophy',1.6,5.5]],'PARKING':[['briefcase',-1.6,5.5],['umbrella',1.6,5.5]],'HR MAZE':[['headset',-1.6,-5.5],['briefcase',1.6,-5.5]],'IT LAB':[['harddrive',-1.6,5.5],['router',1.6,5.5]],'CAFETERIA':[['thermos',-1.6,5.5],['trophy',1.6,5.5]],'PENTHOUSE':[['trophy',-1.6,5.5],['briefcase',1.6,5.5]],'WAREHOUSE':[['umbrella',-1.6,-5.5],['harddrive',1.6,-5.5]],'CONFERENCE':[['headset',-1.6,5.5],['mouse',1.6,5.5]],'COPY':[['router',-1.6,-5.5],['mouse',1.6,-5.5]],'ELEVATOR':[['briefcase',-1.6,5.5],['umbrella',1.6,5.5]],'MAILROOM':[['thermos',-1.6,-5.5],['headset',1.6,-5.5]],'LEGAL':[['briefcase',-1.6,5.5],['trophy',1.6,5.5]]};
   for(const [type,x,z] of (gauntletProps[map]||[]))makeProp(scene,type,new B.Vector3(x,propY(type),z),{material:propMat(type),mass:propMass(type),damage:propDamage(type),size:propSize(type)});
+  // Warehouse bowling: six lightweight office pins for the existing heavy ball.
+  // Only place on unblocked floor, leaving headroom under the 48-body cap.
+  G.officeBowlingPins=[];
+  if(map==='WAREHOUSE'){
+    const pins=[[-3.4,2.25],[-3.75,2.75],[-3.05,2.75],[-4.1,3.25],[-3.4,3.25],[-2.7,3.25]];
+    let pinCount=0;
+    for(const [x,z] of pins){
+      if(G.props.length>=44)break;
+      if(isBlockedXZ(x,z,.23))continue;
+      const pin=makeProp(scene,'cone',new B.Vector3(x,.48,z),{material:'plastic',mass:1.1,damage:4,size:[.28,.48,.28]});
+      pin.officeBowlingPin=true;pin.officeBowlingScored=false;G.officeBowlingPins.push(pin);
+      pinCount++;
+    }
+    if(pinCount){
+      const sign=label(scene,'OFFICE BOWLING',new B.Vector3(-3.4,2.1,3.8),.3,'#ffe36b');
+      G.arenaMeshes.push(sign);
+    }
+  }
 
+
+  buildOfficeChallengeTargets(scene);
   const mapName=(CATALOG.maps.find(x=>x.id===map)||{name:map}).name;const title=label(scene,mapName,new B.Vector3(0,3.0,6.9),.34,t.accent);G.arenaMeshes.push(title);
   
 }
+const FRAGILE_PROP_TYPES=new Set(['photocopier','mug','coffeepot','monitor','laptop','printer','keyboard','deskphone','calculator','plantpot','donutbox','watercooler','desklamp']);
+const STURDY_PROP_TYPES=new Set(['chaircatapult','chair','cart','storagebox','toolbox','extinguisher','broom','vendingmachine','bowlingball']);
 function makeProp(scene,type,pos,opt={}){
   const root=new B.TransformNode('prop_'+type,scene);root.position.copyFrom(pos);root.metadata={kind:'prop'};const s=opt.size||[.45,.45,.45];const part=(n,p,sc,c)=>box(scene,n,p,sc,c,root);
-  if(type==='chair'){part('seat',new B.Vector3(0,.08,0),new B.Vector3(.48,.12,.48),'#31506d');part('back',new B.Vector3(0,.48,.21),new B.Vector3(.48,.72,.12),'#365a79');part('stem',new B.Vector3(0,-.2,0),new B.Vector3(.08,.45,.08),'#252b31');for(const a of [[.25,-.42,0],[-.25,-.42,0],[0,-.42,.25],[0,-.42,-.25]])part('foot',new B.Vector3(...a),new B.Vector3(.25,.05,.06),'#1b1f24');}
+  if(type==='gluegun'){
+    part('glueGunBody',new B.Vector3(0,0,0),new B.Vector3(.34,.24,.36),'#62b7d7');
+    const tube=B.MeshBuilder.CreateCylinder('glueGunNozzle',{height:.36,diameter:.13,tessellation:10},scene);
+    tube.parent=root;tube.rotation.x=Math.PI/2;tube.position.set(0,.05,.26);
+    tube.material=mat(scene,'glueNozzleMat','#c7e4ef',.48);
+    part('glueGunGrip',new B.Vector3(0,-.20,-.09),new B.Vector3(.11,.28,.11),'#36506b');
+    part('glueGunTank',new B.Vector3(0,.19,-.08),new B.Vector3(.19,.19,.20),'#8eddb2');
+  }
+  else if(type==='photocopier'){
+    part('copyBody',new B.Vector3(0,0,0),new B.Vector3(.87,.60,.78),'#a9b5c4');
+    part('copyScanner',new B.Vector3(0,.34,.08),new B.Vector3(.74,.11,.63),'#384a5e');
+    part('copyGlass',new B.Vector3(0,.406,.07),new B.Vector3(.58,.018,.48),'#8bc4d5');
+    part('copyControl',new B.Vector3(.30,.26,-.35),new B.Vector3(.21,.12,.08),'#26394b');
+    part('copyButton',new B.Vector3(.32,.32,-.40),new B.Vector3(.065,.024,.035),'#6bdf9b');
+    part('copyOutput',new B.Vector3(0,-.12,-.40),new B.Vector3(.56,.15,.06),'#1d2a38');
+  }
+  else if(type==='boxingglove'){
+    const glove=B.MeshBuilder.CreateSphere('bigBoxingGlove',{diameter:.44,segments:12},scene);
+    glove.parent=root;glove.scaling=new B.Vector3(1,1.02,1.16);glove.material=mat(scene,'boxingGloveRed','#ee4d5e',.66);
+    part('gloveCuff',new B.Vector3(0,-.23,-.05),new B.Vector3(.30,.17,.32),'#7a2539');
+    part('gloveThumb',new B.Vector3(-.21,-.04,.07),new B.Vector3(.16,.22,.22),'#ff7d8b');
+  }
+  else if(type==='rubberhammer'){
+    part('rubberHandle',new B.Vector3(0,-.19,0),new B.Vector3(.09,.53,.09),'#5b402d');
+    const head=B.MeshBuilder.CreateCylinder('rubberHammerHead',{height:.43,diameter:.26,tessellation:12},scene);
+    head.parent=root;head.rotation.z=Math.PI/2;head.position.y=.16;
+    head.material=mat(scene,'rubberHammerMat','#ed6173',.72);
+    for(const x of [-.21,.21])part('rubberHammerCap',new B.Vector3(x,.16,0),new B.Vector3(.035,.28,.28),'#ff9cab');
+  }
+  else if(type==='chaircatapult'){
+    part('catapultBase',new B.Vector3(0,-.12,0),new B.Vector3(.78,.22,1.04),'#47556a');
+    const ramp=part('catapultRamp',new B.Vector3(0,.09,-.13),new B.Vector3(.70,.09,.72),'#efb64c');
+    ramp.rotation.x=-.22;
+    part('catapultLever',new B.Vector3(.32,.20,.29),new B.Vector3(.08,.32,.08),'#e06459');
+    for(const x of [-.29,.29])part('catapultRail',new B.Vector3(x,.13,-.12),new B.Vector3(.045,.16,.68),'#c3d0d8');
+  }
+  else if(type==='vendingmachine'){
+    part('vendBody',new B.Vector3(0,0,0),new B.Vector3(.74,1.55,.62),'#384b60');
+    part('vendWindow',new B.Vector3(-.08,.20,-.32),new B.Vector3(.49,.87,.018),'#1b2d3b');
+    for(let i=0;i<6;i++)part('vendSnack'+i,new B.Vector3(-.24+(i%2)*.25,.48-Math.floor(i/2)*.26,-.338),new B.Vector3(.15,.12,.018),i%2?'#ffbb4b':'#ec6e86');
+    part('vendPanel',new B.Vector3(.28,.10,-.33),new B.Vector3(.10,.32,.025),'#a6b8c3');
+    part('vendButton',new B.Vector3(.28,.15,-.35),new B.Vector3(.055,.055,.025),'#79e2a5');
+    part('vendSlot',new B.Vector3(-.08,-.57,-.34),new B.Vector3(.45,.16,.025),'#101a25');
+  }
+  else if(type==='projector'){
+    part('projectorBody',new B.Vector3(0,0,0),new B.Vector3(.43,.18,.33),'#4e5c73');
+    part('projectorLens',new B.Vector3(0,.01,-.19),new B.Vector3(.16,.11,.045),'#a9d9ff');
+    const screen=part('projectorPanel',new B.Vector3(0,.60,-1.65),new B.Vector3(1.45,.80,.025),'#7cdcff');
+    screen.material.emissiveColor=B.Color3.FromHexString('#5fbfff').scale(.62);
+    screen.setEnabled(false);
+    root.metadata.projectorScreen=screen;
+  }
+  else if(type==='bowlingball'){
+    const ball=B.MeshBuilder.CreateSphere('officeBowlingBall',{diameter:.48,segments:14},scene);
+    ball.parent=root;ball.material=mat(scene,'bowlingBallMat','#6d4ac4',.3);
+    for(const [x,y] of [[-.075,.07],[.075,.07],[0,-.055]]){
+      const hole=B.MeshBuilder.CreateSphere('bowlingHole',{diameter:.065,segments:6},scene);
+      hole.parent=root;hole.position.set(x,y,-.229);hole.material=mat(scene,'bowlingHoleMat','#161d29',.5);
+    }
+  }
+  else if(type==='confetticannon'){
+    part('confettiBody',new B.Vector3(0,0,0),new B.Vector3(.33,.24,.31),'#f070a8');
+    const tube=B.MeshBuilder.CreateCylinder('confettiTube',{height:.43,diameter:.22,tessellation:10},scene);
+    tube.parent=root;tube.rotation.x=Math.PI/2;tube.position.set(0,.07,.22);
+    tube.material=mat(scene,'confettiTubeMat','#f6c755',.4);
+    part('confettiGrip',new B.Vector3(0,-.19,-.08),new B.Vector3(.11,.24,.11),'#41435e');
+  }
+  else if(type==='confettipink'||type==='confettiblue'||type==='confettiyellow'){
+    part('confettiCard',new B.Vector3(0,0,0),new B.Vector3(.13,.014,.18),type==='confettipink'?'#f66ea5':type==='confettiblue'?'#6dcaf3':'#f8d55e');
+  }
+  else if(type==='chair'){part('seat',new B.Vector3(0,.08,0),new B.Vector3(.48,.12,.48),'#31506d');part('back',new B.Vector3(0,.48,.21),new B.Vector3(.48,.72,.12),'#365a79');part('stem',new B.Vector3(0,-.2,0),new B.Vector3(.08,.45,.08),'#252b31');for(const a of [[.25,-.42,0],[-.25,-.42,0],[0,-.42,.25],[0,-.42,-.25]])part('foot',new B.Vector3(...a),new B.Vector3(.25,.05,.06),'#1b1f24');}
   else if(type==='monitor'){part('monitorBody',new B.Vector3(0,.1,0),new B.Vector3(.62,.42,.09),'#17212b');const scr=part('screen',new B.Vector3(0,.1,-.052),new B.Vector3(.52,.32,.012),'#2d96c8');scr.material.emissiveColor=B.Color3.FromHexString('#2d96c8').scale(.45);part('stand',new B.Vector3(0,-.2,0),new B.Vector3(.08,.22,.08),'#22282f');}
   else if(type==='printer'){part('printerBody',new B.Vector3(0,0,0),new B.Vector3(.75,.48,.62),'#6f7b86');part('printerTop',new B.Vector3(0,.28,-.03),new B.Vector3(.6,.12,.5),'#a7b0b7');part('paper',new B.Vector3(0,.38,-.05),new B.Vector3(.42,.02,.3),'#f3f0df');}
   else if(type==='watercooler'){part('coolerBase',new B.Vector3(0,-.15,0),new B.Vector3(.48,.9,.48),'#dce3e7');const bot=B.MeshBuilder.CreateCylinder('waterBottle',{height:.7,diameter:.38,tessellation:14},scene);bot.parent=root;bot.position.y=.62;bot.material=mat(scene,'waterMat','#72bde0',.3);}
@@ -10838,9 +14964,34 @@ else if(type==='thermos'){const body=B.MeshBuilder.CreateCylinder('thermosBody',
 else if(type==='trophy'){const cup=B.MeshBuilder.CreateCylinder('trophyCup',{height:.22,diameterTop:.22,diameterBottom:.13,tessellation:14},scene);cup.parent=root;cup.position.y=.12;cup.material=mat(scene,'trophyMat','#d7ad42',.18);part('trophyStem',new B.Vector3(0,-.06,0),new B.Vector3(.05,.14,.05),'#c99a31');part('trophyBase',new B.Vector3(0,-.17,0),new B.Vector3(.22,.07,.18),'#48382a');for(const x of [-.14,.14]){const h=B.MeshBuilder.CreateTorus('trophyHandle',{diameter:.15,thickness:.025,tessellation:12},scene);h.parent=root;h.position=new B.Vector3(x,.13,0);h.rotation.y=Math.PI/2;h.material=cup.material;}}
 else if(type==='headset'){const band=B.MeshBuilder.CreateTorus('headsetBand',{diameter:.30,thickness:.028,tessellation:14},scene);band.parent=root;band.rotation.x=Math.PI/2;band.scaling.y=.72;band.material=mat(scene,'headsetMat','#242b34',.45);for(const x of [-.14,.14])part('earCup',new B.Vector3(x,-.04,0),new B.Vector3(.06,.13,.10),'#38434f');const mic=part('headsetMic',new B.Vector3(.18,-.10,-.08),new B.Vector3(.16,.018,.018),'#252b31');mic.rotation.y=.5;}
 else if(type==='umbrella'){const pole=B.MeshBuilder.CreateCylinder('umbrellaPole',{height:.62,diameter:.035,tessellation:10},scene);pole.parent=root;pole.material=mat(scene,'umbrellaPoleMat','#555f67',.35);const canopy=B.MeshBuilder.CreateCylinder('umbrellaCanopy',{height:.16,diameterTop:.05,diameterBottom:.52,tessellation:12},scene);canopy.parent=root;canopy.position.y=.38;canopy.material=mat(scene,'umbrellaCanopyMat','#536da8',.72);const hook=B.MeshBuilder.CreateTorus('umbrellaHook',{diameter:.13,thickness:.025,tessellation:12,arc:.6},scene);hook.parent=root;hook.position.y=-.34;hook.rotation.z=Math.PI/2;hook.material=mat(scene,'umbrellaHookMat','#34291f',.8);}
+else if(type==='aircannon'){
+  part('airCannonBody',new B.Vector3(0,0,0),new B.Vector3(.44,.30,.42),'#e3a93f');
+  const tube=B.MeshBuilder.CreateCylinder('airCannonTube',{height:.64,diameter:.24,tessellation:12},scene);
+  tube.parent=root;tube.rotation.x=Math.PI/2;tube.position.set(0,.10,.28);
+  tube.material=mat(scene,'airCannonTubeMat','#485d77',.35);
+  part('airCannonHandle',new B.Vector3(0,-.24,-.11),new B.Vector3(.12,.28,.12),'#35404b');
+}
+else if(type==='suctioncannon'||type==='magnetgun'){
+  const magnet=type==='magnetgun';
+  part('pullToolBody',new B.Vector3(0,0,0),new B.Vector3(magnet?.29:.42,.25,magnet?.31:.38),magnet?'#794acb':'#3bb8a5');
+  const tube=B.MeshBuilder.CreateCylinder('pullToolTube',{height:magnet?.40:.58,diameter:magnet?.17:.25,tessellation:12},scene);
+  tube.parent=root;tube.rotation.x=Math.PI/2;tube.position.set(0,.07,magnet?.22:.29);
+  tube.material=mat(scene,'pullToolTubeMat',magnet?'#b8a2ef':'#bedfd9',.35);
+  part('pullToolHandle',new B.Vector3(0,-.20,-.08),new B.Vector3(.11,.25,.11),'#283944');
+}
+else if(type==='papercannon'){
+  part('paperCannonBody',new B.Vector3(0,0,0),new B.Vector3(.33,.24,.35),'#f2a33c');
+  const barrel=B.MeshBuilder.CreateCylinder('paperCannonBarrel',{height:.50,diameter:.20,tessellation:12},scene);
+  barrel.parent=root;barrel.rotation.x=Math.PI/2;barrel.position.set(0,.09,.23);
+  barrel.material=mat(scene,'paperCannonBarrelMat','#536f9c',.4);
+  part('paperCannonGrip',new B.Vector3(0,-.19,-.07),new B.Vector3(.12,.28,.11),'#36465d');
+}
+else if(type==='printsheet'){part('printSheet',new B.Vector3(0,0,0),new B.Vector3(.25,.012,.33),'#f3f0df');}
 else {part('propBody',new B.Vector3(0,0,0),new B.Vector3(...s),'#426f8b');}
 
-  const p={mesh:root,type,material:opt.material||'plastic',mass:opt.mass||2,damage:opt.damage||12,integrity:9999,vel:B.Vector3.Zero(),ang:B.Vector3.Zero(),heldBy:null,npcOwner:null,grounded:true,life:0,lastHit:0,lastGroundSound:0,broken:false};G.props.push(p);return p;
+  // Shared sets avoid two temporary allocations for every spawned paperball or sheet.
+  const integrity=FRAGILE_PROP_TYPES.has(type)?(type==='monitor'||type==='laptop'?7:5):STURDY_PROP_TYPES.has(type)?20:10;
+  const p={mesh:root,type,material:opt.material||'plastic',mass:opt.mass||2,damage:opt.damage||12,integrity:opt.integrity||integrity,vel:B.Vector3.Zero(),ang:B.Vector3.Zero(),heldBy:null,npcOwner:null,grounded:true,life:0,hitCooldownT:0,groundSoundCooldownT:0,contactSoundCooldownT:0,wallSoundCooldownT:0,broken:false,homeX:root.position.x,homeY:root.position.y,homeZ:root.position.z,collisionRadius:Math.max(.12,Math.min(.65,Math.max(s[0],s[2])*.46)),collisionHalfHeight:Math.max(.08,Math.min(.85,s[1]*.46))};G.props.push(p);return p;
 }
 
 
@@ -10874,46 +15025,314 @@ function makeBatModel(scene,bd){
   const tip=B.MeshBuilder.CreateSphere('batTip',{diameter:.15,segments:12},scene);tip.parent=root;tip.position.y=.78;tip.scaling.y=.55;tip.material=bodyMat;
   root.metadata={kind:'bat',tip,ability:a};return root;
 }
-function attachBatToFlatCamera(scene){if(!G.desktop||!G.batMesh||!scene?.activeCamera)return;const root=G.batMesh;root.parent=scene.activeCamera;root.position=new B.Vector3(.38,-.38,.72);root.rotationQuaternion=null;root.rotation=new B.Vector3(.10,0,-.62);root.scaling.setAll(.72);root.metadata.flatBase={p:root.position.clone(),r:root.rotation.clone()};}
-function updateFlatBat(scene,dt){if(!G.desktop||!G.batMesh||!G.batMesh.metadata?.flatBase)return;const r=G.batMesh,b=r.metadata.flatBase;G.flatBatSwing=Math.max(0,(G.flatBatSwing||0)-dt*3.6);const phase=1-G.flatBatSwing,s=Math.sin(Math.min(1,phase)*Math.PI);r.position.x=b.p.x-.16*s;r.position.y=b.p.y+.06*s;r.position.z=b.p.z-.12*s;r.rotation.x=b.r.x-.42*s;r.rotation.y=b.r.y-.35*s;r.rotation.z=b.r.z-1.05*s;}
-function updateFlatActionPrompt(scene,dt){if(!G.desktop)return;G.flatPromptT-=dt;if(G.flatPromptT>0)return;G.flatPromptT=.10;const ret=document.getElementById('reticle'),prompt=document.getElementById('actionPrompt');if(ret)ret.style.display='block';if(!prompt||!scene?.activeCamera)return;let text='';try{const ray=scene.activeCamera.getForwardRay(G.state==='hub'?8:2.8),hit=scene.pickWithRay(ray,m=>G.state==='hub'?!!m?.metadata?.interact:!!m?.metadata?.npc);if(hit?.hit){if(G.state==='hub')text='USE';else if(hit.pickedMesh?.metadata?.npc&&!hit.pickedMesh.metadata.npc.dead)text='HIT';}}catch{}prompt.textContent=text;prompt.style.opacity=text?'1':'0';}
-function spawnBat(scene){if(G.batMesh)try{G.batMesh.dispose(false,true)}catch{};const root=makeBatModel(scene,selectedBatDef());G.batMesh=root;G.batTip=root.metadata.tip;if(G.right)attachBatToController(G.right);else if(G.desktop)attachBatToFlatCamera(scene);}
+function spawnBat(scene){if(G.batMesh)try{G.batMesh.dispose(false,true)}catch{};const root=makeBatModel(scene,selectedBatDef());G.batMesh=root;G.batTip=root.metadata.tip;if(G.right)attachBatToController(G.right);syncBatGrabVisibility();}
 
 
 function npcBubble(npc,text,color='#ffffff'){
-  if(!npc?.root||npc.dead)return;try{const b=label(npc.scene,String(text).slice(0,20),new B.Vector3(0,2.62,0),.22,color);b.parent=npc.root;b.position=new B.Vector3(0,2.62,0);setTimeout(()=>{try{b.dispose(false,true)}catch{}},720);}catch{}
+  if(!npc?.root||npc.dead||npc.root.isDisposed?.())return;
+  let b=null;
+  try{
+    b=label(npc.scene,String(text).slice(0,20),new B.Vector3(0,2.62,0),.22,color);
+    b.parent=npc.root;b.position=new B.Vector3(0,2.62,0);
+    // One readable reaction at a time: old overlapping labels are retired.
+    const previous=Array.isArray(npc.bubbles)?npc.bubbles:[];
+    npc.bubbles=[{mesh:b,remaining:.85}];
+    for(let i=0;i<Math.min(previous.length,64);i++){
+      try{const old=previous[i]?.mesh;if(old&&old!==b&&!old.isDisposed?.())old.dispose(false,true);}catch{}
+    }
+  }catch{try{b?.dispose?.(false,true);}catch{}}
 }
+// NPC speech bubbles expire on active game time, never while the XR session is paused.
+// CR4.9.586: grounded NPC ragdolls settle without repeated tiny bounces.
+// Wall impacts rebound gently while preserving finite, damped motion.
+// CR4.9.593: bound one NPC ragdoll physics step during a browser/XR hitch.
+// The death timer still advances in real game time, but gravity and limb
+// rotation cannot leap an entire room on a single delayed frame.
+function npcRagdollFrameStep(dt){
+  return Number.isFinite(dt)&&dt>0?Math.min(dt,.05):0;
+}
+// CR4.9.650: multiple fallen NPCs share the same per-frame damping factors.
+// Each type is cached independently, avoiding extra Math.pow on single-NPC ticks.
+// Exact dt changes and nested calls recompute safely; no persistent mesh refs.
+let npcRagdollSlideStep=NaN,npcRagdollSlideFactor=1;
+let npcRagdollSpinStep=NaN,npcRagdollSpinFactor=1;
+function npcRagdollDampingFactor(step,spin=false){
+  if(spin){
+    if(step!==npcRagdollSpinStep){
+      npcRagdollSpinStep=step;
+      npcRagdollSpinFactor=Math.pow(.86,step*60);
+    }
+    return npcRagdollSpinFactor;
+  }
+  if(step!==npcRagdollSlideStep){
+    npcRagdollSlideStep=step;
+    npcRagdollSlideFactor=Math.pow(.72,step*60);
+  }
+  return npcRagdollSlideFactor;
+}
+// CR4.9.599: frame-rate independent floor friction. At 60 Hz the old
+// .72 damping is preserved; at 72/90/120 Hz equivalent real time gives
+// the same slide distance instead of arbitrarily stopping sooner.
+function settleNpcRagdollVelocity(v,dt){
+  // CR4.9.613: reject corrupted knockback components before settling;
+  // a NaN horizontal impulse must never survive into Babylon transforms.
+  // CR4.9.649: a rising ragdoll must not rebound again on floor contact.
+  const impact=Number.isFinite(v.y)&&v.y<0?-v.y:0;
+  v.y=impact>.75?impact*.18:0;
+  const step=Number.isFinite(dt)&&dt>0?Math.min(.05,dt):0;
+  const friction=npcRagdollDampingFactor(step);
+  const vx=Number.isFinite(v.x)?v.x:0,vz=Number.isFinite(v.z)?v.z:0;
+  v.x=Math.abs(vx)<.08?0:vx*friction;
+  v.z=Math.abs(vz)<.08?0:vz*friction;
+}
+// CR4.9.600 gameplay: grounded NPCs visibly stop spinning instead of
+// rolling at full airborne angular speed until the ragdoll timer ends.
+function boundedNpcRagdollSpin(spin){
+  return Number.isFinite(spin)?Math.max(-20,Math.min(20,spin)):0;
+}
+function settleNpcRagdollSpin(spin,dt){
+  const safeSpin=boundedNpcRagdollSpin(spin);
+  const step=Number.isFinite(dt)&&dt>0?Math.min(.05,dt):0;
+  const next=safeSpin*npcRagdollDampingFactor(step,true);
+  return Math.abs(next)<.05?0:next;
+}
+// CR4.9.605: an external knockback or corrupted physics impulse must not
+// fling a dead NPC across the map in one XR frame.
+function boundedNpcRagdollVelocityComponent(value,limit){
+  return Number.isFinite(value)?Math.max(-limit,Math.min(limit,value)):0;
+}
+function reboundNpcRagdollAxis(v){
+  return Number.isFinite(v)&&Math.abs(v)>.5?-v*.16:0;
+}
+function advanceNpcBubbles(npc,dt){
+  const bubbles=npc?.bubbles;
+  if(!Array.isArray(bubbles)||!bubbles.length||bubbles.length>64||
+     G.state!=='shift'||!hasActivePlayerSession())return;
+  const step=Number.isFinite(dt)?Math.max(0,Math.min(.033,dt)):0;
+  if(!step)return;
+  // Reuse the existing array rather than allocating a new one every XR frame.
+  for(let i=bubbles.length-1;i>=0;i--){
+    const bubble=bubbles[i];
+    let live=false;try{live=!!bubble?.mesh&&!bubble.mesh.isDisposed?.();}catch{}
+    if(!live){bubbles.splice(i,1);continue;}
+    // CR4.9.616: a malformed/readonly bubble must not crash the NPC tick.
+    // Drop and dispose it once; never keep retrying an ambiguous timer write.
+    let remaining;
+    try{
+      remaining=Math.max(0,(Number.isFinite(bubble.remaining)?bubble.remaining:.85)-step);
+      bubble.remaining=remaining;
+    }catch{
+      bubbles.splice(i,1);
+      try{bubble.mesh.dispose(false,true);}catch{}
+      continue;
+    }
+    if(remaining===0){
+      bubbles.splice(i,1);
+      try{bubble.mesh.dispose(false,true);}catch{}
+    }
+  }
+}
+const OFFICE_BOSS_TYPES={
+  CEO:{name:'ANGRY CEO',color:'#c32d45',weak:'HIT THE CEO BADGE',callout:'EXECUTIVE CHARGE!'},
+  STAPLER:{name:'STAPLER SUPERVISOR',color:'#f0445c',weak:'SMASH THE CORE',callout:'INCOMING STAPLES!'},
+  COFFEE:{name:'COFFEE MONSTER',color:'#9b5b30',weak:'COFFEE LID OPEN',callout:'HOT COFFEE SPLASH!'},
+  PAPER:{name:'PAPER TORNADO MANAGER',color:'#65c9ee',weak:'PAPER CORE EXPOSED',callout:'DEADLINE TORNADO!'},
+  SECURITY:{name:'SECURITY CAPTAIN',color:'#3970b5',weak:'SHIELD IS DOWN',callout:'SECURITY SWEEP!'},
+  HR:{name:'HR NIGHTMARE',color:'#ba5cca',weak:'HEART SCREEN EXPOSED',callout:'MANDATORY MEETING!'}
+};
+function chooseOfficeBoss(){
+  const map=G.meta.selectedMap||'FLOOR 13';
+  const chosen={'PENTHOUSE':'CEO','FLOOR 13':'STAPLER','COPY':'PAPER','CONFERENCE':'PAPER','BREAKROOM':'COFFEE','CAFETERIA':'COFFEE','HR MAZE':'HR','LEGAL':'HR','PARKING':'SECURITY','SERVER':'SECURITY','IT LAB':'STAPLER','ROOFTOP':'CEO'};
+  const rotating=['CEO','STAPLER','COFFEE','PAPER','SECURITY','HR'];
+  return chosen[map]||rotating[(G.wave+rotating.indexOf('CEO'))%rotating.length];
+}
+function makeOfficeBossVisual(n,scene){
+  if(!n.bossId)return;
+  const id=n.bossId,base=OFFICE_BOSS_TYPES[id],root=n.root;
+  const part=(name,x,y,z,w,h,d,color)=>box(scene,'boss_'+name,new B.Vector3(x,y,z),new B.Vector3(w,h,d),color,root);
+  if(id==='STAPLER'){
+    part('redStaplerTop',0,1.96,-.01,.69,.24,.51,'#e64351');
+    part('steelJaw',0,1.78,.25,.59,.10,.18,'#c4e0e8');
+    part('armGuardL',-.36,1.12,0,.21,.46,.32,'#b82744');
+    part('armGuardR',.36,1.12,0,.21,.46,.32,'#b82744');
+  }else if(id==='COFFEE'){
+    const mug=B.MeshBuilder.CreateCylinder('boss_coffeeCup',{height:.48,diameterTop:.63,diameterBottom:.42,tessellation:16},scene);
+    mug.position=new B.Vector3(0,1.93,0);mug.parent=root;mug.material=mat(scene,'coffeeBossCeramic','#f7e9d8',.28);
+    const rim=B.MeshBuilder.CreateTorus('boss_coffeeRim',{diameter:.61,thickness:.055,tessellation:16},scene);
+    rim.parent=root;rim.position=new B.Vector3(0,2.18,0);rim.material=mat(scene,'coffeeBossRim','#5a301b',.24);
+    part('coffeeHandle',.36,1.93,.01,.18,.22,.10,'#f7e9d8');
+    part('coffeeSpill',0,.85,.29,.52,.16,.19,'#70421f');
+  }else if(id==='PAPER'){
+    for(let k=0;k<6;k++){const a=k*Math.PI/3;const q=part('tornadoPaper'+k,Math.sin(a)*.36,.8+k*.23,Math.cos(a)*.35,.26,.04,.34,k%2?'#fcf2d6':'#86dcf4');q.rotation.y=a;q.rotation.z=.12;}
+    part('fileCrown',0,2.03,0,.60,.11,.44,'#dbf5f5');
+  }else if(id==='SECURITY'){
+    part('helmet',0,2.04,0,.60,.24,.50,'#23517d');
+    part('riotVisor',0,1.81,.26,.50,.22,.08,'#61dfff');
+    part('riotShield',-.48,1.1,.17,.12,.83,.50,'#2679bc');
+    part('shieldEmblem',-.56,1.19,.18,.03,.20,.22,'#ffcf4a');
+  }else if(id==='HR'){
+    part('HRScreen',0,1.89,.13,.61,.53,.15,'#593177');
+    const face=part('HRSmile',0,1.85,.225,.42,.08,.035,'#ff83e5');
+    face.rotation.z=-.06;
+    part('HRBadge',0,1.13,.25,.23,.16,.07,'#fa8dd4');
+    part('HRClipboard',.40,1.15,.18,.28,.39,.08,'#e5d9ff');
+  }else if(id==='CEO'){
+    part('executiveLapel',-.17,1.35,.24,.16,.32,.06,'#f1bf50');
+    part('executiveLapel',.17,1.35,.24,.16,.32,.06,'#f1bf50');
+    part('CEOShield',0,1.0,.28,.30,.15,.08,'#fbc150');
+  }
+  const weak=B.MeshBuilder.CreateSphere('bossWeakpoint',{diameter:.27,segments:10},scene);
+  weak.parent=root;weak.position=new B.Vector3(0,1.33,.36);
+  const m=mat(scene,'bossWeakpointMaterial_'+id,'#5e8199',.25);m.emissiveColor=new B.Color3(.05,.09,.11);weak.material=m;n.weakMesh=weak;n.weakMaterial=m;
+  const indicator=label(scene,base.weak,new B.Vector3(0,2.67,0),.27,'#69fff0');indicator.parent=root;indicator.position=new B.Vector3(0,2.68,0);indicator.setEnabled(false);n.weakIndicator=indicator;
+}
+function launchOfficeBossProp(n,type,where,speed=7){
+  const o=n.root.position.add(new B.Vector3(0,1.52,0));
+  const vel=where.subtract(o);vel.y+=.12;
+  if(vel.lengthSquared()<.001)vel.set(0,.2,1);else vel.normalize();
+  const p=makeProp(n.scene,type,o,{material:type==='paperball'||type==='folder'?'paper':'metal',mass:1.2,damage:type==='stapler'?26:16,size:[.24,.17,.20]});
+  if(!p)return;
+  p.vel=vel.scale(speed);p.vel.y+=1.0;p.thrownByNPCTimeRemaining=1.9;
+  return p;
+}
+function updateOfficeBossSpecial(n,dt,playerPos){
+  if(!n.bossId||n.dead)return false;
+  n.weakOpenT=Math.max(0,(n.weakOpenT||0)-dt);
+  if(n.weakMaterial){const on=n.weakOpenT>0;n.weakMaterial.emissiveColor=on?new B.Color3(.12,.85,.70):new B.Color3(.05,.09,.11);n.weakMesh.scaling.setAll(on?1.15+Math.sin(n.t*12)*.16:.85);n.weakIndicator?.setEnabled(on);}
+  if(n.bossTelegraph>0){
+    n.bossTelegraph-=dt;
+    if(n.armL)n.armL.rotation.x=-.7;
+    if(n.armR)n.armR.rotation.x=-.9;
+    if(n.bossTelegraph>0)return true;
+    const dist=B.Vector3.Distance(n.root.position,playerPos);
+    const toward=playerPos.subtract(n.root.position);toward.y=0;
+    if(toward.lengthSquared()<.01)toward.set(0,0,1);toward.normalize();
+    const phase=n.phase||1,id=n.bossId;
+    n.weakOpenT=2.8;
+    if(id==='CEO'){
+      moveNpcWithCollision(n,toward.scale(2.0+phase*.3));
+      if(dist<2.4+phase*.3)damagePlayer(8+phase*3,'EXECUTIVE CHARGE');
+      spawnHazard(n.scene,playerPos,phase,'CEO');
+    }else if(id==='STAPLER'){
+      launchOfficeBossProp(n,'stapler',playerPos,7+phase);
+      if(phase>=2)launchOfficeBossProp(n,'stapler',playerPos.add(new B.Vector3(1,0,0)),8);
+    }else if(id==='COFFEE'){
+      spawnHazard(n.scene,playerPos,phase,'COFFEE');
+      if(phase>=2)spawnHazard(n.scene,playerPos.add(new B.Vector3(-1.6,0,.6)),phase,'COFFEE');
+    }else if(id==='PAPER'){
+      for(let i=0;i<Math.min(5,2+phase);i++){const side=i-(phase+1)*.5;launchOfficeBossProp(n,i%2?'folder':'paperball',playerPos.add(new B.Vector3(side*.9,0,0)),5.5+phase);}
+    }else if(id==='SECURITY'){
+      spawnHazard(n.scene,playerPos,phase,'SECURITY');
+      if(dist<2.1)damagePlayer(5+phase*2,'SECURITY BATON');
+    }else if(id==='HR'){
+      // HR reinforcements use the same guarded transaction as wave spawns.
+      // Never mutate G.npcs in place: an overridden push or nested callback
+      // could otherwise publish an old-wave NPC into a newer wave.
+      const hrScope=readSpawnScope();
+      if(!hrScope)return false;
+      try{spawnHazard(n.scene,playerPos,phase,'HR');}catch{return false;}
+      if(!sameSpawnScope(hrScope))return false;
+      let roster,live=0,ownsBoss=false;
+      try{
+        roster=G.npcs;
+        if(!Array.isArray(roster)||roster.length>4096)return false;
+        for(let i=0;i<roster.length;i++){
+          const slot=Object.getOwnPropertyDescriptor(roster,i);
+          if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))return false;
+          const entry=slot.value;
+          if(entry===n)ownsBoss=true;
+          if(entry&&!entry.dead&&entry.root&&!entry.root.isDisposed?.())live++;
+          if(!sameSpawnScope(hrScope))return false;
+        }
+        if(!sameSpawnScope(hrScope)||G.npcs!==roster||!sameSpawnScope(hrScope)||!ownsBoss)return false;
+      }catch{return false;}
+      if(live<8){
+        let pos;
+        try{pos=safeEnemySpawn(3,.42,true);}catch{return false;}
+        if(!sameSpawnScope(hrScope))return false;
+        if(pos){
+          let reinforcement=null;
+          try{reinforcement=spawnNpcWithRollback(n.scene,pos,'worker');}catch{return false;}
+          if(!sameSpawnScope(hrScope)||!reinforcement)return false;
+        }
+      }
+    }
+    tone(id==='COFFEE'?245:id==='PAPER'?520:145,.2,'sawtooth',.055,-70);
+    npcBubble(n,id==='HR'?'MANDATORY TRAINING!':'EXPOSED!','#abfff1');
+    return true;
+  }
+  n.bossSpecialT-=dt;
+  if(n.bossSpecialT>0)return false;
+  n.bossSpecialT=Math.max(3.3,6.9-(n.phase-1)*.9);
+  n.bossTelegraph=.92;
+  n.attackT=Math.max(n.attackT,1.15);
+  const line=OFFICE_BOSS_TYPES[n.bossId].callout;
+  npcBubble(n,line,'#ffda6d');announce(line,'boss');
+  tone(190,.13,'square',.045,-50);
+  return true;
+}
+
 class NPC{
   constructor(scene,pos,type='worker'){
-    this.scene=scene;this.type=type;this.netId=`npc-${++G.net.npcSeq}`;this.role=type==='boss'?'boss':(Math.random()<.38?'flanker':Math.random()<.5?'brawler':'pressure');
+    this.scene=scene;this.type=type;this.role=type==='boss'?'boss':(Math.random()<.38?'flanker':Math.random()<.5?'brawler':'pressure');
     const roleStats=this.role==='flanker'?{hp:.94,speed:1.18,damage:.9}:this.role==='brawler'?{hp:1.18,speed:.92,damage:1.15}:{hp:1.08,speed:1.0,damage:1.05};
-    const lvl=G.mode==='LEVELS'?(G.meta.survivalLevel||1):1,scale=1+(lvl-1)*.10+(G.wave-1)*.12; this.hp=(type==='boss'?420+lvl*70:(82+Math.random()*22)*roleStats.hp*scale)*waveHpMul(); this.maxHp=this.hp; this.speed=(type==='boss'?1.22:(1.0+Math.random()*.42)*roleStats.speed)*Math.min(1.28,1+(lvl-1)*.018+(G.wave-1)*.025)*waveSpeedMul(); this.damage=(type==='boss'?17+lvl*1.2:(7+Math.random()*4.5)*roleStats.damage)*Math.min(1.8,1+(lvl-1)*.07+(G.wave-1)*.08)*waveDamageMul(); this.state='seek'; this.personality=Math.random()<.18?'coward':Math.random()<.55?'hothead':'steady'; this.morale=1; this.t=0; this.attackT=Math.random(); this.windup=0; this.pendingAttack=''; this.hesitate=Math.random()*.5;this.chatterT=.8+Math.random()*4;this.stepT=Math.random()*.35;this.panicT=0;this.flankSide=Math.random()<.5?-1:1; this.prop=null; this.dead=false; this.lastBatHit=0; this.phase=1;this.weaponSeekT=.2+Math.random()*.8;this.weaponHitsLeft=0; this.burnT=0;this.burnDps=0;this.poisonT=0;this.poisonDps=0;this.slowT=0;
-    this.root=new B.TransformNode('npc',scene); this.root.position.copyFrom(pos);
-    const pal=npcPalette(this.role,type); const scaleBody=type==='boss'?1.18:1;
+    const lvl=G.mode==='LEVELS'?(G.meta.survivalLevel||1):1,scale=1+(lvl-1)*.10+(G.wave-1)*.12; this.hp=(type==='boss'?420+lvl*70:(82+Math.random()*22)*roleStats.hp*scale)*waveHpMul(); this.maxHp=this.hp; this.speed=(type==='boss'?1.22:(1.0+Math.random()*.42)*roleStats.speed)*Math.min(1.28,1+(lvl-1)*.018+(G.wave-1)*.025)*waveSpeedMul(); this.damage=(type==='boss'?17+lvl*1.2:(7+Math.random()*4.5)*roleStats.damage)*Math.min(1.8,1+(lvl-1)*.07+(G.wave-1)*.08)*waveDamageMul(); this.state='seek'; this.personality=Math.random()<.18?'coward':Math.random()<.55?'hothead':'steady'; this.morale=1; this.t=0; this.attackT=Math.random(); this.windup=0; this.pendingAttack=''; this.hesitate=Math.random()*.5;this.chatterT=.8+Math.random()*4;this.stepT=Math.random()*.35;this.panicT=0;this.flankSide=Math.random()<.5?-1:1; this.prop=null; this.dead=false; this.lastBatHit=0; this.phase=1;this.weaponSeekT=.2+Math.random()*.8;this.weaponHitsLeft=0; this.burnT=0;this.burnDps=0;this.poisonT=0;this.poisonDps=0;this.slowT=0;this.headSquashT=0;
+    this.root=new B.TransformNode('npc',scene); this.root.position.copyFrom(pos);this.recoilVelocity=B.Vector3.Zero();this.recoilLean=0;this.recoilTwist=0;this.staggerT=0;this.knockdownT=0;this.knockdownSide=1;
+    this.bossId=type==='boss'?chooseOfficeBoss():null;this.bossSpecialT=3.6;this.bossTelegraph=0;this.weakOpenT=0;
+    const personaNames=['PANICKED INTERN','OFFICE GOSSIP','SLEEPY ANALYST','CAFFEINE ADDICT','IT NERD','RECEPTIONIST','OFFICE CLEANER','SECURITY GUARD','HR MANAGER'];
+    this.persona=type==='boss'?OFFICE_BOSS_TYPES[this.bossId].name:personaNames[Math.floor(Math.random()*personaNames.length)];
+    const personaPalette={'PANICKED INTERN':['#548aa1','#ffe191'],'OFFICE GOSSIP':['#b43f86','#ffd3ec'],'SLEEPY ANALYST':['#61758c','#c8e7fb'],'CAFFEINE ADDICT':['#ed873c','#ffeba3'],'IT NERD':['#333e62','#6ae8fa'],'RECEPTIONIST':['#eb879b','#ffefb2'],'OFFICE CLEANER':['#238a88','#e1fcfe'],'SECURITY GUARD':['#315778','#e1c65f'],'HR MANAGER':['#7551ae','#ffbfd6']};
+    const colors=personaPalette[this.persona];const pal=npcPalette(this.role,type);if(colors){pal.shirt=colors[0];pal.accent=colors[1];}if(this.bossId){pal.shirt=OFFICE_BOSS_TYPES[this.bossId].color;pal.accent='#ffe49d';}
+    const scaleBody=type==='boss'?1.18:1;
     const body=capsule(scene,'npcBody',new B.Vector3(0,1.08,0),.95*scaleBody,.24*scaleBody,pal.shirt,this.root);body.scaling.z=.78;
     const hips=B.MeshBuilder.CreateSphere('npcHips',{diameter:.46*scaleBody,segments:10},scene);hips.position=new B.Vector3(0,.56,0);hips.scaling=new B.Vector3(1.15,.62,.82);hips.material=mat(scene,'npcHipsMat',type==='boss'?'#351219':'#20242c',.88);hips.parent=this.root;
     const head=B.MeshBuilder.CreateSphere('npcHead',{diameter:(type==='boss'?.52:.44),segments:12},scene); head.position=new B.Vector3(0,type==='boss'?1.88:1.76,0); head.material=mat(scene,'skin',pal.skin,.95); head.parent=this.root;
-    // 4.8 face-design pass: readable whites/pupils, brows, nose, mouth, ears and a strong hair silhouette.
-    const eyeWhite=mat(scene,'npcEyeWhiteMat','#f7f7f2',.96),pupilMat=mat(scene,'npcPupilMat','#11151a',.72),browMat=mat(scene,'npcBrowMat','#342b29',.82);
-    this.brows=[];for(const ex of [-.078,.078]){const eye=B.MeshBuilder.CreateSphere('npcEyeWhite',{diameter:.075,segments:8},scene);eye.parent=head;eye.position=new B.Vector3(ex,.035,.205);eye.scaling.y=1.12;eye.material=eyeWhite;const pupil=B.MeshBuilder.CreateSphere('npcPupil',{diameter:.032,segments:7},scene);pupil.parent=head;pupil.position=new B.Vector3(ex,.035,.241);pupil.material=pupilMat;const brow=box(scene,'npcBrow',new B.Vector3(ex,.105,.218),new B.Vector3(.075,.018,.018),'#342b29',head);brow.rotation.z=ex<0?.10:-.10;brow.material=browMat;this.brows.push(brow);}
-    const nose=B.MeshBuilder.CreateSphere('npcNose',{diameter:.052,segments:7},scene);nose.parent=head;nose.position=new B.Vector3(0,-.015,.232);nose.scaling=new B.Vector3(.75,1.0,.8);nose.material=head.material;
-    const mouth=box(scene,'npcMouth',new B.Vector3(0,-.085,.224),new B.Vector3(.085,.018,.014),'#5b2929',head);mouth.rotation.x=.03;this.mouth=mouth;
-    for(const ex of [-1,1]){const ear=B.MeshBuilder.CreateSphere('npcEar',{diameter:.075,segments:7},scene);ear.parent=head;ear.position=new B.Vector3(ex*.225,0,0);ear.scaling.x=.55;ear.material=head.material;}
-    const hairColors=['#25212a','#5d3525','#9b6b32','#2b3544','#7a2635','#3b5c44'],hairColor=hairColors[Math.floor(Math.random()*hairColors.length)],hairMat=mat(scene,'npcHairMat'+Math.random(),hairColor,.82);
-    const hair=B.MeshBuilder.CreateSphere('npcHairCap',{diameter:(type==='boss'?.54:.46),segments:10},scene);hair.parent=head;hair.position=new B.Vector3(0,.135,-.015);hair.scaling=new B.Vector3(1.01,.46,1.02);hair.material=hairMat;this.hair=hair;
-    for(let i=0;i<3;i++){const tuft=B.MeshBuilder.CreateCylinder('npcHairTuft',{height:.12,diameterTop:0,diameterBottom:.085,tessellation:7},scene);tuft.parent=head;tuft.position=new B.Vector3((i-1)*.09,.265,.02+(i%2)*.02);tuft.rotation.z=(i-1)*.18;tuft.material=hairMat;}
-    const collarL=box(scene,'npcCollarL',new B.Vector3(-.08,1.42,-.24),new B.Vector3(.12,.08,.022),'#eef1f3',this.root);collarL.rotation.z=-.28;const collarR=box(scene,'npcCollarR',new B.Vector3(.08,1.42,-.24),new B.Vector3(.12,.08,.022),'#eef1f3',this.root);collarR.rotation.z=.28;
+    const eyeMat=mat(scene,'npcEyeMat','#14161b',.8);for(const ex of [-.075,.075]){const eye=B.MeshBuilder.CreateSphere('npcEye',{diameter:.045,segments:6},scene);eye.parent=head;eye.position=new B.Vector3(ex,.035,.205);eye.material=eyeMat;}
+    // Readable expressions and personalities: same face variety as the funny coworkers in the boards.
+    this.expressionType=this.type==='boss'?'ANGRY':this.persona==='PANICKED INTERN'?'NERVOUS':this.persona==='SECURITY GUARD'||this.persona==='HR MANAGER'?'GRUMPY':'HAPPY';
+    const faceInk=mat(scene,'faceInk'+Math.random(),'#2a2120',.88);
+    const eyebrowMeshes=[];
+    for(const sign of [-1,1]){
+      const brow=box(scene,'expressiveBrow',new B.Vector3(sign*.09,.13,.218),new B.Vector3(.112,.023,.022),'#322620',head);
+      brow.rotation.z=(this.expressionType==='ANGRY'||this.expressionType==='GRUMPY'?sign*.30:-sign*.11);
+      brow.material=faceInk;eyebrowMeshes.push(brow);
+    }
+    this.brows=eyebrowMeshes;
+    const mouth=box(scene,'npcMouth',new B.Vector3(0,-.105,.218),new B.Vector3(.14,.031,.014),'#6c342d',head);
+    mouth.rotation.z=this.expressionType==='NERVOUS'?.09:0;
+    if(this.expressionType==='HAPPY'){mouth.scaling.x*=1.25;mouth.position.y=-.105;}
+    if(this.expressionType==='ANGRY'){mouth.scaling.y*=1.7;mouth.position.y=-.10;}
+    this.mouth=mouth;
+    const hairColor=this.type==='boss'?'#25202a':this.role==='flanker'?'#4a3024':this.role==='brawler'?'#29282a':'#69442b';
+    const hair= B.MeshBuilder.CreateSphere('npcHair',{diameter:this.type==='boss'?.49:.43,segments:10},scene);hair.parent=head;hair.position=new B.Vector3(0,.175,-.042);hair.scaling=new B.Vector3(1.05,.43,.83);hair.material=mat(scene,'npcHairMat',hairColor,.85);
+    if(this.role==='pressure'){
+      const forelock=B.MeshBuilder.CreateSphere('coworkerForelock',{diameter:.15,segments:8},scene);forelock.parent=head;forelock.position=new B.Vector3(-.1,.195,.155);forelock.material=hair.material;
+    }
     const tie=box(scene,'npcTie',new B.Vector3(0,1.12,-.245),new B.Vector3(.065,.34,.028),pal.accent,this.root);
     const armL=capsule(scene,'npcArmL',new B.Vector3(-.34,1.12,0),.58,.07,pal.shirt,this.root); armL.rotation.z=.22;
     const armR=capsule(scene,'npcArmR',new B.Vector3(.34,1.12,0),.58,.07,pal.shirt,this.root); armR.rotation.z=-.22;
     const legL=capsule(scene,'npcLegL',new B.Vector3(-.13,.23,0),.55,.075,'#252933',this.root);
     const legR=capsule(scene,'npcLegR',new B.Vector3(.13,.23,0),.55,.075,'#252933',this.root);
-    const belt=box(scene,'npcBelt',new B.Vector3(0,.64,-.02),new B.Vector3(.34,.055,.25),'#171a1f',this.root);belt.material.metallic=.24;
-    const shoeL=box(scene,'npcShoeL',new B.Vector3(-.13,.065,-.055),new B.Vector3(.16,.08,.28),'#14171b',this.root),shoeR=box(scene,'npcShoeR',new B.Vector3(.13,.065,-.055),new B.Vector3(.16,.08,.28),'#14171b',this.root);
     this.armL=armL;this.armR=armR;this.legL=legL;this.legR=legR;this.bodyVisual=body;this.head=head;
-    this.hitMeshes=[body,hips,head,tie,armL,armR,legL,legR,shoeL,shoeR];
+    this.hitMeshes=[body,hips,head,tie,armL,armR,legL,legR];
 
 this.hitMeshes.forEach(m=>m.metadata={npc:this});
+    // Readable coworker silhouettes with lightweight geometry.
+    if(this.persona==='SECURITY GUARD'||this.persona==='OFFICE CLEANER'){
+      const cap=box(scene,'coworkerCap',new B.Vector3(0,2.015,0),new B.Vector3(.45,.13,.42),this.persona==='SECURITY GUARD'?'#16354c':'#21b6ab',this.root);
+      const visor=box(scene,'coworkerVisor',new B.Vector3(0,1.98,-.24),new B.Vector3(.40,.035,.18),'#17242f',this.root);
+    }else if(this.persona==='CAFFEINE ADDICT'){
+      const bangs=box(scene,'caffeineHairSpike',new B.Vector3(-.08,2.015,-.08),new B.Vector3(.24,.20,.24),'#e36e21',this.root);bangs.rotation.z=.45;
+    }else if(this.persona==='SLEEPY ANALYST'){
+      const band=box(scene,'sleepyHairBand',new B.Vector3(0,2.015,0),new B.Vector3(.42,.11,.42),'#6678ba',this.root);band.rotation.z=-.12;
+    }else if(this.persona==='OFFICE GOSSIP'){
+      const bun=B.MeshBuilder.CreateSphere('gossipHairBun',{diameter:.23,segments:8},scene);bun.position=new B.Vector3(.20,2.03,.09);bun.parent=this.root;bun.material=mat(scene,'gossipHair','#41283d',.8);
+    }else if(this.persona==='IT NERD'){
+      const headphones=box(scene,'itNerdHeadset',new B.Vector3(0,1.99,0),new B.Vector3(.47,.045,.25),'#212536',this.root);
+      const ear=box(scene,'itNerdEar',new B.Vector3(.23,1.79,0),new B.Vector3(.07,.18,.13),'#29defa',this.root);
+    }else if(this.persona==='HR MANAGER'){
+      const hairBun=B.MeshBuilder.CreateSphere('hrHair',{diameter:.26,segments:8},scene);hairBun.position=new B.Vector3(0,2.02,.16);hairBun.parent=this.root;hairBun.material=mat(scene,'hrHair','#574233',.75);
+    }
 const accMat=mat(scene,'npcAccessoryMat'+Math.random(),pal.accent,.34);accMat.metallic=.24;
 if(this.type==='boss'){
   const crown=B.MeshBuilder.CreateTorus('bossCrown',{diameter:.52,thickness:.045,tessellation:16},scene);crown.parent=this.root;crown.position=new B.Vector3(0,2.14,0);crown.rotation.x=Math.PI/2;crown.material=accMat;
@@ -10930,47 +15349,1514 @@ if(this.type==='boss'){
   const glasses2=glasses.clone('npcGlassesR');glasses2.parent=head;glasses2.position.x=.08;
   const badge=box(scene,'npcBadge',new B.Vector3(.14,1.31,-.25),new B.Vector3(.08,.06,.018),pal.accent,this.root);badge.material=accMat;
 }
-    this.nameLabel=label(scene,type==='boss'?'BOSS':(this.role==='flanker'?'FLANKER':this.role==='brawler'?'BRAWLER':'PRESSURE'),new B.Vector3(0,2.32,0),.32,type==='boss'?'#ff6680':'#ffffff'); this.nameLabel.parent=this.root; this.nameLabel.position=new B.Vector3(0,2.32,0);
+    if(this.bossId)makeOfficeBossVisual(this,scene);else dressOfficeCoworker(this,scene);
+    this.nameLabel=label(scene,this.persona,new B.Vector3(0,2.32,0),.32,type==='boss'?'#ff6680':'#ffffff'); this.nameLabel.parent=this.root; this.nameLabel.position=new B.Vector3(0,2.32,0);
     const hpPlane=B.MeshBuilder.CreatePlane('npcHp',{width:.95,height:.13},scene);hpPlane.parent=this.root;hpPlane.position=new B.Vector3(0,2.12,-.02);hpPlane.billboardMode=B.Mesh.BILLBOARDMODE_ALL;const hpTex=new B.DynamicTexture('npcHpTex',{width:512,height:72},scene,true);hpTex.hasAlpha=true;const hpMat=new B.StandardMaterial('npcHpMat',scene);hpMat.diffuseTexture=hpTex;hpMat.emissiveTexture=hpTex;hpMat.opacityTexture=hpTex;hpMat.disableLighting=true;hpMat.backFaceCulling=false;hpPlane.material=hpMat;this.hpBarTex=hpTex;this.refreshHpBar();
   }
   refreshHpBar(){const t=this.hpBarTex;if(!t)return;const c=t.getContext();c.clearRect(0,0,512,72);c.fillStyle='rgba(20,23,29,.9)';c.fillRect(5,12,502,48);const f=Math.max(0,Math.min(1,this.hp/Math.max(1,this.maxHp)));c.fillStyle=this.type==='boss'?'#ff445c':'#43e36d';c.fillRect(9,16,494*f,40);t.update();}
-  dispose(){if(this.prop)this.dropProp();try{this.root.dispose(false,true)}catch{}}
-  dropProp(){ if(!this.prop)return; const p=this.prop; const world=p.mesh.getAbsolutePosition().clone(); p.mesh.setParent(null); p.mesh.position.copyFrom(world); p.npcOwner=null; p.vel=new B.Vector3((Math.random()-.5)*2,1,(Math.random()-.5)*2); this.prop=null; }
-  claimProp(){const candidates=G.props.filter(p=>!p.npcOwner&&!p.broken&&p.mass<=10);if(!candidates.length)return;let nearby=candidates.filter(p=>B.Vector3.Distance(p.mesh.getAbsolutePosition(),this.root.position)<5.5);if(!nearby.length)return;const best=nearby[Math.floor(Math.random()*nearby.length)];this.prop=best;best.npcOwner=this;best.mesh.parent=this.root;best.mesh.position=new B.Vector3(.42,1.12,-.16);best.grounded=false;this.weaponHitsLeft=1+Math.floor(Math.random()*3);tone(165,.045,'square',.015);}
-  hit(dmg,dir,kind='bat'){
-    if(this.dead)return;if(G.net.role==='guest'&&G.net.connections.size){const host=[...G.net.connections.values()][0];sendNetwork(host,{type:'npcHit',id:this.netId,dmg:+Math.max(0,dmg).toFixed(2),dir:[dir?.x||0,dir?.y||0,dir?.z||0],kind});this.root.position.addInPlace((dir?.clone?.()||new B.Vector3(0,0,1)).scale(.018));return;} this.lastDamageKind=kind; this.hp-=dmg;if(this.head){this.head.scaling.y=.88;setTimeout(()=>{try{if(this.head&&!this.dead)this.head.scaling.y=1}catch{}},90);}if(Math.random()<.11)npcBubble(this,kind==='prop'?'WHAT?!':'OW!',kind==='prop'?'#ffd47a':'#ffffff'); if(kind==='bat'&&Math.random()<.28)npcVoice('hit'); this.refreshHpBar(); this.root.position.addInPlace(dir.scale(.04)); addScore(kind==='prop'?70:55,kind==='prop'?'IMPROVISED':'HIT'); if(kind==='prop')G.propHits++;
+  dispose(){if(this.prop)this.dropProp();try{for(const m of this.root.getChildMeshes(false)){if(m.material?.name?.startsWith('office49Shared_'))m.material=null;}this.root.dispose(false,true)}catch{}}
+  dropProp(){
+    if(!this.prop)return;
+    const p=this.prop,m=p.mesh;
+    // Clear ownership even if a prop mesh was destroyed outside NPC.update.
+    this.prop=null;p.npcOwner=null;
+    if(!m||m.isDisposed?.())return;
+    try{
+      const world=m.getAbsolutePosition().clone();
+      if(![world.x,world.y,world.z].every(Number.isFinite))return;
+      m.setParent(null);m.position.copyFrom(world);
+      p.vel=new B.Vector3((Math.random()-.5)*2,1,(Math.random()-.5)*2);
+    }catch{}
+  }
+  claimProp(){
+    const rootPos=this.root?.position;
+    if(!rootPos||this.root.isDisposed?.()||![rootPos.x,rootPos.y,rootPos.z].every(Number.isFinite))return;
+    const candidates=(G.props||[]).filter(p=>p&&!p.heldBy&&!p.npcOwner&&!p.broken&&p.mass<=10&&p.mesh&&!p.mesh.isDisposed?.());
+    if(!candidates.length)return;
+    const nearby=candidates.filter(p=>{
+      try{
+        const pos=p.mesh.getAbsolutePosition();
+        return pos&&[pos.x,pos.y,pos.z].every(Number.isFinite)&&B.Vector3.Distance(pos,rootPos)<5.5;
+      }catch{return false;}
+    });
+    if(!nearby.length)return;
+    const best=nearby[Math.floor(Math.random()*nearby.length)];
+    try{
+      best.mesh.parent=this.root;
+      best.mesh.position=new B.Vector3(.42,1.12,-.16);
+    }catch{return;}
+    this.prop=best;best.npcOwner=this;best.grounded=false;
+    this.weaponHitsLeft=1+Math.floor(Math.random()*3);tone(165,.045,'square',.015);
+  }
+  hit(dmg,dir,kind='bat',contact=null){
+    // Invalid damage or tracking vectors must not poison NPC health or abort the combat tick.
+    if(this.dead||!Number.isFinite(dmg)||dmg<=0)return;
+    try{if(!dir||!Number.isFinite(dir.x)||!Number.isFinite(dir.y)||!Number.isFinite(dir.z))return;}catch{return;}
+    this.lastDamageKind=kind;
+    if(this.bossId){const weakCenter=this.root.position.add(new B.Vector3(0,1.33,.36));const precise=contact&&B.Vector3.Distance(contact,weakCenter)<.50;const open=this.weakOpenT>0;if(precise&&open){dmg*=2.25;toast('WEAK POINT x2.25!',600);tone(800,.09,'triangle',.04,-230);}else dmg*=open?0.87:0.69;}
+    const impulse=dir?.clone?.()||new B.Vector3(0,0,1);impulse.y=0;if(impulse.lengthSquared()>.0001)impulse.normalize();
+    const intensity=Math.min(1.65,.35+dmg/35);const resist=this.bossId?.25:1;
+    this.recoilVelocity.addInPlace(impulse.scale(intensity*2.2*resist));
+    if(this.recoilVelocity.length()>5)this.recoilVelocity.normalize().scaleInPlace(5);
+    this.recoilLean=Math.max(-.3,Math.min(.3,this.recoilLean+(Math.random()-.5)*.45*intensity));
+    this.recoilTwist=Math.max(-.3,Math.min(.3,this.recoilTwist+(Math.random()-.5)*.42*intensity));
+    this.staggerT=Math.max(this.staggerT,this.bossId?.05:Math.min(.42,.11+dmg*.004));
+    // Heavy hits make ordinary coworkers tumble and stand back up, without a KO.
+    if(!this.bossId&&dmg>=25){this.knockdownT=Math.max(Number.isFinite(this.knockdownT)?this.knockdownT:0,.85);this.knockdownSide=Math.random()<.5?-1:1;this.staggerT=Math.max(this.staggerT,.85);}
+    this.hp-=dmg;if(this.head&&!this.head.isDisposed?.()){this.head.scaling.y=.88;this.headSquashT=.09;}if(Math.random()<.11)npcBubble(this,kind==='prop'?'WHAT?!':'OW!',kind==='prop'?'#ffd47a':'#ffffff'); if(kind==='bat'&&Math.random()<.28)npcVoice('hit'); this.refreshHpBar(); moveNpcWithCollision(this,dir.scale(.04)); addScore(kind==='prop'?70:55,kind==='prop'?'IMPROVISED':'HIT'); if(kind==='prop')G.propHits++;
     if(this.prop && Math.random()<.35)this.dropProp(); this.attackT=Math.max(this.attackT,.12); if(this.type==='boss'){const next=this.hp<this.maxHp*.32?3:this.hp<this.maxHp*.67?2:1;if(next!==this.phase){this.phase=next;announce(`BOSS PHASE ${next}`,'boss');tone(62-next*4,.3,'sawtooth',.05,55);}} if(this.hp<=0)this.die(dir);
   }
-  die(dir){ this.dead=true;this.ragdollT=1.2;this.ragdollVel=(dir?.clone?.()||new B.Vector3(0,0,1)).scale(this.type==='boss'?1.4:2.4).add(new B.Vector3(0,this.type==='boss'?.8:1.4,0));this.ragdollSpin=(Math.random()<.5?-1:1)*(this.type==='boss'?1.2:2.3); G.kills++; if(this.type==='boss')npcVoice('boss'); else playNpcDeathSound(); addScore(this.type==='boss'?1600:320,this.type==='boss'?'BOSS DOWN':'KO'); if(this.type!=='boss'&&skinAbility()==='Cleanup'&&this.lastDamageKind==='prop'){G.meta.coins=(G.meta.coins||0)+3;saveMeta();toast('CLEANUP • +3 COINS',500);} if(this.type!=='boss'&&skinAbility()==='Second Wind'){G.hp=Math.min(G.maxHp,G.hp+6);toast('+6 HP SECOND WIND',700);} tone(this.type==='boss'?70:110,.18,'sawtooth',.05,-50); this.dropProp(); for(const m of this.hitMeshes)m.material.albedoColor.scaleInPlace(.55); setTimeout(()=>{this.dispose(); G.npcs=G.npcs.filter(n=>n!==this);},1650); if(this.type!=='boss'&&G.upgrade.recovery>0)G.hp=Math.min(G.maxHp,G.hp+G.upgrade.recovery);
-    if(this.type!=='boss')for(const other of G.npcs){if(other===this||other.dead)continue;const d=B.Vector3.Distance(other.root.position,this.root.position);if(d<3.6){if(other.personality==='coward'){other.panicT=Math.max(other.panicT,1.2);other.hesitate=Math.max(other.hesitate,.45);if(Math.random()<.45)npcBubble(other,'NOPE!','#ffe6a8');}else if(other.personality==='hothead'){other.attackT=Math.min(other.attackT,.25);other.speed*=1.015;if(Math.random()<.35)npcBubble(other,'HEY!','#ff9c9c');}else{other.hesitate=Math.max(other.hesitate,.20);if(Math.random()<.22)npcBubble(other,'UH OH','#e7efff');}}} if(G.kills>=G.nextPromotion){ promote(); G.nextPromotion+=G.promotionEvery; } if(this.type==='boss'){ toast('FINAL WAVE BOSS DOWN',1800); } }
-  update(dt,playerPos){if(this.dead){if(this.ragdollT>0){this.ragdollT-=dt;this.ragdollVel.y-=9.81*dt;const next=this.root.position.add(this.ragdollVel.scale(dt));next.x=Math.max(-6.7,Math.min(6.7,next.x));next.z=Math.max(-6.7,Math.min(6.7,next.z));if(next.y<.12){next.y=.12;this.ragdollVel.y=Math.abs(this.ragdollVel.y)*.18;this.ragdollVel.x*=.72;this.ragdollVel.z*=.72;}this.root.position.copyFrom(next);this.root.rotation.z+=this.ragdollSpin*dt;this.root.rotation.x+=this.ragdollSpin*.45*dt;
-    const flop=Math.sin((1.2-this.ragdollT)*18)*Math.max(0,this.ragdollT);
+  die(dir){ this.dead=true;this.pendingEchoHits=[];this.headSquashT=0;this.deadDisposeT=1.85;try{if(this.head&&!this.head.isDisposed?.())this.head.scaling.y=1;}catch{}for(const m of this.hitMeshes||[]){try{if(m)m.isPickable=false;}catch{}}this.ragdollT=1.48;try{this.ragdollVel=(dir?.clone?.()||new B.Vector3(0,0,1)).scale(this.type==='boss'?1.4:2.4).add(new B.Vector3(0,this.type==='boss'?.8:1.4,0));if(!(Number.isFinite(this.ragdollVel.x)&&Number.isFinite(this.ragdollVel.y)&&Number.isFinite(this.ragdollVel.z)))throw Error('nonfinite ragdoll velocity');}catch{this.ragdollVel=new B.Vector3(0,1,0);}this.ragdollSpin=(Math.random()<.5?-1:1)*(this.type==='boss'?1.2:2.3); G.kills++; try{if(this.type==='boss')npcVoice('boss'); else playNpcDeathSound();}catch{} try{addScore(this.type==='boss'?1600:320,this.type==='boss'?'BOSS DOWN':'KO');}catch{} if(this.type!=='boss'&&skinAbility()==='Cleanup'&&this.lastDamageKind==='prop'){G.meta.coins=(G.meta.coins||0)+3;saveMeta();toast('CLEANUP • +3 COINS',500);} if(this.type!=='boss'&&skinAbility()==='Second Wind'){G.hp=Math.min(G.maxHp,G.hp+6);toast('+6 HP SECOND WIND',700);} try{tone(this.type==='boss'?70:110,.18,'sawtooth',.05,-50);}catch{} try{this.dropProp();}catch{} for(const m of this.hitMeshes||[]){try{m?.material?.albedoColor?.scaleInPlace?.(.55);}catch{}} this.deadDisposeT=1.85; if(this.type!=='boss'&&G.upgrade.recovery>0)G.hp=Math.min(G.maxHp,G.hp+G.upgrade.recovery);
+    if(this.type!=='boss')for(const other of G.npcs){try{if(!other||other===this||other.dead||!other.root||other.root.isDisposed?.()||!other.root.position)continue;const d=B.Vector3.Distance(other.root.position,this.root.position);if(d<3.6){if(other.personality==='coward'){other.panicT=Math.max(other.panicT,1.2);other.hesitate=Math.max(other.hesitate,.45);if(Math.random()<.45)npcBubble(other,'NOPE!','#ffe6a8');}else if(other.personality==='hothead'){other.attackT=Math.min(other.attackT,.25);other.speed*=1.015;if(Math.random()<.35)npcBubble(other,'HEY!','#ff9c9c');}else{other.hesitate=Math.max(other.hesitate,.20);if(Math.random()<.22)npcBubble(other,'UH OH','#e7efff');}}}catch{}} if(G.kills>=G.nextPromotion){ promote(); G.nextPromotion+=G.promotionEvery; } if(this.type==='boss'){ toast('FINAL WAVE BOSS DOWN',1800); } }
+  update(dt,playerPos){
+    // A live NPC whose root was externally disposed cannot fight or be hit.
+    // Recover its wave slot instead of crashing the update loop or awarding a free clear.
+    if(!this.root||this.root.isDisposed?.()){
+      // Reserve a live NPC's replacement BEFORE removing its roster entry.
+      // The previous direct filter could lose the only worker/boss slot when
+      // a spawn counter setter threw after orphanRecovered was marked.
+      let scope,type,dead;
+      try{
+        scope={token:G.waveToken,wave:G.wave};
+        dead=!!this.dead;
+        type=this.type;
+      }catch{return;}
+      if(!Number.isSafeInteger(scope.token)||!Number.isSafeInteger(scope.wave)||scope.wave<1)return;
+      const retired=dead?retireNpcEntry(this,scope):
+        ((type==='worker'||type==='boss')&&retireNpcWithRecovery(this,type,scope));
+      if(!retired)return;
+      if(this.prop){try{this.dropProp();}catch{}}
+      return;
+    }
+    advanceNpcBubbles(this,dt);if(this.dead){this.deadDisposeT=Math.max(0,(this.deadDisposeT??1.85)-Math.max(0,dt));if(this.deadDisposeT===0){if(!this.deadDisposed){const scope=readSpawnScope();if(!scope||!retireNpcEntry(this,scope))return;this.deadDisposed=true;try{this.dispose();}catch{}}return;}if(this.ragdollT>0){if(!Number.isFinite(dt)||dt<=0)return;const ragStep=npcRagdollFrameStep(dt);const rp=this.root.position;if(!Number.isFinite(rp.y))rp.y=.12;if(!this.ragdollVel||!(Number.isFinite(this.ragdollVel.x)&&Number.isFinite(this.ragdollVel.y)&&Number.isFinite(this.ragdollVel.z)))this.ragdollVel=new B.Vector3(0,0,0);this.ragdollVel.x=boundedNpcRagdollVelocityComponent(this.ragdollVel.x,12);this.ragdollVel.y=boundedNpcRagdollVelocityComponent(this.ragdollVel.y,16);this.ragdollVel.z=boundedNpcRagdollVelocityComponent(this.ragdollVel.z,12);this.ragdollVel.y-=9.81*ragStep;const delta=this.ragdollVel.scale(ragStep),nextY=rp.y+delta.y;if(!Number.isFinite(delta.x)||!Number.isFinite(delta.y)||!Number.isFinite(delta.z)||!Number.isFinite(nextY)){this.ragdollVel=new B.Vector3(0,0,0);rp.y=.12;return;}const landed=nextY<.12;if(landed)settleNpcRagdollVelocity(this.ragdollVel,ragStep);const oldX=this.root.position.x,oldZ=this.root.position.z;// Rotated limbs may extend below the root during a tumbling flight.
+    const rootY=this.root.position.y;
+    let sweptMinY=Math.min(rootY,nextY);
+    // Read each real hit-part world bound before the horizontal sweep. Account for the
+    // lowest vertical position and for both upcoming spin axes (Z and 0.45 * X).
+    // A stationary ragdoll or an arena without live blockers needs no limb-matrix sweep.
+    // Preserve the conservative limb clearance for every horizontal move near a live blocker.
+    // Never let a malformed or overridden blocker roster suppress the limb sweep.
+    let needsLimbSweep=false;
+    if(delta.x!==0||delta.z!==0){
+      try{
+        const roster=G.blockers;
+        if(!Array.isArray(roster)||roster.length>4096)needsLimbSweep=true;
+        else for(let bi=0;bi<roster.length;bi++){
+          if(!Object.prototype.hasOwnProperty.call(roster,bi)){
+            needsLimbSweep=true;break;
+          }
+          const blocker=roster[bi];
+          if(!blocker||typeof blocker!=='object'){
+            needsLimbSweep=true;break;
+          }
+          const mesh=blocker.mesh;
+          if(!mesh||!mesh.isDisposed?.()){
+            needsLimbSweep=true;break;
+          }
+        }
+      }catch{needsLimbSweep=true;}
+    }
+    if(needsLimbSweep){
+      let bodyMinY=Infinity,bodyBoundsValid=0,bodyBoundsIncomplete=!this.hitMeshes?.length;
+      for(const part of this.hitMeshes||[]){
+        if(!part||part.isDisposed?.()){bodyBoundsIncomplete=true;continue;}
+        try{
+          part.computeWorldMatrix(true);
+          const partY=part.getBoundingInfo().boundingBox.minimumWorld.y;
+          if(Number.isFinite(partY)){bodyMinY=Math.min(bodyMinY,partY);bodyBoundsValid++;}
+          else bodyBoundsIncomplete=true;
+        }catch{bodyBoundsIncomplete=true;}
+      }
+      if(bodyBoundsValid>0&&!bodyBoundsIncomplete){
+        // 2.6m bounds the NPC's hit-part distance from its root; 1.45 covers both axes.
+        const angularMargin=Math.min(5.2,Math.abs(boundedNpcRagdollSpin(this.ragdollSpin))*ragStep*3.8);
+        sweptMinY=Math.min(sweptMinY,bodyMinY+Math.min(0,nextY-rootY)-angularMargin-.12);
+      }else sweptMinY=-Infinity; // Missing geometry: fail closed rather than tunnel.
+    }
+    delta.y=0;moveNpcWithCollision(this,delta,sweptMinY);if(Math.abs(this.root.position.x-oldX-delta.x)>1e-4)this.ragdollVel.x=reboundNpcRagdollAxis(this.ragdollVel.x);if(Math.abs(this.root.position.z-oldZ-delta.z)>1e-4)this.ragdollVel.z=reboundNpcRagdollAxis(this.ragdollVel.z);this.root.position.y=landed?.12:nextY;
+    // Malformed angular speed must not poison the NPC transform with NaN.
+    const finiteSpin=boundedNpcRagdollSpin(this.ragdollSpin);
+    this.ragdollSpin=landed?settleNpcRagdollSpin(finiteSpin,ragStep):finiteSpin;
+    this.root.rotation.z+=this.ragdollSpin*ragStep;
+    this.root.rotation.x+=this.ragdollSpin*.45*ragStep;
+    // Preserve airborne collision clearance on the final ragdoll simulation frame.
+    this.ragdollT=Math.max(0,this.ragdollT-dt);
+    const flop=Math.sin((1.48-this.ragdollT)*18)*Math.max(0,this.ragdollT);
     if(this.armL)this.armL.rotation.z=.22+flop*.8;if(this.armR)this.armR.rotation.z=-.22-flop*.9;
-    if(this.legL)this.legL.rotation.x=flop*.65;if(this.legR)this.legR.rotation.x=-flop*.72;}return;}this.t+=dt;this.attackT=Math.max(0,this.attackT-dt);this.weaponSeekT-=dt;if(this.burnT>0){this.burnT-=dt;this.hp-=this.burnDps*dt;}if(this.poisonT>0){this.poisonT-=dt;this.hp-=this.poisonDps*dt;}if(this.slowT>0)this.slowT-=dt;if(this.hp<=0){this.die(new B.Vector3(0,0,-1));return;}this.refreshHpBar();
-    this.chatterT-=dt;if(this.chatterT<=0&&this.type!=='boss'){this.chatterT=4+Math.random()*6;if(Math.random()<.38){npcVoice(Math.random()<.25?'throw':'hit');const lines=this.personality==='coward'?['TOO MUCH!','I QUIT!','NOPE']:this.personality==='hothead'?['COME ON!','MY DESK!','HEY!']:['MEETING?','SERIOUSLY?','HR?!'];npcBubble(this,lines[Math.floor(Math.random()*lines.length)],this.personality==='hothead'?'#ffbbbb':'#ffffff');}}
-    if(this.brows){const angry=this.personality==='hothead'||this.windup>0;this.brows[0].rotation.z+=( (angry?-.22:.10)-this.brows[0].rotation.z)*Math.min(1,dt*9);this.brows[1].rotation.z+=( (angry?.22:-.10)-this.brows[1].rotation.z)*Math.min(1,dt*9);}if(this.mouth)this.mouth.scaling.x=.9+Math.abs(Math.sin(this.t*2.4))*.16;
+    if(this.legL)this.legL.rotation.x=flop*.65;if(this.legR)this.legR.rotation.x=-flop*.72;}return;}recoverNpcFromBlocker(this,dt);advanceNpcHeadSquash(this,dt);advanceNpcEchoHits(this,dt);if(this.dead)return;this.t+=dt;updateCoworkerImpact(this,dt);this.attackT=Math.max(0,this.attackT-dt);this.weaponSeekT-=dt;if(this.burnT>0){this.burnT-=dt;this.hp-=this.burnDps*dt;}if(this.poisonT>0){this.poisonT-=dt;this.hp-=this.poisonDps*dt;}if(this.slowT>0)this.slowT-=dt;if(this.hp<=0){this.die(new B.Vector3(0,0,-1));return;}this.hpBarRefreshT=(this.hpBarRefreshT||0)-dt;if(this.hpBarRefreshT<=0){this.hpBarRefreshT=.18+Math.random()*.05;this.refreshHpBar();}
+    this.chatterT-=dt;if(this.chatterT<=0&&this.type!=='boss'){this.chatterT=4+Math.random()*6;if(Math.random()<.38){npcVoice(Math.random()<.25?'throw':'hit');const lines=this.persona==='CAFFEINE ADDICT'?['MORE COFFEE!','NO DECAF!','WOO!']:this.persona==='IT NERD'?['HAVE YOU REBOOTED?','404!','MY LAPTOP!']:this.persona==='OFFICE GOSSIP'?['DID YOU HEAR?','TELL EVERYONE!','SPILL IT!']:this.persona==='SLEEPY ANALYST'?['FIVE MORE...','ZZZ...','NOT MONDAY!']:this.persona==='SECURITY GUARD'?['STOP RIGHT THERE!','NO FUN!','SECURITY!']:this.persona==='RECEPTIONIST'?['WELCOME!','HELLO?!','PLEASE WAIT!']:this.persona==='OFFICE CLEANER'?['I JUST CLEANED!','AGAIN?!','WATCH THE FLOOR!']:this.persona==='HR MANAGER'?['POLICY!','IN A MEETING!','BE NICE!']:this.personality==='coward'?['TOO MUCH!','I QUIT!','NOPE']:this.personality==='hothead'?['COME ON!','MY DESK!','HEY!']:['MEETING?','SERIOUSLY?','HR?!'];npcBubble(this,lines[Math.floor(Math.random()*lines.length)],this.personality==='hothead'?'#ffbbbb':'#ffffff');}}
+    if(this.bossId&&updateOfficeBossSpecial(this,dt,playerPos))return;
+    if(this.staggerT>0){this.staggerT-=dt;this.windup=0;this.pendingAttack='';this.attackT=Math.max(this.attackT,.16);return;}
     if(this.hesitate>0){this.hesitate-=dt;if(this.armL)this.armL.rotation.z=.45+Math.sin(this.t*10)*.12;if(this.hesitate>0)return;}
     if(this.panicT>0){this.panicT-=dt;const away=this.root.position.subtract(playerPos);away.y=0;if(away.lengthSquared()>.001){away.normalize();moveNpcWithCollision(this,away.scale(this.speed*.85*dt));}return;}
-    const dx=playerPos.x-this.root.position.x,dz=playerPos.z-this.root.position.z,dist=Math.hypot(dx,dz),dir=new B.Vector3(dx,0,dz).normalize();this.root.rotation.y=Math.atan2(dir.x,dir.z);const walk=Math.sin(this.t*8)*.35;if(this.legL){this.legL.rotation.x=walk;this.legR.rotation.x=-walk;}this.stepT-=dt;if(dist>1.22&&dist<4.4&&this.stepT<=0){this.stepT=(this.role==='brawler'?.46:.38)+Math.random()*.12;const stepNow=performance.now();if(stepNow-(G.lastNpcStepAt||0)>105){G.lastNpcStepAt=stepNow;footstepSound(this.role==='brawler'?1.2:.8);}}
+    const dx=playerPos.x-this.root.position.x,dz=playerPos.z-this.root.position.z,dist=Math.hypot(dx,dz),dir=new B.Vector3(dx,0,dz).normalize();this.root.rotation.y=Math.atan2(dir.x,dir.z);const walk=Math.sin(this.t*8)*.35;if(this.legL){this.legL.rotation.x=walk;this.legR.rotation.x=-walk;}this.stepT-=dt;if(dist>1.22&&dist<4.4&&this.stepT<=0){this.stepT=(this.role==='brawler'?.46:.38)+Math.random()*.12;const stepNow=combatTimeMs();if(stepNow-(G.lastNpcStepAt||0)>105){G.lastNpcStepAt=stepNow;footstepSound(this.role==='brawler'?1.2:.8);}}
     if(!this.prop&&this.weaponSeekT<=0&&this.type!=='boss'){this.weaponSeekT=1.2+Math.random()*1.4;this.claimProp();}
     if(this.windup>0){this.windup-=dt;if(this.armR)this.armR.rotation.x=-1.0*(1-this.windup/.38);if(this.windup<=0){const useProp=this.pendingAttack==='prop'&&this.prop;const dmg=this.damage*(useProp?1.18:1);if(Math.random()<.22)npcVoice(this.type==='boss'?'boss':useProp?'throw':'hit');npcAttack(this,dmg,useProp?'OBJECT HIT':'NPC HIT');if(useProp){impactSound(this.prop.material,.9);this.weaponHitsLeft--;if(this.weaponHitsLeft<=0||Math.random()<.35)this.dropProp();}this.pendingAttack='';this.attackT=this.type==='boss'?.85:1.0;}} 
-    if(this.type==='boss'){const next=this.hp<this.maxHp*.32?3:this.hp<this.maxHp*.67?2:1;if(next!==this.phase){this.phase=next;announce(`BOSS PHASE ${next}`,'boss');}if(Math.random()<dt*(this.phase===3?.34:.18)&&G.hazards.length<4)spawnHazard(this.scene,playerPos,this.phase);}
+    if(this.type==='boss'){const next=this.hp<this.maxHp*.32?3:this.hp<this.maxHp*.67?2:1;if(next!==this.phase){this.phase=next;announce(`BOSS PHASE ${next}`,'boss');}/* Boss specials are now individually telegraphed and scheduled by updateOfficeBossSpecial. */}
     if(this.personality==='coward'&&this.hp<this.maxHp*.28&&dist<2.7){const away=this.root.position.subtract(playerPos);away.y=0;if(away.lengthSquared()>.001){away.normalize();moveNpcWithCollision(this,away.scale(this.speed*.7*dt));}return;}
     if(dist>1.22){if(this.role==='flanker'&&dist>1.7){const side=new B.Vector3(-dir.z,0,dir.x).scale(this.flankSide*1.45);moveNpcToward(this,playerPos.add(side),dt);}else moveNpcToward(this,playerPos,dt);return;}
     if(this.attackT<=0){this.windup=this.type==='boss'?.46:.38;this.pendingAttack=this.prop?'prop':'fist';if(this.armR)this.armR.rotation.x=-.7;}
   }
 }
 
-function spawnWave(scene,count){
-  count=Math.max(1,Math.min(11,count)); for(let i=0;i<count;i++)G.npcs.push(new NPC(scene,safeEnemySpawn(i,.38),'worker'));
+// Head impact animation advances only with active simulation frames, not wall-clock timers.
+// CR4.9.611: head-hit squash advances by bounded game time, so a
+// Quest frame hitch does not skip the entire visible recovery animation.
+function advanceNpcHeadSquash(n,dt){
+  if(!n||n.dead||!n.head||n.head.isDisposed?.()||!(n.headSquashT>0))return;
+  const step=Number.isFinite(dt)?Math.max(0,Math.min(.033,dt)):0;
+  if(!step)return;
+  // CR4.9.617 gameplay: ease the head from its .88 impact squash
+  // back to full height over the existing .09s timer, without a pop.
+  try{
+    n.headSquashT=Math.max(0,n.headSquashT-step);
+    n.head.scaling.y=1-.12*Math.min(1,n.headSquashT/.09);
+  }catch{} // Disposed or hostile animation scalars cannot break the NPC tick.
 }
-function spawnBoss(scene){if(G.bossSpawned)return;G.bossSpawned=true;G.attackGrace=1.1;const b=new NPC(scene,safeEnemySpawn(5,.55),'boss');G.boss=b;G.npcs.push(b);announce('BOSS WAVE','boss');tone(58,.6,'sawtooth',.06,70);}
-function spawnHazard(scene,target,phase=1){
+// Wave bookkeeping must survive disposed or throwing NPC getters.
+function countLiveWorkers(){
+  // Unknown live NPCs reserve capacity; a broken roster cannot prove a free slot.
+  let count=0;
+  try{
+    const roster=G.npcs;
+    if(!Array.isArray(roster)||roster.length>4096)return 11;
+    for(let i=0;i<roster.length;i++){
+      if(!(i in roster))return 11;
+      const n=roster[i];
+      try{
+        if(!n||n.dead||n.type!=='worker')continue;
+        const root=n.root;
+        if(root&&!root.isDisposed?.())count++;
+      }catch{count++;} // Unknown live NPC type/pose: reserve a worker slot.
+      if(count>=11)return 11;
+    }
+  }catch{return 11;} // Unreadable roster/iterator must not abort a shift tick.
+  return count;
+}
+// A broken NPC update hook must not starve the spawn queue indefinitely.
+const orphanSpawnWatch=new WeakMap();
+// Recovery bookkeeping survives NPCs with unreadable or read-only recovery fields.
+const npcRecoveryLedger=new WeakSet();
+// Retired NPCs stay queued until the game's spawn state accepts the replacement.
+const orphanRecoveryQueue=new Map();
+// Never nest recovery transactions through a hostile setter, getter or NPC callback.
+// A nested drain could credit two workers, then let the outer setter overwrite the
+// counter with an older value while both replacement jobs were marked complete.
+let orphanRecoveryDraining=false;
+function drainOrphanRecoveryQueue(){
+  if(orphanRecoveryDraining)return true;
+  if(!orphanRecoveryQueue.size)return false;
+  orphanRecoveryDraining=true;
+  try{
+  let waveToken,wave;
+  try{
+    if(G.state!=='shift'){orphanRecoveryQueue.clear();return false;}
+    waveToken=G.waveToken;wave=G.wave;
+    if(!Number.isSafeInteger(waveToken)||!Number.isSafeInteger(wave)||wave<1)return true;
+  }catch{return true;}
+  // A setter/getter may synchronously change the wave. Never continue a retired
+  // NPC's old-wave debit into the new wave after any fallible state access.
+  const sameWave=()=>{
+    try{
+      const t1=G.waveToken,w1=G.wave,s1=G.state;
+      const t2=G.waveToken,w2=G.wave,s2=G.state;
+      return t1===waveToken&&t2===waveToken&&w1===wave&&w2===wave&&s1==='shift'&&s2==='shift';
+    }catch{return false;}
+  };
+  const writable=()=>{
+    if(!sameWave())return false;
+    try{if(G.waveTransition)return false;}catch{return false;}
+    return sameWave();
+  };
+  if(!sameWave())return true;
+  // Prune stale jobs BEFORE the waveTransition gate, as in the original drain.
+  for(const [n,job] of orphanRecoveryQueue){
+    if(!sameWave())return true;
+    if(!job||job.waveToken!==waveToken||job.wave!==wave)orphanRecoveryQueue.delete(n);
+  }
+  if(!orphanRecoveryQueue.size)return false;
+  if(!writable())return true;
+  // Fix the batch at entry. Jobs enqueued by a setter are processed next tick,
+  // after the current counter write is fully verified.
+  const jobs=Array.from(orphanRecoveryQueue);
+  for(const [n,job] of jobs){
+    if(orphanRecoveryQueue.get(n)!==job)continue;
+    if(!writable())return true;
+    try{
+      if(npcRecoveryLedger.has(n)){orphanRecoveryQueue.delete(n);continue;}
+      // Pre-armed retirement must be visibly absent from the same-wave roster
+      // before a worker counter or boss pending flag can be debited.
+      if(job.prearmed){
+        if(job.retireInFlight)return true;
+        const roster=G.npcs;
+        if(!writable()||!Array.isArray(roster)||roster.length>4096)return true;
+        let present=false;
+        for(let i=0;i<roster.length;i++){
+          const slot=Object.getOwnPropertyDescriptor(roster,i);
+          if(!slot||!Object.hasOwn(slot,'value'))return true;
+          if(slot.value===n)present=true;
+        }
+        if(!writable()||G.npcs!==roster||!writable())return true;
+        if(present){
+          if(job.retired)return true; // Unexpected reinsertion: never double-credit.
+          orphanRecoveryQueue.delete(n);return true; // Safe to retry retirement next tick.
+        }
+        job.retired=true;
+      }
+      if(job.type==='worker'){
+        if(workerPendingRepairNeeded())return true;
+        const current=G.spawnPendingWorkers;
+        if(!writable())return true;
+        if(!Number.isSafeInteger(current)||current<0||current>4096)return true;
+        if(job.target===undefined){
+          if(current>=4096)return true;
+          job.base=current;job.target=current+1;job.writeAttempted=false;
+        }
+        if(!Number.isSafeInteger(job.base)||job.base<0||job.base>=4096||
+           job.target!==job.base+1)return true;
+        if(current===job.base){
+          // Set BEFORE the fallible setter; a write-then-throw can be verified.
+          job.writeAttempted=true;
+          try{G.spawnPendingWorkers=job.target;}catch{}
+          if(!writable())return true;
+        }else if(current!==job.target||!job.writeAttempted){
+          return true; // Concurrent/unknown debit: do not credit another job.
+        }
+        let confirmed=false;
+        try{confirmed=G.spawnPendingWorkers===job.target;}catch{}
+        if(!writable()||!confirmed)return true;
+      }else if(job.type==='boss'){
+        if(bossPendingRepairNeeded())return true;
+        const boss=G.boss;
+        if(!writable())return true;
+        if(boss!==n&&!(job.clearAttempted&&boss===null))return true;
+        try{G.spawnPendingBoss=true;}catch{}
+        if(!writable())return true;
+        let pending=false;
+        try{pending=G.spawnPendingBoss===true;}catch{}
+        if(!writable()||!pending)return true;
+        try{G.bossSpawned=false;}catch{}
+        if(!writable())return true;
+        let unspawned=false;
+        try{unspawned=G.bossSpawned===false;}catch{}
+        if(!writable()||!unspawned)return true;
+        job.clearAttempted=true;
+        try{G.boss=null;}catch{}
+        if(!writable())return true;
+        let cleared=false;
+        try{cleared=G.boss===null;}catch{}
+        if(!writable()||!cleared)return true;
+      }else{orphanRecoveryQueue.delete(n);continue;}
+      if(!writable())return true;
+      npcRecoveryLedger.add(n);
+      orphanRecoveryQueue.delete(n);
+      try{n.orphanRecovered=true;}catch{}
+      if(writable()){
+        try{G.spawnRetryT=0;}catch{}
+        if(writable())try{G.spawnRetryCount=0;}catch{}
+      }
+    }catch{return true;} // Preserve the exact unresolved job; no second debit.
+  }
+  return orphanRecoveryQueue.size>0;  }finally{orphanRecoveryDraining=false;}
+}
+function recoverNpcSlotOnce(n,type){
+  if(!n||(typeof n!=='object'&&typeof n!=='function')||npcRecoveryLedger.has(n)||orphanRecoveryQueue.has(n))return false;
+  let already=false;
+  try{already=!!n.orphanRecovered;}catch{return false;}
+  // A mutable NPC field is not evidence of a committed replacement debit.
+  // Only the private WeakSet is authoritative; never forge a ledger entry.
+  if(already)return false;
+  try{
+    if(G.state!=='shift'||G.waveTransition)return false;
+    if(type==='boss'){if(G.boss!==n)return false;}
+    else if(type!=='worker')return false;
+  }catch{return false;}
+  let waveToken,wave;
+  try{waveToken=G.waveToken;wave=G.wave;}catch{return false;}
+  if(!Number.isSafeInteger(waveToken)||!Number.isSafeInteger(wave)||wave<1)return false;
+  orphanRecoveryQueue.set(n,{type,waveToken,wave});
+  drainOrphanRecoveryQueue();
+  return npcRecoveryLedger.has(n);
+}
+// Retire by identity, not a caller-overridden iterator/filter/indexOf method.
+// If the roster cannot be changed, fail closed and do not enqueue a duplicate.
+function retireNpcEntry(entry,scope){
+  // Never remove an NPC from a different wave or credit an entry already removed.
+  const valid=()=>{
+    try{
+      const t1=G.waveToken,w1=G.wave,s1=G.state;
+      const t2=G.waveToken,w2=G.wave,s2=G.state,transition=G.waveTransition;
+      const t3=G.waveToken,w3=G.wave,s3=G.state;
+      return !!scope&&t1===scope.token&&t2===scope.token&&
+        w1===scope.wave&&w2===scope.wave&&w3===scope.wave&&t3===scope.token&&
+        s1==='shift'&&s2==='shift'&&s3==='shift'&&!transition;
+    }catch{return false;}
+  };
+  try{
+    if(!valid()||npcRosterWriteGuard)return false;
+    const roster=G.npcs;
+    if(!valid()||!Array.isArray(roster)||roster.length>4096)return false;
+    const next=[];let found=false;
+    for(let i=0;i<roster.length;i++){
+      if(!(i in roster))return false;
+      const n=roster[i];
+      if(n===entry){found=true;continue;}
+      next.push(n);
+    }
+    if(!found||!valid()||G.npcs!==roster||!valid())return false;
+    return replaceNpcRosterGuarded(scope,roster,next)&&valid();
+  }catch{return false;}
+}
+// Reserve the replacement BEFORE retiring a live NPC. A roster setter can
+// synchronously throw, reenter the drain or mutate the wave during retirement.
+function retireNpcWithRecovery(n,type,scope){
+  if(!n||(typeof n!=='object'&&typeof n!=='function')||
+     (type!=='worker'&&type!=='boss')||!scope)return false;
+  try{
+    if(npcRecoveryLedger.has(n))
+      return retireNpcEntry(n,scope); // Private ledger proves a committed debit.
+    // Spoofed/stale orphanRecovered must not retire an uncredited live NPC.
+    if(n.orphanRecovered)return false;
+    if(orphanRecoveryQueue.has(n))return false;
+    if(G.waveToken!==scope.token||G.wave!==scope.wave||
+       G.state!=='shift'||G.waveTransition)return false;
+    if(type==='boss'&&G.boss!==n)return false;
+    const job={type,waveToken:scope.token,wave:scope.wave,
+               prearmed:true,retireInFlight:true,retired:false};
+    orphanRecoveryQueue.set(n,job);
+    let retired=false;
+    try{retired=retireNpcEntry(n,scope);}finally{job.retireInFlight=false;}
+    if(!retired)return false; // Ambiguous write: keep intent for later reconciliation.
+    job.retired=true;
+    try{drainOrphanRecoveryQueue();}catch{} // Ledger survives a failed debit.
+    return true;
+  }catch{return false;}
+}
+
+function hasPendingOrphanedNpc(){
+  // Every NPC inspection and retirement belongs to the wave that began this pass.
+  let token,wave;
+  try{token=G.waveToken;wave=G.wave;}catch{return true;}
+  if(!Number.isSafeInteger(token)||!Number.isSafeInteger(wave)||wave<1)return true;
+  const scope={token,wave};
+  const sameWave=()=>{
+    try{
+      const t1=G.waveToken,w1=G.wave,s1=G.state;
+      const t2=G.waveToken,w2=G.wave,s2=G.state,transition=G.waveTransition;
+      const t3=G.waveToken,w3=G.wave,s3=G.state;
+      if(!(t1===token&&t2===token&&w1===wave&&w2===wave&&w3===wave&&t3===token&&
+        s1==='shift'&&s2==='shift'&&s3==='shift'&&!transition))return false;
+      // Completion and orphan scans must obey the SAME foreign-wave quarantine as spawning.
+      if(!npcRosterGuardAllows(token,wave))return false;
+      const t4=G.waveToken,w4=G.wave,s4=G.state,x4=G.waveTransition;
+      return t4===token&&w4===wave&&s4==='shift'&&!x4&&
+        npcRosterGuardAllows(token,wave)&&G.waveToken===token&&G.wave===wave&&G.state==='shift'&&!G.waveTransition;
+    }catch{return false;}
+  };
+  if(!sameWave())return true;
+  if(orphanRecoveryQueue.size&&drainOrphanRecoveryQueue())return true;
+  if(!sameWave())return true;
+  let waiting=false;
+  let snapshot,rosterRef=null,rosterSlots=null;
+  const rosterHole=Symbol('orphan-roster-hole');
+  try{
+    const roster=G.npcs;
+    if(!sameWave()||!Array.isArray(roster)||roster.length>128)return true;
+    rosterRef=roster;rosterSlots=[];snapshot=[];
+    let sparse=false;
+    for(let i=0;i<roster.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+      if(slot&&!Object.prototype.hasOwnProperty.call(slot,'value'))return true;
+      rosterSlots.push(slot?slot.value:rosterHole);
+      if(!slot){sparse=true;continue;}
+      snapshot.push(slot.value);
+    }
+    if(!sameWave())return true;
+    if(sparse){replaceNpcRosterGuarded(scope,roster,snapshot,true);return true;}
+  }catch{return true;}
+  // No old snapshot may inspect or retire NPCs after an in-place roster edit.
+  const sameRoster=()=>{
+    try{
+      if(!sameWave()||G.npcs!==rosterRef||rosterRef.length!==rosterSlots.length)return false;
+      for(let i=0;i<rosterSlots.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(rosterRef,String(i));
+        if(rosterSlots[i]===rosterHole){if(slot)return false;}
+        else if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||
+                slot.value!==rosterSlots[i])return false;
+      }
+      return G.npcs===rosterRef&&sameWave();
+    }catch{return false;}
+  };
+  for(const n of snapshot){
+    if(!sameRoster())return true;
+    if(!n)continue;
+    if(typeof n!=='object'&&typeof n!=='function'){
+      if(!retireNpcEntry(n,scope))return true;
+      return true; // A retirement replaces the roster: resnapshot next tick.
+    }
+    let orphan=false,canReplace=false,type=null;
+    try{
+      if(n.dead){
+        if(!sameRoster())return true;
+        orphanSpawnWatch.delete(n);continue;
+      }
+      const observedType=n.type; // Read once; a getter can change roster/type.
+      if(!sameRoster())return true;
+      if(observedType!=='worker'&&observedType!=='boss'){
+        orphanSpawnWatch.delete(n);continue;
+      }
+      type=observedType;canReplace=true;
+      const root=n.root;
+      orphan=!root||!!root.isDisposed?.();
+    }catch{orphan=true;}
+    if(!sameRoster())return true; // NPC/root getters can change roster in place.
+    if(!orphan){if(!sameRoster())return true;orphanSpawnWatch.delete(n);continue;}
+    if(!sameRoster())return true;
+    const attempts=(orphanSpawnWatch.get(n)||0)+1;
+    if(attempts<3){if(!sameRoster())return true;orphanSpawnWatch.set(n,attempts);waiting=true;continue;}
+    // Reserve the replacement BEFORE removing the last live roster reference.
+    if(!sameRoster())return true;
+    if(!canReplace||!retireNpcWithRecovery(n,type,scope)){waiting=true;continue;}
+    if(!sameWave())return true;
+    orphanSpawnWatch.delete(n);
+    if(!sameWave())return true;
+    try{n.dropProp?.();}catch{}
+    if(!sameWave())return true;
+    try{n.dispose?.();}catch{}
+    return true; // Never inspect a stale snapshot after a roster retirement.
+  }
+  return waiting;
+}
+function countActiveNpcsForWave(){
+  // A fallible NPC or pending-counter getter can synchronously advance the wave.
+  // Zero is safe only if the entire read belongs to one stable active wave.
+  let token,wave;
+  try{token=G.waveToken;wave=G.wave;}catch{return 1;}
+  if(!Number.isSafeInteger(token)||!Number.isSafeInteger(wave)||wave<1)return 1;
+  const sameWave=()=>{
+    try{
+      const t1=G.waveToken,w1=G.wave,s1=G.state;
+      const t2=G.waveToken,w2=G.wave,s2=G.state,transition=G.waveTransition;
+      const t3=G.waveToken,w3=G.wave,s3=G.state;
+      if(!(t1===token&&t2===token&&t3===token&&
+        w1===wave&&w2===wave&&w3===wave&&
+        s1==='shift'&&s2==='shift'&&s3==='shift'&&!transition))return false;
+      // Never report a zero enemy count while a foreign-wave roster is quarantined.
+      if(!npcRosterGuardAllows(token,wave))return false;
+      const t4=G.waveToken,w4=G.wave,s4=G.state,x4=G.waveTransition;
+      return t4===token&&w4===wave&&s4==='shift'&&!x4&&
+        npcRosterGuardAllows(token,wave)&&G.waveToken===token&&G.wave===wave&&G.state==='shift'&&!G.waveTransition;
+    }catch{return false;}
+  };
+  if(!sameWave())return 1;
+  try{
+    const bossRepair=bossPendingRepairNeeded();
+    if(!sameWave()||bossRepair)return 1;
+    const workerRepair=workerPendingRepairNeeded();
+    if(!sameWave()||workerRepair)return 1;
+    if(orphanRecoveryQueue.size){
+      const unresolved=drainOrphanRecoveryQueue();
+      if(!sameWave()||unresolved)return 1;
+    }
+    const workers=G.spawnPendingWorkers;
+    if(!sameWave())return 1;
+    const boss=G.spawnPendingBoss;
+    if(!sameWave()||!Number.isSafeInteger(workers)||workers<0||workers>4096||
+       typeof boss!=='boolean'||workers>0||boss)return 1;
+    const roster=G.npcs;
+    if(!sameWave()||!Array.isArray(roster)||roster.length>4096)return 1;
+    const length=roster.length;
+    // Capture entry identities: NPC getters can mutate G.npcs in place.
+    const identities=new Array(length);
+    let count=0;
+    for(let i=0;i<length;i++){
+      if(!sameWave()||!(i in roster))return Math.max(1,count);
+      const n=roster[i];
+      identities[i]=n;
+      if(!sameWave())return Math.max(1,count);
+      if(!n||(typeof n!=='object'&&typeof n!=='function'))continue;
+      let alive=true;
+      try{alive=!n.dead;}catch{} // Unreadable dead flag is conservatively alive.
+      if(!sameWave())return Math.max(1,count);
+      if(alive)count++;
+    }
+    if(!sameWave()||G.npcs!==roster||!sameWave()||roster.length!==length)
+      return Math.max(1,count);
+    if(count===0){
+      // The same array and length do NOT imply the same NPC roster.
+      // Validate own data descriptors without invoking array-index getters.
+      for(let i=0;i<length;i++){
+        if(!sameWave())return 1;
+        const slot=Object.getOwnPropertyDescriptor(roster,i);
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||
+           slot.value!==identities[i]||!sameWave())return 1;
+        // Identity alone is insufficient: a later NPC getter can turn an
+        // earlier dead NPC live without changing the array or its length.
+        // NPC.dead is an own data field on ordinary game NPCs. Refuse
+        // accessor/proxy ambiguity rather than granting a premature clear.
+        const candidate=identities[i];
+        if(candidate&&(typeof candidate==='object'||typeof candidate==='function')){
+          const dead=Object.getOwnPropertyDescriptor(candidate,'dead');
+          if(!sameWave()||!dead||!Object.prototype.hasOwnProperty.call(dead,'value')||
+             !dead.value)return 1;
+        }
+      }
+      if(!sameWave()||G.npcs!==roster||!sameWave()||roster.length!==length)return 1;
+    }
+    return count;
+  }catch{return 1;}
+}
+// 4.9.187: guard NPC construction and initial spawn publication against foreign waves.
+// A roster setter may synchronously enter a different wave before returning.
+// Quarantine the foreign wave until the old NPC is PROVEN absent from its roster.
+let npcRosterWriteGuard=null;
+function npcRosterGuardAllows(token,wave){
+  const guard=npcRosterWriteGuard;
+  if(!guard)return true;
+  if(guard.inFlight||(guard.hubReset&&guard.hubCleanupActive!==false))return false; // Hub cleanup may still be disposing old objects.
+  if(!guard.hubReset&&guard.scope.token===token&&guard.scope.wave===wave)return true;
+  try{
+    const roster=G.npcs;
+    if(!Array.isArray(roster)||roster.length>4096||roster===guard.next||roster===guard.previous)return false;
+    for(let i=0;i<roster.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(roster,i);
+      if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||
+         slot.value===guard.npc||guard.oldEntries?.has(slot.value))return false;
+    }
+    if(G.npcs!==roster||G.waveToken!==token||G.wave!==wave||npcRosterWriteGuard!==guard)return false;
+    npcRosterWriteGuard=null;
+    return true;
+  }catch{return false;}
+}
+// Shared transaction for retiring NPCs and deduplicating bosses. A roster
+// setter can synchronously enter another wave before the assignment returns.
+// Never allow a foreign wave to inherit a partially written OLD roster.
+function replaceNpcRosterGuarded(scope,previous,next,allowSparse=false){
+  if(!scope||npcRosterWriteGuard||!sameSpawnScope(scope)||
+     !Array.isArray(previous)||previous.length>4096||!Array.isArray(next))return false;
+  const oldEntries=new Set();
+  let denseIndex=0;
+  try{
+    for(let i=0;i<previous.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(previous,i);
+      if(!slot){if(allowSparse)continue;return false;}
+      if(!Object.prototype.hasOwnProperty.call(slot,'value'))return false;
+      if(allowSparse&&next[denseIndex++]!==slot.value)return false;
+      oldEntries.add(slot.value);
+    }
+    if(allowSparse&&(denseIndex!==next.length||denseIndex===previous.length))return false;
+    if(G.npcs!==previous||!sameSpawnScope(scope)||npcRosterWriteGuard)return false;
+  }catch{return false;}
+  const guard={scope,npc:null,next,previous,oldEntries,inFlight:true};
+  npcRosterWriteGuard=guard; // PREARM before invoking a user-defined setter.
+  try{G.npcs=next;}catch{} // Setter may commit before throwing.
+  guard.inFlight=false;
+  if(npcRosterWriteGuard!==guard||!sameSpawnScope(scope))return false;
+  let observed;
+  try{observed=G.npcs;}catch{return false;}
+  if(npcRosterWriteGuard!==guard||!sameSpawnScope(scope))return false;
+  if(observed===next){npcRosterWriteGuard=null;return true;}
+  // A verified rejected write is safe to release; ambiguous results are not.
+  if(observed===previous){npcRosterWriteGuard=null;return false;}
+  return false;
+}
+// Hub cleanup is a roster transaction too. Detach before disposing old NPCs:
+// a user-defined setter can synchronously start a foreign wave.
+function detachHubNpcRoster(epoch){
+  let token,wave,state,transition,ended;
+  const stable=()=>{
+    try{return G.hubInteractionEpoch===epoch&&G.waveToken===token&&G.wave===wave&&
+      G.state===state&&G.waveTransition===transition&&G.ended===ended;}
+    catch{return false;}
+  };
+  try{
+    token=G.waveToken;wave=G.wave;state=G.state;
+    transition=G.waveTransition;ended=G.ended;
+    if(!stable())return null;
+    // Reconcile only an older FOREIGN-wave NPC write whose old identities are
+    // independently absent. Never clear an unfinished same-wave or hub reset.
+    const prior=npcRosterWriteGuard;
+    if(prior){
+      if((prior.hubReset&&prior.hubCleanupActive!==false)||prior.inFlight||!prior.scope||
+         (prior.scope.token===token&&prior.scope.wave===wave)||
+         !npcRosterGuardAllows(token,wave)||npcRosterWriteGuard||!stable())return null;
+    }
+    const previous=G.npcs;
+    if(!stable()||!Array.isArray(previous)||previous.length>4096)return null;
+    const entries=[];
+    for(let i=0;i<previous.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(previous,i);
+      if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))return null;
+      entries.push(slot.value);
+    }
+    if(!stable()||G.npcs!==previous||!stable())return null;
+    if(!entries.length)return {entries,epoch,token,wave,state,transition,ended,next:previous,guard:null};
+    const next=[];
+    const guard={scope:{token,wave},npc:null,previous,next,
+      oldEntries:new Set(entries),hubReset:true,hubCleanupActive:false,inFlight:true};
+    npcRosterWriteGuard=guard; // PREARM before the fallible setter.
+    try{G.npcs=next;}catch{} // A commit followed by throw can still succeed.
+    guard.inFlight=false;
+    if(npcRosterWriteGuard!==guard||!stable())return null;
+    let observed;
+    try{observed=G.npcs;}catch{return null;}
+    if(npcRosterWriteGuard!==guard||!stable())return null;
+    if(observed===next)return {entries,epoch,token,wave,state,transition,ended,next,guard};
+    if(observed===previous)npcRosterWriteGuard=null; // Verified rejection.
+    return null; // Ambiguous write remains quarantined.
+  }catch{return null;}
+}
+function readSpawnScope(){
+  try{
+    const t1=G.waveToken,w1=G.wave,s1=G.state,x1=G.waveTransition,e1=G.ended;
+    const t2=G.waveToken,w2=G.wave,s2=G.state,x2=G.waveTransition,e2=G.ended;
+    if(t1!==t2||w1!==w2||s1!==s2||x1!==x2||e1!==e2||
+       !Number.isSafeInteger(t1)||t1<0||!Number.isSafeInteger(w1)||w1<1||
+       s1!=='shift'||x1!==false||e1!==false)return null;
+    if(!npcRosterGuardAllows(t1,w1))return null;
+    const t3=G.waveToken,w3=G.wave,s3=G.state,x3=G.waveTransition,e3=G.ended;
+    if(t3!==t1||w3!==w1||s3!==s1||x3!==x1||e3!==e1)return null;
+    return {token:t1,wave:w1};
+  }catch{return null;}
+}
+function sameSpawnScope(scope){
+  if(!scope)return false;
+  const now=readSpawnScope();
+  return !!now&&now.token===scope.token&&now.wave===scope.wave;
+}
+function spawnNpcWithRollback(scene,pos,type){
+  const scope=readSpawnScope();if(!scope||npcRosterWriteGuard)return null;
+  // Identity snapshots survive constructors that remove earlier scene entries.
+  const keys=['meshes','transformNodes','materials','textures'],before={};
+  try{for(const k of keys)before[k]=(scene?.[k]||[]).slice();}catch{return null;}
+  if(!sameSpawnScope(scope))return null;
+  let npc=null,writeGuard=null;
+  try{
+    npc=new NPC(scene,pos,type);
+    if(!sameSpawnScope(scope))throw new Error('NPC constructor switched wave');
+    // Commit only after a verified roster replacement. Never trust an overridden push.
+    const roster=G.npcs;
+    if(!Array.isArray(roster)||roster.length>=4096)throw new Error('NPC roster unavailable');
+    const next=new Array(roster.length+1),oldEntries=new Set();
+    for(let i=0;i<roster.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(roster,i);
+      if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))
+        throw new Error('NPC roster needs dense own data slots');
+      next[i]=slot.value;oldEntries.add(slot.value);
+    }
+    next[roster.length]=npc;
+    if(!sameSpawnScope(scope))throw new Error('NPC roster read switched wave');
+    // Prearm before the setter: nested callbacks in a new wave must fail closed.
+    writeGuard={scope,npc,next,previous:roster,oldEntries,inFlight:true};
+    npcRosterWriteGuard=writeGuard;
+    try{G.npcs=next;}catch{} // May commit, throw, or synchronously switch waves.
+    writeGuard.inFlight=false;
+    if(!sameSpawnScope(scope))throw new Error('NPC roster setter switched wave');
+    const accepted=G.npcs===next;
+    if(!sameSpawnScope(scope)||!accepted)throw new Error('NPC roster rejected spawn');
+    if(npcRosterWriteGuard!==writeGuard)throw new Error('NPC roster guard replaced');
+    npcRosterWriteGuard=null;
+    return npc;
+  }catch{
+    // Foreign waves own their roster/scene; never roll back or dispose their assets.
+    if(writeGuard){
+      writeGuard.inFlight=false;
+      if(npcRosterWriteGuard!==writeGuard)return null;
+    }
+    if(!sameSpawnScope(scope))return null;
+    if(npc){
+      // A roster setter may commit and then throw, or reject our rollback.
+      // Never dispose a constructed NPC while its identity may still be live.
+      try{
+        const roster=G.npcs;
+        if(!Array.isArray(roster)||roster.length>4096)return null;
+        const next=[];let found=false;
+        for(let i=0;i<roster.length;i++){
+          const slot=Object.getOwnPropertyDescriptor(roster,i);
+          if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))return null;
+          if(slot.value===npc){found=true;continue;}
+          next.push(slot.value);
+        }
+        if(!sameSpawnScope(scope)||npcRosterWriteGuard!==writeGuard&&writeGuard)return null;
+        if(found){
+          if(writeGuard)writeGuard.inFlight=true; // Prearm the rollback setter too.
+          try{G.npcs=next;}catch{}
+          finally{if(writeGuard)writeGuard.inFlight=false;}
+          if(!sameSpawnScope(scope)||npcRosterWriteGuard!==writeGuard&&writeGuard)return null;
+        }
+        const verified=G.npcs;
+        if(!sameSpawnScope(scope)||!Array.isArray(verified)||verified.length>4096||
+           (found?verified!==next:verified!==roster))return null;
+        for(let i=0;i<verified.length;i++){
+          const slot=Object.getOwnPropertyDescriptor(verified,i);
+          if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||slot.value===npc)return null;
+        }
+      }catch{return null;}
+    }
+    if(!sameSpawnScope(scope))return null;
+    // Capture all new resources first: Babylon disposal mutates scene arrays.
+    const created={};
+    for(const k of keys){
+      try{const known=new Set(before[k]);created[k]=[...(scene?.[k]||[])].filter(obj=>!known.has(obj));}
+      catch{created[k]=[];}
+    }
+    for(const k of keys){
+      const entries=created[k];
+      for(let i=entries.length-1;i>=0;i--){
+        if(!sameSpawnScope(scope))return null;
+        const obj=entries[i];
+        if(!obj)continue;
+        try{
+          if(k==='materials'&&obj.name?.startsWith('office49Shared_'))continue;
+          if(obj.isDisposed?.())continue;
+          if(!sameSpawnScope(scope))return null;
+          // A dispose getter can change the wave before returning a function.
+          const dispose=obj.dispose;
+          if(!sameSpawnScope(scope))return null;
+          if(dispose!=null){
+            if(typeof dispose!=='function')continue;
+            dispose.call(obj,false,false);
+          }
+        }catch{}
+      }
+    }
+    if(!sameSpawnScope(scope))return null;
+    // Clear only after same-wave rollback and resource cleanup were verified.
+    if(writeGuard&&npcRosterWriteGuard===writeGuard)npcRosterWriteGuard=null;
+    return null;
+  }
+}
+function spawnWave(scene,count){
+  const scope=readSpawnScope();if(!scope)return NaN;
+  // A constructor may return null after a failed roster rollback. Its side
+  // effects are not proof that zero workers spawned: quarantine that debit.
+  const rosterSnapshot=()=>{
+    try{
+      if(!sameSpawnScope(scope))return null;
+      const list=G.npcs;
+      if(!Array.isArray(list)||list.length>4096)return null;
+      const entries=[];
+      for(let i=0;i<list.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(list,i);
+        if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))return null;
+        entries.push(slot.value);
+      }
+      if(!sameSpawnScope(scope)||G.npcs!==list)return null;
+      return {list,entries};
+    }catch{return null;}
+  };
+  const matches=(actual,expected,added=null)=>{
+    if(!actual||!expected||actual.entries.length!==expected.entries.length+(added?1:0))return false;
+    if(added?actual.list===expected.list:actual.list!==expected.list)return false;
+    for(let i=0;i<expected.entries.length;i++)if(actual.entries[i]!==expected.entries[i])return false;
+    return !added||actual.entries[expected.entries.length]===added;
+  };
+  let expected=rosterSnapshot();if(!expected)return NaN;
+  // Keep at most eleven living workers on Quest, but allow larger waves to arrive in batches.
+  const liveWorkers=countLiveWorkers();
+  if(!Number.isSafeInteger(liveWorkers)||liveWorkers<0||liveWorkers>11||
+     !matches(rosterSnapshot(),expected))return NaN;
+  const total=Math.max(0,Math.min(11-liveWorkers,Math.floor(Number.isFinite(count)?count:0)));
+  const blockerCache={bounds:null};
+  let spawned=0;
+  for(let i=0;i<total;i++){
+    if(!matches(rosterSnapshot(),expected))return NaN;
+    try{
+      const pos=safeEnemySpawn(i,.38,true,blockerCache);
+      const valid=!!pos&&Number.isFinite(pos.x)&&Number.isFinite(pos.y)&&Number.isFinite(pos.z);
+      if(!matches(rosterSnapshot(),expected))return NaN;
+      if(!valid)continue;
+      const npc=spawnNpcWithRollback(scene,pos,'worker');
+      const after=rosterSnapshot();
+      if(!matches(after,expected,npc||null))return NaN;
+      expected=after;
+      if(npc)spawned++;
+    }catch{
+      // A throw is retryable only if no roster identity or slot changed.
+      if(!matches(rosterSnapshot(),expected))return NaN;
+    }
+  }
+  return matches(rosterSnapshot(),expected)?spawned:NaN;
+}
+function spawnBoss(scene){
+  // Boss roster, disposal and flag writes must all belong to the SAME wave.
+  const scope=readSpawnScope();if(!scope||npcRosterWriteGuard)return false;
+  const inWave=()=>sameSpawnScope(scope);
+  let b=null,previous=null,spawned=false,extras=[],duplicateRef=false;
+  try{
+    const token=G.waveToken,wave=G.wave;
+    if(!inWave()||token!==scope.token||wave!==scope.wave)return false;
+    const roster=G.npcs;
+    if(!inWave()||!Array.isArray(roster)||roster.length>4096)return false;
+    const bosses=[];
+    for(let i=0;i<roster.length;i++){
+      if(!(i in roster))return false;
+      const n=roster[i];
+      if(!n)continue;
+      if(typeof n!=='object'&&typeof n!=='function')return false;
+      if(n.type==='boss'&&!n.dead){
+        if(bosses.includes(n))duplicateRef=true;
+        else bosses.push(n);
+      }
+      if(!inWave())return false;
+    }
+    previous=G.boss;
+    if(!inWave())return false;
+    if(previous&&!previous.dead&&!bosses.includes(previous))return false;
+    if(!inWave())return false;
+    b=bosses.includes(previous)?previous:(bosses[0]||null);
+    if(bosses.length>1||duplicateRef){
+      extras=bosses.filter(n=>n!==b);
+      const extraSet=new Set(extras),next=[];let keptBoss=false;
+      for(let i=0;i<roster.length;i++){
+        const n=roster[i];
+        if(extraSet.has(n))continue;
+        if(n===b){if(keptBoss)continue;keptBoss=true;}
+        next.push(n);
+      }
+      if(!inWave()||!replaceNpcRosterGuarded(scope,roster,next))return false;
+      if(!inWave())return false;
+    }
+  }catch{return false;}
+  // A disposal callback can switch waves. Never dispose the NEXT object then.
+  for(const n of extras){
+    if(!inWave())return false;
+    try{n.dropProp?.();}catch{}
+    if(!inWave())return false;
+    try{n.dispose?.();}catch{
+      if(!inWave())return false;
+      try{n.root?.dispose?.(false,true);}catch{}
+    }
+    if(!inWave())return false;
+    try{n.dead=true;}catch{}
+    if(!inWave())return false;
+  }
+  let alreadySpawned=false;
+  try{alreadySpawned=G.bossSpawned===true;}catch{return false;}
+  if(!inWave())return false;
+  if(b&&previous===b&&alreadySpawned)return true;
+  if(!b){
+    try{
+      if(!inWave())return false;
+      const pos=safeEnemySpawn(5,.55,true);
+      if(!inWave()||!pos||!Number.isFinite(pos.x)||!Number.isFinite(pos.y)||!Number.isFinite(pos.z))return false;
+      b=spawnNpcWithRollback(scene,pos,'boss');
+      if(!inWave()||!b)return false;
+      spawned=true;
+    }catch{return false;}
+  }
+  if(!inWave())return false;
+  try{G.boss=b;}catch{}
+  if(!inWave())return false;
+  try{G.bossSpawned=true;}catch{}
+  if(!inWave())return false;
+  let bossConfirmed=false,spawnConfirmed=false;
+  try{bossConfirmed=G.boss===b;}catch{return false;}
+  if(!inWave()||!bossConfirmed)return false;
+  try{spawnConfirmed=G.bossSpawned===true;}catch{return false;}
+  if(!inWave()||!spawnConfirmed)return false;
+  try{G.attackGrace=1.1;}catch{}
+  if(!inWave())return false;
+  if(spawned){
+    try{announce(b.persona+' • FIND THE WEAK POINT!','boss');}catch{}
+    if(!inWave())return false;
+    try{tone(58,.6,'sawtooth',.06,70);}catch{}
+    if(!inWave())return false;
+  }
+  return inWave();
+}
+// Pending-boss write failures must not make an unspawned boss look like a cleared wave.
+let bossPendingRepair=null;
+function bossPendingOwnerIntact(repair){
+  if(bossPendingRepair===repair)return true;
+  // A nested setter/getter may clear the ledger before returning. The write
+  // outcome is then ambiguous: preserve a wave-scoped unsafe tombstone so the
+  // NEXT tick cannot mistake missing bookkeeping for a successful boss debit.
+  // Never overwrite a replacement ledger belonging to a nested publication.
+  if(repair&&bossPendingRepair===null){
+    bossPendingRepair={unsafe:true,pending:repair.pending,token:repair.token,wave:repair.wave};
+  }
+  return false;
+}
+function readBossPendingScope(){
+  try{
+    const token=G.waveToken,wave=G.wave;
+    if(!Number.isSafeInteger(token)||token<0||!Number.isSafeInteger(wave)||wave<0)return null;
+    if(G.waveToken!==token||G.wave!==wave)return null;
+    return {token,wave};
+  }catch{return null;}
+}
+function bossPendingRepairNeeded(){
+  const repair=bossPendingRepair;
+  if(!repair)return false;
+  // A setter may have changed the wave *while* writing the flag. Its effects
+  // cannot safely be attributed to either wave: quarantine until a fresh init.
+  if(repair.unsafe)return true;
+  const now=readBossPendingScope();
+  // The scope getter can synchronously publish a newer repair ledger.
+  if(!bossPendingOwnerIntact(repair))return true;
+  if(!now)return true;
+  if(now.token!==repair.token||now.wave!==repair.wave){
+    bossPendingRepair=null;
+    return false;
+  }
+  return true;
+}
+function publishBossPending(pending,initializeWave=false,expectedToken=null,expectedWave=null){
+  // Only explicit initialization of a DIFFERENT wave may release quarantine.
+  // A retry debit may never silently reset a prior unsafe/unfinished write.
+  const entering=bossPendingRepair;
+  const before=readBossPendingScope();
+  // Even the initial scope getter may clear an earlier ledger.
+  if(entering&&!bossPendingOwnerIntact(entering))return false;
+  const prior=bossPendingRepair;
+  if(!before){
+    if(!prior)bossPendingRepair={unsafe:true,pending,token:null,wave:null};
+    return false;
+  }
+  if(!initializeWave&&expectedToken!==null&&
+     (before.token!==expectedToken||before.wave!==expectedWave))return false;
+  if(prior){
+    const known=Number.isSafeInteger(prior.token)&&Number.isSafeInteger(prior.wave);
+    const same=known&&prior.token===before.token&&prior.wave===before.wave;
+    if(prior.unsafe){
+      if(!initializeWave||!known||same)return false;
+    }else if(same||!initializeWave){
+      return false; // The existing retry ledger owns this write.
+    }
+  }
+  const repair={token:before.token,wave:before.wave,pending};
+  bossPendingRepair=repair; // Reserve before the fallible setter.
+  try{G.spawnPendingBoss=pending;}catch{}
+  // A setter may synchronously start another boss publication. Never
+  // clear or overwrite the new owner's ledger.
+  if(!bossPendingOwnerIntact(repair))return false;
+  const after=readBossPendingScope();
+  if(!after||after.token!==before.token||after.wave!==before.wave){
+    if(bossPendingRepair===repair)bossPendingRepair={unsafe:true,pending,token:before.token,wave:before.wave};
+    return false;
+  }
+  let verified=false;
+  try{verified=G.spawnPendingBoss===pending;}catch{}
+  if(!bossPendingOwnerIntact(repair))return false;
+  const confirmed=readBossPendingScope();
+  if(!confirmed||confirmed.token!==before.token||confirmed.wave!==before.wave){
+    if(bossPendingRepair===repair)bossPendingRepair={unsafe:true,pending,token:before.token,wave:before.wave};
+    return false;
+  }
+  if(!bossPendingOwnerIntact(repair))return false;
+  if(verified)bossPendingRepair=null;
+  return verified;
+}
+function retryBossPendingRepair(){
+  if(!bossPendingRepairNeeded())return false;
+  const repair=bossPendingRepair;
+  if(!repair)return true; // A reentrant scope getter replaced/cleared the ledger.
+  if(repair.unsafe)return true; // Never write an unknown/new wave's pending flag.
+  let transitioning=true;
+  try{transitioning=!!G.waveTransition;}catch{}
+  if(!bossPendingOwnerIntact(repair))return true;
+  if(transitioning)return true;
+  const before=readBossPendingScope();
+  if(!bossPendingOwnerIntact(repair))return true;
+  if(!before)return true;
+  if(before.token!==repair.token||before.wave!==repair.wave)return bossPendingRepairNeeded();
+  // A failed pre-read is UNKNOWN, not permission to overwrite a boss debit.
+  let already=false;
+  let readOk=false;
+  try{already=G.spawnPendingBoss===repair.pending;readOk=true;}catch{}
+  if(!bossPendingOwnerIntact(repair)||!readOk)return true;
+  const prewrite=readBossPendingScope();
+  if(!bossPendingOwnerIntact(repair))return true;
+  if(!prewrite||prewrite.token!==before.token||prewrite.wave!==before.wave){
+    if(bossPendingRepair===repair)bossPendingRepair={unsafe:true,pending:repair.pending,token:repair.token,wave:repair.wave};
+    return true;
+  }
+  if(!bossPendingOwnerIntact(repair))return true;
+  if(already){bossPendingRepair=null;return false;}
+  try{G.spawnPendingBoss=repair.pending;}catch{}
+  if(!bossPendingOwnerIntact(repair))return true;
+  const after=readBossPendingScope();
+  if(!bossPendingOwnerIntact(repair))return true;
+  if(!after||after.token!==before.token||after.wave!==before.wave){
+    if(bossPendingRepair===repair)bossPendingRepair={unsafe:true,pending:repair.pending,token:repair.token,wave:repair.wave};
+    return true;
+  }
+  let verified=false;
+  try{verified=G.spawnPendingBoss===repair.pending;}catch{}
+  if(!bossPendingOwnerIntact(repair))return true;
+  const confirmed=readBossPendingScope();
+  if(!bossPendingOwnerIntact(repair))return true;
+  if(!confirmed||confirmed.token!==before.token||confirmed.wave!==before.wave){
+    if(bossPendingRepair===repair)bossPendingRepair={unsafe:true,pending:repair.pending,token:repair.token,wave:repair.wave};
+    return true;
+  }
+  if(!bossPendingOwnerIntact(repair))return true;
+  if(verified)bossPendingRepair=null;
+  return bossPendingRepairNeeded();
+}
+// A failed worker-pending write must not grant a free wave clear or double-spawn workers.
+let workerPendingRepair=null;
+// CR4.9.326: private immutable debit evidence survives hostile proof callbacks.
+const workerPendingIntents=new WeakMap();
+// Private in-flight guard: a nested new-wave publisher cannot replace an active debit.
+const workerPendingPublicationInFlight=new WeakSet();
+// Guard the scope/base getters before any per-repair journal exists.
+let workerPendingPublicationEntryActive=false;
+// One attempt to escape a permanently quarantined worker debit, never a respawn.
+let workerUnsafeStall=null;
+function workerPendingOwnerIntact(repair){
+  const intent=repair&&workerPendingIntents.get(repair);
+  if(intent&&(repair.token!==intent.token||repair.wave!==intent.wave||
+     repair.base!==intent.base||repair.pending!==intent.pending||
+     (repair.unsafe===true)!==(intent.unsafe===true))){
+    // A public completion proof exposed this object; do not accept edits to
+    // the reserved debit as authority. Preserve original-wave quarantine.
+    if(workerPendingRepair===repair||workerPendingRepair==null){
+      workerPendingRepair={unsafe:true,source:repair,
+        inFlight:workerPendingPublicationInFlight.has(repair),
+        token:intent.token,wave:intent.wave,base:intent.base,pending:intent.pending};
+    }
+    return false;
+  }
+  if(workerPendingRepair===repair)return true;
+  // A nested getter/setter can erase the only record of an ambiguous write.
+  // Preserve an unsafe tombstone for the next tick, but never overwrite a
+  // different publication's repair ledger.
+  if(repair&&workerPendingRepair==null){
+    // A lost journal remains quarantined until the original callback unwinds.
+    workerPendingRepair={unsafe:true,source:repair,
+      inFlight:workerPendingPublicationInFlight.has(repair),
+      token:intent?intent.token:repair.token,wave:intent?intent.wave:repair.wave,
+      base:intent?intent.base:repair.base,pending:intent?intent.pending:repair.pending};
+  }
+  return false;
+}
+function settleWorkerPendingTombstone(source){
+  const tombstone=workerPendingRepair;
+  if(!tombstone||tombstone.source!==source||!tombstone.unsafe)return;
+  // A tombstone is releasable in a verified later wave, never mid-publication.
+  if(workerPendingPublicationInFlight.has(source))return;
+  tombstone.inFlight=false;
+}
+function workerPendingRepairNeeded(){
+  const repair=workerPendingRepair;
+  if(!repair)return false;
+  if(workerPendingPublicationInFlight.has(repair))return true;
+  if(repair.unsafe){
+    // A completed spawn debit from an older wave must not freeze later waves.
+    // Unknown publications and callbacks still in flight remain quarantined.
+    if(repair.inFlight!==false||!Number.isSafeInteger(repair.token)||
+       !Number.isSafeInteger(repair.wave))return true;
+    try{
+      const now=readSpawnScope();
+      if(!now||!workerPendingOwnerIntact(repair))return true;
+      if(now.token===repair.token&&now.wave===repair.wave)return true;
+      if(!sameSpawnScope(now)||!workerPendingOwnerIntact(repair))return true;
+      workerPendingRepair=null;
+      if(workerUnsafeStall?.repair===repair)workerUnsafeStall=null;
+      return false;
+    }catch{return true;}
+  }
+  // A hostile wave getter can change the wave or replace the ledger.
+  try{
+    if(!Number.isSafeInteger(repair.token)||!Number.isSafeInteger(repair.wave))return true;
+    const t1=G.waveToken,w1=G.wave,s1=G.state;
+    const t2=G.waveToken,w2=G.wave,s2=G.state;
+    if(!workerPendingOwnerIntact(repair))return true;
+    if(t1!==t2||w1!==w2||s1!==s2)return true;
+    if(t1!==repair.token||w1!==repair.wave){
+      // A transient wave change is not proof that an old debit can be discarded.
+      // Release only after the replacement shift scope is stable and playable.
+      const now=readSpawnScope();
+      if(!now||now.token!==t1||now.wave!==w1||!sameSpawnScope(now)||
+         !workerPendingOwnerIntact(repair))return true;
+      workerPendingRepair=null;
+      return false;
+    }
+  }catch{workerPendingOwnerIntact(repair);return true;}
+  return workerPendingOwnerIntact(repair);
+}
+// CR4.9.323: scope callbacks can alter the counter after a first successful
+// readback. Check the counter again AFTER the final fallible scope probe.
+// The ledger remains quarantined whenever proof is ambiguous.
+// CR4.9.325: after a successful publication the private repair ledger is
+// cleared, but later wave-completion callbacks still need independent proof.
+function workerPendingCounterStable(scope,expected){
+  if(!scope||!Number.isSafeInteger(expected)||expected<0||expected>4096||
+     !sameSpawnScope(scope))return false;
+  let first;try{first=G.spawnPendingWorkers;}catch{return false;}
+  if(first!==expected||!sameSpawnScope(scope))return false;
+  let last;try{last=G.spawnPendingWorkers;}catch{return false;}
+  // The final counter getter can synchronously change waves. A matching
+  // number alone is not proof of the original publication scope.
+  return last===expected&&sameSpawnScope(scope);
+}
+function workerPendingStableProof(repair,scope){
+  if(!scope||!workerPendingOwnerIntact(repair)||!sameSpawnScope(scope))return false;
+  let first;try{first=G.spawnPendingWorkers;}catch{return false;}
+  if(first!==repair.pending||!workerPendingOwnerIntact(repair)||!sameSpawnScope(scope))return false;
+  let last;try{last=G.spawnPendingWorkers;}catch{return false;}
+  // Revalidate the wave AFTER the last potentially reentrant getter, too.
+  return last===repair.pending&&workerPendingOwnerIntact(repair)&&sameSpawnScope(scope);
+}
+function publishWorkerPending(pending,proof=null){
+  if(workerPendingPublicationEntryActive)return false;
+  workerPendingPublicationEntryActive=true;
+  try{
+  const entering=workerPendingRepair;
+  const scope=readSpawnScope();
+  if(entering&&!workerPendingOwnerIntact(entering))return false;
+  // Never overwrite a prior debit until its journal confirms safe release.
+  if(entering&&(workerPendingRepairNeeded()||workerPendingRepair!==null))return false;
+  const prior=workerPendingRepair;
+  const repair={token:scope?.token??null,wave:scope?.wave??null,base:null,pending};
+  // No worker counter write has occurred at this preflight point.
+  // Reject invalid requests without creating a permanent unsafe tombstone;
+  // any existing ambiguous debit was already protected by the entry check.
+  if(!scope||!Number.isSafeInteger(pending)||pending<0||pending>4096){
+    return false;
+  }
+  if(prior){
+    const known=Number.isSafeInteger(prior.token)&&Number.isSafeInteger(prior.wave);
+    // A new wave may replace a previous wave's ledger, but a retry may not
+    // overwrite an unfinished debit belonging to the SAME wave.
+    if(!known||(prior.token===scope.token&&prior.wave===scope.wave))return false;
+  }
+  try{repair.base=G.spawnPendingWorkers;}catch{}
+  // CR4.9.323: do not start a counter transaction without a proven base.
+  // A throwing/invalid getter previously left a non-repairable debit ledger.
+  if(!Number.isSafeInteger(repair.base)||repair.base<0||repair.base>4096)return false;
+  if(prior){if(!workerPendingOwnerIntact(prior))return false;}
+  else if(workerPendingRepair!==null)return false;
+  if(!sameSpawnScope(scope))return false;
+  if(prior){if(!workerPendingOwnerIntact(prior))return false;}
+  else if(workerPendingRepair!==null)return false;
+  workerPendingPublicationInFlight.add(repair);
+  workerPendingIntents.set(repair,Object.freeze({token:scope.token,wave:scope.wave,base:repair.base,pending,unsafe:false}));
+  workerPendingRepair=repair;
+  try{
+    if(proof&&typeof proof==='object')proof.repair=repair;
+    if(!sameSpawnScope(scope)||!workerPendingOwnerIntact(repair))return false;
+    try{G.spawnPendingWorkers=pending;}catch{} // Commit-then-throw may still be verifiable.
+    if(!workerPendingOwnerIntact(repair)||!sameSpawnScope(scope))return false;
+    const verified=workerPendingStableProof(repair,scope);
+    if(verified){repair.verified=true;workerPendingRepair=null;}
+    return verified;
+  }finally{
+    workerPendingPublicationInFlight.delete(repair);
+    settleWorkerPendingTombstone(repair);
+  }
+  }finally{workerPendingPublicationEntryActive=false;}
+}
+function retryWorkerPendingRepair(){
+  // Guard the initial repair-needed probe before it can invoke hostile getters.
+  // Sharing the publisher entry lock blocks nested retry AND publish calls.
+  if(workerPendingPublicationEntryActive)return true;
+  workerPendingPublicationEntryActive=true;
+  try{
+  if(!workerPendingRepairNeeded())return false;
+  const repair=workerPendingRepair;
+  if(!repair)return false;
+  // A retry setter/readback can synchronously enter another wave or retry.
+  // Quarantine this exact debit until all callbacks have unwound.
+  if(workerPendingPublicationInFlight.has(repair))return true;
+  workerPendingPublicationInFlight.add(repair);
+  try{
+  if(repair.unsafe)return true;
+  const same=()=>{
+    const scope=readSpawnScope();
+    if(!workerPendingOwnerIntact(repair))return false;
+    return !!scope&&scope.token===repair.token&&scope.wave===repair.wave;
+  };
+  if(!same())return true;
+  let current;
+  try{current=G.spawnPendingWorkers;}catch{workerPendingOwnerIntact(repair);return true;}
+  if(!same())return true;
+  if(current===repair.pending){
+    if(!workerPendingStableProof(repair,{token:repair.token,wave:repair.wave}))return true;
+    repair.verified=true;
+    workerPendingRepair=null;
+    return false;
+  }
+  // Only retry a verified old value, never overwrite another counter debit.
+  if(!Number.isSafeInteger(repair.base)||repair.base<0||repair.base>4096||current!==repair.base||
+     !Number.isSafeInteger(repair.pending)||repair.pending<0||repair.pending>4096)return true;
+  try{G.spawnPendingWorkers=repair.pending;}catch{}
+  if(!same())return true;
+  const verified=workerPendingStableProof(repair,{token:repair.token,wave:repair.wave});
+  if(verified){
+    repair.verified=true;
+    workerPendingRepair=null;
+  }
+  return workerPendingRepairNeeded();
+  }finally{
+    workerPendingPublicationInFlight.delete(repair);
+    settleWorkerPendingTombstone(repair);
+  }
+  }finally{
+    workerPendingPublicationEntryActive=false;
+  }
+}
+// A blocked arena must not create enemies inside geometry or auto-award a wave.
+// A constructor can reenter the scheduler: never run two initial wave spawns
+// concurrently, even before the first worker counter journal exists.
+let beginWaveSpawnsActive=false;
+// CR4.9.523: worker constructors may partially spawn then throw.
+// An exact-wave attempt cannot be repeated even without a completion journal.
+let beginWaveWorkersAttemptedScope=null;
+function beginWaveSpawns(scene,bossWave,workerCount,completionJournal=null){
+  if(beginWaveSpawnsActive)return false;
+  beginWaveSpawnsActive=true;
+  try{
+  // Capture the wave before any fallible boss/worker constructor or callback.
+  const scope=readSpawnScope();if(!scope)return false;
+  if(beginWaveWorkersAttemptedScope?.token===scope.token&&
+     beginWaveWorkersAttemptedScope?.wave===scope.wave)return false;
+  if(workerPendingRepair!==null&&workerPendingRepairNeeded())return false;
+  if(!sameSpawnScope(scope))return false;
+  let bossReady=!bossWave;
+  if(bossWave){try{bossReady=!!spawnBoss(scene);}catch{bossReady=false;}}
+  if(!sameSpawnScope(scope))return false;
+  // Never start workers until the boss-pending flag is verifiably published.
+  let bossPendingPublished=false;
+  try{bossPendingPublished=publishBossPending(!bossReady,true)===true;}catch{}
+  if(!sameSpawnScope(scope)||!bossPendingPublished)return false;
+  let bossPendingReadback=false;
+  try{bossPendingReadback=G.spawnPendingBoss===!bossReady;}catch{}
+  if(!sameSpawnScope(scope)||!bossPendingReadback)return false;
+  let bossRepairPending=true;
+  try{bossRepairPending=!!bossPendingRepairNeeded();}catch{}
+  if(!sameSpawnScope(scope)||bossRepairPending)return false;
+  const total=Math.max(0,Math.min(13,Math.floor(Number.isFinite(workerCount)?workerCount:0)));
+  if(completionJournal){
+    if(completionJournal!==waveCompletionJournal||completionJournal.workersStarted)return false;
+    // Reserve before invoking a worker constructor: ambiguous partial spawns are never replayed.
+    completionJournal.workersStarted=true;
+  }
+  // Nested callbacks must not replace the completion journal unnoticed.
+  const journalIntact=()=>!completionJournal||
+    (completionJournal===waveCompletionJournal&&completionJournal.workersStarted===true);
+  if(!sameSpawnScope(scope)||!journalIntact())return false;
+  if(beginWaveWorkersAttemptedScope?.token===scope.token&&
+     beginWaveWorkersAttemptedScope?.wave===scope.wave)return false;
+  beginWaveWorkersAttemptedScope={token:scope.token,wave:scope.wave};
+  let spawned=NaN;
+  try{spawned=spawnWave(scene,total);}catch{}
+  if(!sameSpawnScope(scope)||!journalIntact()||!sameSpawnScope(scope))return false;
+  if(!Number.isSafeInteger(spawned)||spawned<0||spawned>total){
+    // Never overwrite a foreign ledger installed by a nested spawn callback.
+    if(workerPendingRepair==null){
+      workerPendingRepair={token:scope.token,wave:scope.wave,base:null,pending:null,unsafe:true,inFlight:false};
+    }
+    return false;
+  }
+  // Publishing the remaining worker debit is required for wave completion.
+  // A failed setter, foreign ledger or unverified readback must not complete it.
+  const remaining=total-spawned;
+  // Keep exact-wave evidence only AFTER spawnWave returned a valid count.
+  // A later repair may finish the debit, but must NEVER call spawnWave again.
+  const proof=completionJournal?
+    {token:scope.token,wave:scope.wave,pending:remaining,verified:false,repair:null}:null;
+  if(proof)completionJournal.workerDebit=proof;
+  let workerPublished=false;
+  try{workerPublished=publishWorkerPending(remaining,proof)===true;}catch{}
+  if(!sameSpawnScope(scope)||!journalIntact()||!workerPublished||workerPendingRepair!=null)return false;
+  if(proof)proof.verified=true;
+  if(!sameSpawnScope(scope)||!journalIntact()||workerPendingRepair!=null||
+     !workerPendingCounterStable(scope,remaining))return false;
+  let workerRepairPending=true;
+  try{workerRepairPending=!!workerPendingRepairNeeded();}catch{}
+  if(!sameSpawnScope(scope)||!journalIntact()||workerRepairPending||workerPendingRepair!=null)return false;
+  try{G.spawnRetryT=0;G.spawnRetryCount=0;}catch{}
+  if(!sameSpawnScope(scope))return false;
+  try{G.spawnWaitCapacity=!workerPendingRepairNeeded()&&G.spawnPendingWorkers>0&&countLiveWorkers()>=11;}
+  catch{try{G.spawnWaitCapacity=false;}catch{}}
+  if(!sameSpawnScope(scope))return false;
+  try{
+    if(workerPendingRepairNeeded()||bossPendingRepairNeeded()||G.spawnPendingBoss||G.spawnPendingWorkers>0){
+      try{toast(G.spawnWaitCapacity&&!G.spawnPendingBoss?'REINFORCEMENTS QUEUED':'SPAWN BLOCKED • RETRYING',1500);}catch{}
+    }
+  }catch{}
+  return sameSpawnScope(scope)&&journalIntact();
+  }finally{beginWaveSpawnsActive=false;}
+}
+function retryWaveSpawns(scene,dt){
+  // Nested tick from a constructor must not replay a pending spawn debit.
+  if(beginWaveSpawnsActive)return true;
+  try{
+    // Retry belongs to exactly one wave; never transfer its counters to a new wave.
+    const scope=readSpawnScope();if(!scope)return true;
+    if(retryBossPendingRepair())return true;
+    if(!sameSpawnScope(scope))return true;
+    if(retryWorkerPendingRepair()){
+      // An ambiguous worker publication must NEVER be retried as a spawn.
+      // After eight seconds of active simulation, offer a single guarded hub
+      // escape instead of leaving the player in a permanently blocked arena.
+      const repair=workerPendingRepair;
+      if(repair&&repair.unsafe&&repair.token===scope.token&&repair.wave===scope.wave&&
+         sameSpawnScope(scope)&&workerPendingRepair===repair){
+        if(!workerUnsafeStall||workerUnsafeStall.repair!==repair)
+          workerUnsafeStall={repair,elapsed:0,attempted:false};
+        if(!workerUnsafeStall.attempted){
+          workerUnsafeStall.elapsed+=Number.isFinite(dt)&&dt>0?Math.min(.033,dt):0;
+          if(workerUnsafeStall.elapsed>=8){
+            workerUnsafeStall.attempted=true; // Prearm before toast/buildHub callbacks.
+            if(sameSpawnScope(scope)&&workerPendingRepair===repair){
+              try{toast('SPAWN QUARANTINED • RETURNING TO HUB',2000);}catch{}
+              if(sameSpawnScope(scope)&&workerPendingRepair===repair){
+                try{buildHub(scene);}catch{}
+                return false; // Stop this shift tick even if guarded hub cleanup fails.
+              }
+            }
+          }
+        }
+      }
+      return true;
+    }
+    workerUnsafeStall=null;
+    if(!sameSpawnScope(scope))return true;
+    if(orphanRecoveryQueue.size&&drainOrphanRecoveryQueue())return true;
+    if(!sameSpawnScope(scope))return true;
+    const pendingBoss=G.spawnPendingBoss,pendingWorkers=G.spawnPendingWorkers;
+    if(!sameSpawnScope(scope))return true;
+    if(!Number.isSafeInteger(pendingWorkers)||pendingWorkers<0||pendingWorkers>4096||
+       typeof pendingBoss!=='boolean')return true;
+    if(!pendingBoss&&pendingWorkers===0)return true;
+  // Let NPC.update retire missing roots and queue replacements before wave retries.
+  if(hasPendingOrphanedNpc())return true;
+  if(!sameSpawnScope(scope))return true;
+  if(!Number.isFinite(dt)||dt<=0)return true;
+  // Invalid or runaway clocks must not permanently freeze retries or burn six attempts in one burst.
+  const clock=Number.isFinite(G.spawnRetryT)&&G.spawnRetryT>=0&&G.spawnRetryT<=1?G.spawnRetryT:0;
+  if(!sameSpawnScope(scope))return true;
+  G.spawnRetryT=clock+Math.min(.033,dt);
+  if(!sameSpawnScope(scope))return true;
+  const freeSlot=G.spawnWaitCapacity&&G.spawnPendingWorkers>0&&countLiveWorkers()<11;
+  if(!sameSpawnScope(scope))return true;
+  if(freeSlot){
+    G.spawnWaitCapacity=false;
+    G.spawnRetryT=Math.max(1,G.spawnRetryT);
+  }
+  const retryClock=G.spawnRetryT;
+  if(!sameSpawnScope(scope))return true;
+  if(retryClock<1)return true;
+  G.spawnRetryT=Math.max(0,retryClock-1);
+  if(!sameSpawnScope(scope))return true;
+  const pendingBefore=pendingWorkers,bossBefore=pendingBoss;
+  if(bossBefore){
+    // A boss can be registered even when the pending-flag setter rejects its debit.
+    // Keep that debit in the existing wave-scoped repair ledger; never spawn twice.
+    const bossToken=scope.token,bossWave=scope.wave;
+    let ready=false;
+    try{ready=!!spawnBoss(scene);}catch{}
+    if(!sameSpawnScope(scope))return true; // Failed boss constructors can also switch waves.
+    if(ready){
+      try{
+        if(G.waveToken!==bossToken||G.wave!==bossWave)return true;
+        if(G.spawnPendingBoss!==true)return true;
+      }catch{return true;}
+      publishBossPending(false,false,bossToken,bossWave);
+      if(!sameSpawnScope(scope))return true;
+      if(bossPendingRepairNeeded())return true;
+      if(!sameSpawnScope(scope))return true;
+    }
+  }
+  // A boss callback may alter the pending worker count without changing the wave.
+  let pendingNow;try{pendingNow=G.spawnPendingWorkers;}catch{return true;}
+  if(!sameSpawnScope(scope)||pendingNow!==pendingWorkers)return true;
+  if(pendingWorkers>0){
+    // Reserve the debit BEFORE any fallible spawn callback. Even a partial
+    // spawn or thrown constructor must never be replayed as a fresh debit.
+    if(workerPendingRepair!==null)return true;
+    const repair={token:scope.token,wave:scope.wave,base:pendingWorkers,pending:null,unsafe:true,inFlight:true};
+    workerPendingRepair=repair;
+    // Reserve immutable evidence and a private in-flight lock BEFORE spawnWave callbacks.
+    workerPendingIntents.set(repair,Object.freeze({token:scope.token,wave:scope.wave,base:pendingWorkers,pending:null,unsafe:true}));
+    workerPendingPublicationInFlight.add(repair);
+    // Scope getters can themselves trigger nested callbacks; check ledger
+    // ownership AFTER reading the scope, never clear a foreign ledger.
+    const intact=()=>{
+      const now=readSpawnScope();
+      return workerPendingOwnerIntact(repair)&&!!now&&
+        now.token===scope.token&&now.wave===scope.wave;
+    };
+    if(!intact()){
+      // A hostile scope callback can invalidate preflight before spawnWave.
+      // Release the private in-flight guard, but retain the unsafe debit.
+      repair.inFlight=false;
+      workerPendingPublicationInFlight.delete(repair);
+      settleWorkerPendingTombstone(repair);
+      return true;
+    }
+    let spawned=NaN;try{spawned=spawnWave(scene,pendingWorkers);}catch{}finally{repair.inFlight=false;workerPendingPublicationInFlight.delete(repair);settleWorkerPendingTombstone(repair);}
+    if(!intact())return true;
+    if(!Number.isSafeInteger(spawned)||spawned<0||spawned>pendingWorkers)return true;
+    let unchanged=false;
+    try{unchanged=G.spawnPendingWorkers===pendingWorkers;}catch{}
+    if(!intact()||!unchanged)return true;
+    if(spawned===0){
+      // CR4.9.463: zero returned spawns alone cannot release a worker debit.
+      // Require a stable pending counter in the original wave, even after
+      // getters with side effects. Otherwise preserve unsafe quarantine.
+      if(!workerPendingCounterStable(scope,pendingWorkers)||!intact())return true;
+      workerPendingRepair=null;
+    }else{
+      repair.pending=pendingWorkers-spawned;
+      repair.unsafe=false;
+      workerPendingIntents.set(repair,Object.freeze({token:scope.token,wave:scope.wave,base:pendingWorkers,pending:repair.pending,unsafe:false}));
+      if(!intact())return true;
+      try{G.spawnPendingWorkers=repair.pending;}catch{} // Commit-then-throw is verifiable.
+      if(!intact())return true;
+      const confirmed=workerPendingStableProof(repair,scope);
+      if(!intact())return true;
+      if(confirmed){
+        // Clearing our own verified ledger is final: do not recheck its identity.
+        workerPendingRepair=null;
+      }else{
+        if(workerPendingRepairNeeded())return true;
+        if(!intact())return true;
+      }
+    }
+  }
+  if(!sameSpawnScope(scope))return true;
+  if(!G.spawnPendingBoss&&!(G.spawnPendingWorkers>0)){G.spawnRetryCount=0;G.spawnWaitCapacity=false;return true;}
+  G.spawnWaitCapacity=G.spawnPendingWorkers>0&&countLiveWorkers()>=11;
+  if(!G.spawnPendingBoss&&G.spawnWaitCapacity){G.spawnRetryCount=0;return true;}
+  if((bossBefore&&!G.spawnPendingBoss)||G.spawnPendingWorkers<pendingBefore)G.spawnRetryCount=0;
+  else G.spawnRetryCount=(G.spawnRetryCount||0)+1;
+  if(G.spawnRetryCount>=6){
+    try{toast('ARENA BLOCKED • RETURNING TO HUB',2000);}catch{}
+    buildHub(scene);return false;
+  }
+  return true;
+  }catch{return true;} // A malformed pending field must not abort the shift tick.
+}
+function spawnHazard(scene,target,phase=1,theme='CEO'){
   if(!scene||G.state!=='shift'||G.waveTransition)return;
   const m=B.MeshBuilder.CreateCylinder('hazard',{diameter:1.6,height:.025,tessellation:32},scene);m.position=new B.Vector3(target.x,.02,target.z);
-  const mm=new B.StandardMaterial('hazmat',scene);mm.diffuseColor=new B.Color3(.8,.05,.12);mm.emissiveColor=new B.Color3(.5,.01,.03);mm.alpha=.45;m.material=mm;m.scaling.scaleInPlace(1+(phase-1)*.18);
-  const h={mesh:m,t:phase===3?.92:1.15,armed:false,damage:16+phase*4};G.hazards.push(h);
-  setTimeout(()=>{if(!m||m.isDisposed?.()||G.state!=='shift')return;h.armed=true;m.scaling.scaleInPlace(1.6);tone(95,.12,'square',.04,100);},800);
+  const mm=new B.StandardMaterial('hazmat',scene);const hazardPalette={CEO:'#eb4058',COFFEE:'#92502a',PAPER:'#65ccea',SECURITY:'#3e80ee',HR:'#ae4feb'};const hazardColor=B.Color3.FromHexString(hazardPalette[theme]||hazardPalette.CEO);mm.diffuseColor=hazardColor;mm.emissiveColor=hazardColor.scale(.40);mm.alpha=.48;m.material=mm;m.scaling.scaleInPlace(1+(phase-1)*.18);
+  // Hazard arming uses simulation time, so leaving XR cannot arm it while paused.
+  const h={mesh:m,t:phase===3?.92:1.15,armT:.8,armed:false,damage:16+phase*4};G.hazards.push(h);
+}
+// Incident lighting uses simulation time and survives XR pause/resume.
+function updateIncidentLighting(scene,dt){
+  if(G.state!=='shift')return;
+  const fx=G.lightIncident;
+  const step=Math.max(0,dt);
+  if(fx){fx.surge=Math.max(0,fx.surge-step);fx.blackout=Math.max(0,fx.blackout-step);}
+  const key=scene.getLightByName('key');
+  if(key&&!key.isDisposed?.())key.intensity=fx?.surge>0?2.0:G.damageFlashT>0?1.7:1.15;
+  const hemi=scene.getLightByName('hemi');
+  if(hemi&&!hemi.isDisposed?.())hemi.intensity=fx?.blackout>0?.18:G.waveMod==='LOW LIGHT'?.28:.62;
+}
+// Roof wind must respect NPC collision and arena bounds, and use active game time.
+function applyRoofWindImpulse(n){
+  if(!n||n.dead||!n.root||n.root.isDisposed?.())return false;
+  const phase=(Number.isFinite(G.shiftTime)?G.shiftTime:0)*1.7+(Number.isFinite(n.t)?n.t:0);
+  const push=Math.sin(phase)*.18;
+  if(!Number.isFinite(push)||Math.abs(push)<.0001)return false;
+  return moveNpcWithCollision(n,new B.Vector3(push,0,0));
 }
 function incident(scene){
   if(G.state!=='shift'||G.waveTransition||G.boss)return;
@@ -10978,25 +16864,44 @@ function incident(scene){
   const mapEvents={
     'SERVER':['POWER SURGE','LIGHTS OUT'],'COPY':['COPY JAM','PAPER BURST'],'PARKING':['CAR ALARM','LIGHTS OUT'],'ROOFTOP':['ROOF WIND','FIRE DRILL'],'ELEVATOR':['LIFT FAULT','LIGHTS OUT'],'WAREHOUSE':['FORKLIFT BEEP','FIRE DRILL'],'BREAKROOM':['COFFEE RUSH','FIRE DRILL'],'CAFETERIA':['COFFEE RUSH','FIRE DRILL'],'MAILROOM':['MAIL EXPLOSION','FIRE DRILL'],'LEGAL':['OBJECTION','LIGHTS OUT']
   };
-  const pool=(mapEvents[map]||['LIGHTS OUT','PRINTER PANIC','COFFEE RUSH','FIRE DRILL','SECURITY LOCKDOWN','SUPPLY DROP','OVERTIME SURGE']).concat(Math.random()<.35?['SECURITY LOCKDOWN','SUPPLY DROP','OVERTIME SURGE']:[]).filter(x=>x!==G.lastIncident);const x=pool[Math.floor(Math.random()*pool.length)];G.lastIncident=x;
+  const pool=(mapEvents[map]||['LIGHTS OUT','PRINTER PANIC','COFFEE RUSH','FIRE DRILL']).filter(x=>x!==G.lastIncident);const x=pool[Math.floor(Math.random()*pool.length)];G.lastIncident=x;
   announce(x,x==='COFFEE RUSH'?'good':'danger');incidentSound(x);
   if(x==='PRINTER PANIC'||x==='COPY JAM'||x==='PAPER BURST'){G.chaos=Math.min(100,G.chaos+12);tone(380,.08,'square',.025,-120);}
   if(x==='COFFEE RUSH'){G.attackGrace=Math.max(G.attackGrace,1.1);G.chaos=Math.min(100,G.chaos+8);}
   if(x==='FIRE DRILL'||x==='FORKLIFT BEEP'||x==='CAR ALARM'){G.chaos=Math.min(100,G.chaos+16);G.attackGrace=Math.max(G.attackGrace,.7);}
-  if(x==='POWER SURGE'){const key=scene.getLightByName('key');if(key){const old=key.intensity;key.intensity=2.0;setTimeout(()=>{if(key&&!key.isDisposed?.())key.intensity=old;},1700);}tone(720,.12,'square',.035,-220);}
-  if(x==='ROOF WIND'){for(const n of G.npcs)if(!n.dead)n.root.position.x+=Math.sin(performance.now()+n.t)*.18;G.attackGrace=Math.max(G.attackGrace,.6);}
+  if(x==='POWER SURGE'){G.lightIncident=G.lightIncident||{surge:0,blackout:0};G.lightIncident.surge=1.7;updateIncidentLighting(scene,0);tone(720,.12,'square',.035,-220);}
+  if(x==='ROOF WIND'){for(const n of G.npcs){try{applyRoofWindImpulse(n);}catch{}}G.attackGrace=Math.max(G.attackGrace,.6);}
   if(x==='LIFT FAULT'){G.attackGrace=Math.max(G.attackGrace,1.0);G.chaos=Math.min(100,G.chaos+10);tone(85,.28,'square',.04,80);}
-  if(x==='MAIL EXPLOSION'){for(let i=0;i<8&&G.props.length<55;i++){const p=makeProp(scene,i%3?'folder':'paperball',new B.Vector3((Math.random()-.5)*5,1.5+Math.random()*1.5,(Math.random()-.5)*5),{material:'paper',mass:.35,damage:7,size:[.32,.05,.24]});p.vel=new B.Vector3((Math.random()-.5)*5,1.4+Math.random()*1.2,(Math.random()-.5)*5);}G.chaos=Math.min(100,G.chaos+14);}
-  if(x==='OBJECTION'){for(const n of G.npcs)if(!n.dead){n.hesitate=Math.max(n.hesitate,.65+Math.random()*.35);}G.attackGrace=Math.max(G.attackGrace,.9);tone(300,.08,'square',.03,-110);}
-  if(x==='LIGHTS OUT'){const l=scene.getLightByName('hemi');if(l){const old=l.intensity;l.intensity=.18;setTimeout(()=>{const ll=scene.getLightByName('hemi');if(ll)ll.intensity=old;},3200);}}
-  if(x==='SECURITY LOCKDOWN'){G.attackGrace=Math.max(G.attackGrace,1.1);G.chaos=Math.min(100,G.chaos+10);for(const n of G.npcs)if(!n.dead)n.hesitate=Math.max(n.hesitate,.45);tone(95,.18,'square',.035,50);setTimeout(()=>tone(190,.08,'square',.02,-30),180);}
-  if(x==='SUPPLY DROP'){for(let i=0;i<4&&G.props.length<50;i++){const p=makeProp(scene,i%2?'box':'folder',new B.Vector3((i-1.5)*1.25,2.6,(i%2?.9:-.9)),{material:i%2?'wood':'paper',mass:i%2?2.6:.5,damage:i%2?18:8,size:i%2?[.42,.42,.42]:[.34,.05,.25]});p.vel=new B.Vector3((Math.random()-.5)*1.2,-.3,(Math.random()-.5)*1.2);}G.attackGrace=Math.max(G.attackGrace,.8);if(!playInterfaceSfx('drop',.20,.96))tone(220,.12,'triangle',.03,-80);}
-  if(x==='OVERTIME SURGE'){G.attackGrace=Math.max(G.attackGrace,.65);G.chaos=Math.min(100,G.chaos+18);for(const n of G.npcs)if(!n.dead)n.speed=Math.min(n.speed*1.06,2.4);if(!playInterfaceSfx('glitch',.16,.95))tone(520,.11,'sawtooth',.025,160);}
-
+  if(x==='MAIL EXPLOSION'){
+    for(let i=0;i<8&&G.props.length<55;i++){
+      try{
+        const p=makeProp(scene,i%3?'folder':'paperball',new B.Vector3((Math.random()-.5)*5,1.5+Math.random()*1.5,(Math.random()-.5)*5),{material:'paper',mass:.35,damage:7,size:[.32,.05,.24]});
+        if(p)p.vel=new B.Vector3((Math.random()-.5)*5,1.4+Math.random()*1.2,(Math.random()-.5)*5);
+      }catch{} // A failed prop allocation must not crash the shift frame.
+    }
+    G.chaos=Math.min(100,G.chaos+14);
+  }
+  if(x==='OBJECTION'){for(const n of G.npcs){try{if(n&&!n.dead&&n.root&&!n.root.isDisposed?.()){const h=n.hesitate;n.hesitate=Math.max(Number.isFinite(h)?h:0,.65+Math.random()*.35);}}catch{}}G.attackGrace=Math.max(G.attackGrace,.9);tone(300,.08,'square',.03,-110);}
+  if(x==='LIGHTS OUT'){G.lightIncident=G.lightIncident||{surge:0,blackout:0};G.lightIncident.blackout=3.2;updateIncidentLighting(scene,0);}
 }
 
-function damagePlayer(v,why='HIT'){ if((skinAbility()==='Dodge'&&Math.random()<.12)||(skinAbility()==='Phase'&&Math.random()<.16)){announce(skinAbility()==='Phase'?'PHASED':'DODGE','good');tone(720,.05,'triangle',.025,-160);return;} 
-  v=(v/G.upgrade.defense)*skinDefenseMul(); if(why==='BOSS HAZARD'&&skinAbility()==='Hazard Guard')v*=.72; G.hp=Math.max(0,G.hp-v); G.damageFlashT=.18; toast(`-${Math.round(v)} HP • ${why}`,650); tone(80,.07,'square',.035,-30); if(G.hp<=0)endShift('TERMINATED');
+function damagePlayer(v,why='HIT'){
+  // All damage sources (boss specials, hazards and thrown props) must respect
+  // the same active-session and invulnerability window as regular NPC attacks.
+  if(G.state!=='shift'||!hasActivePlayerSession()||G.attackGrace>0||!Number.isFinite(v)||v<=0)return;
+  const ability=skinAbility();
+  if((ability==='Dodge'&&Math.random()<.12)||(ability==='Phase'&&Math.random()<.16)){
+    G.attackGrace=Math.max(0,G.attackGrace||0,.34);
+    announce(ability==='Phase'?'PHASED':'DODGE','good');tone(720,.05,'triangle',.025,-160);return;
+  }
+  v=(v/G.upgrade.defense)*skinDefenseMul();
+  if(why==='BOSS HAZARD'&&ability==='Hazard Guard')v*=.72;
+  if(!Number.isFinite(v)||v<=0)return;
+  G.hp=Math.max(0,G.hp-v);
+  G.attackGrace=Math.max(0,G.attackGrace||0,G.hp<35?.72:.34);
+  G.damageFlashT=.18;
+  toast(`-${Math.round(v)} HP • ${why}`,650);tone(80,.07,'square',.035,-30);
+  if(G.hp<=0)endShift('TERMINATED');
 }
 function promote(){const opts=['power','defense','recovery'];const k=opts[Math.floor(Math.random()*opts.length)];if(k==='power')G.upgrade.power+=.12;if(k==='defense')G.upgrade.defense+=.1;if(k==='recovery')G.upgrade.recovery+=3;G.hp=Math.min(G.maxHp,G.hp+8);const names={power:'POWER UP',defense:'ARMOR UP',recovery:'SECOND WIND'};toast(names[k],1100);tone(330,.16,'triangle',.035,220);}
 function damageBat(v){}
@@ -11004,117 +16909,2491 @@ function breakBat(){}
 function restoreBat(){}
 
 function playerPos(scene){ const cam=scene.activeCamera; return cam?.globalPosition||cam?.position||new B.Vector3(0,1.6,0); }
-function endShift(reason){if(G.ended||G.state!=='shift')return;stopShiftAudio();G.ended=true;G.waveTransition=false;G.waveToken++;G.state='ending';G.meta.totalKOs=(G.meta.totalKOs||0)+G.kills;G.meta.bestCombo=Math.max(G.meta.bestCombo||0,G.bestCombo);if(G.mode==='SURVIVAL')G.meta.survivalBestWave=Math.max(G.meta.survivalBestWave||0,G.wave);saveMeta();toast(G.mode==='SURVIVAL'?`${reason} • WAVE ${G.wave}`:`${reason} • LEVEL ${G.meta.survivalLevel||1}`,1800);G.endTimer=setTimeout(()=>{G.endTimer=null;buildHub(scene);},1700);}
+function endShift(reason){if(G.ended||G.state!=='shift')return;stopShiftAudio();G.ended=true;G.waveTransition=false;G.pendingWave=null;G.waveToken++;G.state='ending';G.meta.totalKOs=(G.meta.totalKOs||0)+G.kills;G.meta.bestCombo=Math.max(G.meta.bestCombo||0,G.bestCombo);if(G.mode==='SURVIVAL')G.meta.survivalBestWave=Math.max(G.meta.survivalBestWave||0,G.wave);saveMeta();toast(G.mode==='SURVIVAL'?`${reason} • WAVE ${G.wave}`:`${reason} • LEVEL ${G.meta.survivalLevel||1}`,1800);G.pendingHub={remaining:1.7};}
 
 
-
-function flatForward(scene){const cam=scene.activeCamera;if(!cam)return new B.Vector3(0,0,1);const f=cam.getDirection(B.Axis.Z);f.y=0;return f.lengthSquared()>.001?f.normalize():new B.Vector3(0,0,1);}
-function flatRight(scene){const cam=scene.activeCamera;if(!cam)return new B.Vector3(1,0,0);const r=cam.getDirection(B.Axis.X);r.y=0;return r.lengthSquared()>.001?r.normalize():new B.Vector3(1,0,0);}
-function moveFlatCamera(scene,dx,dz){const cam=scene.activeCamera;if(!cam)return;const ox=cam.position.x,oz=cam.position.z,nx=ox+dx,nz=oz+dz;if(!isBlockedXZ(nx,nz,.31)){cam.position.x=nx;cam.position.z=nz;}else{if(!isBlockedXZ(nx,oz,.31))cam.position.x=nx;if(!isBlockedXZ(cam.position.x,nz,.31))cam.position.z=nz;}}
-function consumeGamepadPress(gp,index){const now=!!gp?.buttons?.[index]?.pressed,prev=!!G.flatGamepadButtons[index];G.flatGamepadButtons[index]=now;return now&&!prev;}
-function pollFlatGamepad(scene){if(!G.desktop||!navigator.getGamepads)return {x:0,y:0,lx:0,ly:0};let gp=null;try{gp=[...navigator.getGamepads()].find(Boolean);}catch{}if(!gp)return {x:0,y:0,lx:0,ly:0};const dead=v=>Math.abs(v||0)<.14?0:(v||0),x=dead(gp.axes?.[0]),y=-dead(gp.axes?.[1]),lx=dead(gp.axes?.[2]),ly=dead(gp.axes?.[3]);if(consumeGamepadPress(gp,0)){if(G.state==='hub')flatInteract(scene);else flatAttack(scene);}if(consumeGamepadPress(gp,1))flatGrabOrThrow(scene);if(consumeGamepadPress(gp,2))flatAttack(scene);if((consumeGamepadPress(gp,9)||consumeGamepadPress(gp,3))&&G.state==='shift'){buildHub(scene);toast('RETURNED TO HUB',700);}return {x,y,lx,ly};}
-function updateFlatMovement(scene,dt){if(!G.desktop)return;G.flatAttackCooldown=Math.max(0,(G.flatAttackCooldown||0)-dt);const cam=scene.activeCamera;if(!cam)return;const gp=pollFlatGamepad(scene),keys=G.flatKeys;let x=(keys.has('KeyD')||keys.has('ArrowRight')?1:0)-(keys.has('KeyA')||keys.has('ArrowLeft')?1:0)+(G.flatInput.moveX||0)+(gp.x||0);let y=(keys.has('KeyW')||keys.has('ArrowUp')?1:0)-(keys.has('KeyS')||keys.has('ArrowDown')?1:0)+(G.flatInput.moveY||0)+(gp.y||0);const mag=Math.hypot(x,y);if(mag>1){x/=mag;y/=mag;}if(Math.abs(x)+Math.abs(y)>.02){G.playerStepT-=dt;if(G.playerStepT<=0){G.playerStepT=.42;footstepSound(.72);}const speed=(G.meta.settings?.moveSpeed||2.2)*skinMoveMul();const d=flatForward(scene).scale(y*speed*dt).add(flatRight(scene).scale(x*speed*dt));moveFlatCamera(scene,d.x,d.z);}const lx=(G.flatInput.lookX||0)+(gp.lx||0),ly=(G.flatInput.lookY||0)+(gp.ly||0);if(Math.abs(lx)>.001||Math.abs(ly)>.001){cam.rotation.y+=lx*dt*2.2;cam.rotation.x=Math.max(-1.25,Math.min(1.25,cam.rotation.x+ly*dt*1.8));}if(G.flatHeldProp){try{const f=flatForward(scene),r=flatRight(scene);G.flatHeldProp.mesh.position.copyFrom(cam.position.add(f.scale(.72)).add(r.scale(.22)).add(new B.Vector3(0,-.20,0)));G.flatHeldProp.vel.set(0,0,0);}catch{}}}
-function flatInteract(scene){if(!G.desktop||G.state!=='hub'||!scene.activeCamera)return false;const ray=scene.activeCamera.getForwardRay(8),picked=pickHubInteractive(scene,ray.origin,ray.direction,8);if(!picked){toast('LOOK AT A CONTROL + USE',650);return false;}const md=picked.metadata||{};pressHubButton(picked,null,()=>{if(md.interact==='mode')startShift(scene,md.mode||'LEVELS');else if(md.interact==='station')stationAction(md.station);});return true;}
-function flatAttack(scene){if(!G.desktop||G.state!=='shift'||G.flatAttackCooldown>0||!scene.activeCamera)return false;G.flatAttackCooldown=.28;G.flatBatSwing=1;const ray=scene.activeCamera.getForwardRay(2.65);let pick=null;try{pick=scene.pickWithRay(ray,m=>!!m?.metadata?.npc&&!m.metadata.npc.dead);}catch{};if(pick?.hit&&pick.pickedMesh?.metadata?.npc){const n=pick.pickedMesh.metadata.npc,dir=ray.direction.clone();dir.y=0;if(dir.lengthSquared()>.001)dir.normalize();const dmg=(18+G.upgrade.power*6);n.hit(dmg,dir,'bat');applyCombatAbility(n,dir);spawnAbilityFX(scene,pick.pickedPoint||n.root.position.add(new B.Vector3(0,1,0)),selectedBatDef().ability);bodyHitSound(.95);whooshSound(.75);spawnHitFX(scene,pick.pickedPoint||n.root.position.add(new B.Vector3(0,1,0)),.85);return true;}whooshSound(.55);return false;}
-function flatGrabOrThrow(scene){if(!G.desktop||G.state!=='shift'||!scene.activeCamera)return false;const cam=scene.activeCamera;if(G.flatHeldProp){const p=G.flatHeldProp;G.flatHeldProp=null;p.heldBy=null;const v=flatForward(scene).scale(7.4).add(new B.Vector3(0,.65,0));p.vel.copyFrom(v);releaseSound(p.material,v.length());return true;}const origin=cam.position.add(flatForward(scene).scale(.6));let best=null,bd=1.25;for(const p of G.props){if(p.heldBy||p.npcOwner||p.broken)continue;const d=B.Vector3.Distance(origin,p.mesh.position);if(d<bd){bd=d;best=p;}}if(!best){toast('NO PROP IN REACH',500);return false;}best.heldBy='flat';best.vel.set(0,0,0);G.flatHeldProp=best;grabSound(best.material);return true;}
-function setTouchUIVisible(show){const el=document.getElementById('touchControls');if(el)el.style.display=show&&PLATFORM_PROFILE.touch?'block':'none';}
-function setupTouchControls(scene){const root=document.getElementById('touchControls'),stick=document.getElementById('moveStick'),knob=document.getElementById('moveKnob'),look=document.getElementById('lookPad');if(!root||!stick||!knob||!look)return;let moveId=null,lookId=null,lastLook=null;const resetMove=()=>{moveId=null;G.flatInput.moveX=0;G.flatInput.moveY=0;knob.style.transform='translate(-50%,-50%)';};stick.addEventListener('pointerdown',e=>{moveId=e.pointerId;stick.setPointerCapture?.(e.pointerId);e.preventDefault();});stick.addEventListener('pointermove',e=>{if(e.pointerId!==moveId)return;const r=stick.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2,dx=e.clientX-cx,dy=e.clientY-cy,max=r.width*.34,m=Math.hypot(dx,dy)||1,k=Math.min(1,max/m),nx=dx*k/max,ny=dy*k/max;G.flatInput.moveX=nx;G.flatInput.moveY=-ny;knob.style.transform=`translate(calc(-50% + ${dx*k}px),calc(-50% + ${dy*k}px))`;e.preventDefault();});stick.addEventListener('pointerup',resetMove);stick.addEventListener('pointercancel',resetMove);look.addEventListener('pointerdown',e=>{lookId=e.pointerId;lastLook=[e.clientX,e.clientY];look.setPointerCapture?.(e.pointerId);e.preventDefault();});look.addEventListener('pointermove',e=>{if(e.pointerId!==lookId||!lastLook)return;const dx=e.clientX-lastLook[0],dy=e.clientY-lastLook[1];lastLook=[e.clientX,e.clientY];const cam=scene.activeCamera;if(cam){cam.rotation.y+=dx*.0043;cam.rotation.x=Math.max(-1.25,Math.min(1.25,cam.rotation.x+dy*.0038));}e.preventDefault();});const endLook=e=>{if(e.pointerId===lookId){lookId=null;lastLook=null;}};look.addEventListener('pointerup',endLook);look.addEventListener('pointercancel',endLook);for(const [id,fn] of [['touchHit',()=>G.state==='hub'?flatInteract(scene):flatAttack(scene)],['touchGrab',()=>flatGrabOrThrow(scene)],['touchUse',()=>G.state==='hub'?flatInteract(scene):flatAttack(scene)],['touchHub',()=>{if(G.state==='shift')buildHub(scene);}]] ){document.getElementById(id)?.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();fn();});}}
-
-function updateJoystickMovement(scene,dt){
-  if(!G.xr||G.desktop)return; const cam=G.xr.baseExperience?.camera; if(!cam)return;
-  const dead=.16, x=Math.abs(G.joystick.x)>dead?G.joystick.x:0, y=Math.abs(G.joystick.y)>dead?G.joystick.y:0;
-  if(x||y){G.playerStepT-=dt;if(G.playerStepT<=0){G.playerStepT=.40+Math.random()*.08;footstepSound(.85);}const f=cam.getDirection(B.Axis.Z);f.y=0;if(f.lengthSquared()>.001)f.normalize();const r=cam.getDirection(B.Axis.X);r.y=0;if(r.lengthSquared()>.001)r.normalize();const speed=(G.meta.settings?.moveSpeed||2.2)*skinMoveMul();const d=f.scale(-y*speed*dt).add(r.scale(x*speed*dt));{const ox=cam.position.x,oz=cam.position.z,nx=ox+d.x,nz=oz+d.z;if(!isBlockedXZ(nx,nz,.30)){cam.position.x=nx;cam.position.z=nz;}else{if(!isBlockedXZ(nx,oz,.30))cam.position.x=nx;if(!isBlockedXZ(cam.position.x,nz,.30))cam.position.z=nz;}}}
-  const turn=Math.abs(G.turnAxis)>.12?G.turnAxis:0;if(turn){const deg=(G.meta.settings?.smoothTurnSpeed||110)*turn*dt;const a=deg*Math.PI/180;cam.rotationQuaternion=cam.rotationQuaternion||B.Quaternion.Identity();cam.rotationQuaternion=B.Quaternion.RotationAxis(B.Axis.Y,a).multiply(cam.rotationQuaternion);}
+// CR4.9.464: clamp saved movement settings and live input before using
+// them in camera transforms, even when local storage is corrupted.
+function safePlayerMoveSpeed(){
+  const configured=G.meta?.settings?.moveSpeed;
+  return (Number.isFinite(configured)&&configured>=.5&&configured<=5?configured:2.2)*skinMoveMul();
 }
+function safePlayerTurnSpeed(){
+  const configured=G.meta?.settings?.smoothTurnSpeed;
+  return Number.isFinite(configured)&&configured>=30&&configured<=360?configured:110;
+}
+function safeMovementAxis(value){
+  return Number.isFinite(value)?Math.max(-1,Math.min(1,value)):0;
+}
+
+// CR4.9.545: swept player locomotion, shared by Quest and desktop.
+// Short segments reduce fast thumbstick/keyboard tunneling through thin walls.
+// CR4.9.546: simulate substeps locally; publish the camera transform once.
+// This avoids repeated Babylon position setters and rolls back partial writes.
+// CR4.9.550: quarantine a camera position after a failed partial commit.
+// A verified arena spawn can clear the quarantine for a new session.
+const unsafePlayerHorizontalPositions=new WeakSet();
+function sweepPlayerHorizontal(cam,dx,dz,radius=.30){
+  try{
+    const p=cam?.position;
+    if(!p||unsafePlayerHorizontalPositions.has(p)||
+       !Number.isFinite(dx)||!Number.isFinite(dz)||!Number.isFinite(radius)||
+       radius<0)return false;
+    const state=G.state,token=G.waveToken,wave=G.wave,desktop=!!G.desktop;
+    const exact=(x,z)=>{try{
+      if(cam.position!==p||G.state!==state||G.waveToken!==token||
+         G.wave!==wave||!!G.desktop!==desktop)return false;
+      const xd=Object.getOwnPropertyDescriptor(p,'x');
+      const zd=Object.getOwnPropertyDescriptor(p,'z');
+      return !!xd&&!!zd&&('value' in xd)&&('value' in zd)&&
+        xd.writable&&zd.writable&&xd.value===x&&zd.value===z&&
+        p.x===x&&p.z===z;
+    }catch{return false;}};
+    const startX=p.x,startZ=p.z,distance=Math.hypot(dx,dz);
+    if(!Number.isFinite(startX)||!Number.isFinite(startZ)||
+       !(distance>0)||distance>.8||!exact(startX,startZ))return false;
+    const count=Math.max(1,Math.ceil(distance/.05));
+    const sx=dx/count,sz=dz/count;
+    const clear=(x,z)=>(state!=='shift'||(Math.abs(x)<6.6&&Math.abs(z)<6.6))&&
+      !isBlockedXZ(x,z,radius);
+    let cx=startX,cz=startZ;
+    for(let i=0;i<count;i++){
+      const nx=cx+sx,nz=cz+sz;
+      if(clear(nx,nz)){cx=nx;cz=nz;continue;}
+      let advanced=false;
+      if(sx!==0&&clear(nx,cz)){cx=nx;advanced=true;}
+      if(sz!==0&&clear(cx,nz)){cz=nz;advanced=true;}
+      if(!advanced)break;
+    }
+    if(cx===startX&&cz===startZ||!exact(startX,startZ))return false;
+    let committed=false;
+    try{
+      p.x=cx;
+      if(!exact(cx,startZ))throw Error('stale camera x');
+      p.z=cz;
+      committed=exact(cx,cz);
+    }catch{}
+    if(committed)return true;
+    // A setter can commit then throw, swap the camera, or corrupt a slot.
+    // Even if rollback succeeds, quarantine until a safe spawn reset.
+    unsafePlayerHorizontalPositions.add(p);
+    try{
+      if(cam.position===p){p.x=startX;p.z=startZ;exact(startX,startZ);}
+    }catch{}
+    return false;
+  }catch{return false;}
+}
+function updateJoystickMovement(scene,dt){
+  if(!G.xr||G.desktop||!G.xr.baseExperience?.sessionManager?.inXRSession){G.vrMoveMagnitude=0;return;}
+  const cam=G.xr.baseExperience?.camera;
+  if(!cam){G.vrMoveMagnitude=0;return;}
+  G.vrMoveMagnitude=0;
+  // CR4.9.603: native XR controllers can disconnect before Babylon emits removal.
+  // Clear stale axes every frame; disconnected hands must not keep moving/turning.
+  if(!xrGrabControllerLive('left',G.left)){
+    try{G.joystick?.set?.(0,0);}catch{}
+    G.vrSprint=false;
+  }
+  if(!xrGrabControllerLive('right',G.right))G.turnAxis=0;
+  if(!Number.isFinite(dt)||dt<=0)return;
+  const step=Math.min(.05,dt),ax=safeMovementAxis(G.joystick?.x),ay=safeMovementAxis(G.joystick?.y);
+  // CR4.9.561: radial deadzone removes stick drift without the abrupt
+  // 16%-speed jump caused by per-axis cutoffs. Preserve full stick travel.
+  const dead=.16,stick=Math.hypot(ax,ay);
+  if(stick>dead){
+    const strength=Math.min(1,(stick-dead)/(1-dead));
+    const x=ax/stick*strength,y=ay/stick*strength;
+    const f=cam.getDirection(B.Axis.Z),r=cam.getDirection(B.Axis.X);
+    f.y=0;r.y=0;
+    if(f.lengthSquared()>.001&&r.lengthSquared()>.001){
+      if(!Number.isFinite(f.x)||!Number.isFinite(f.z)||!Number.isFinite(r.x)||!Number.isFinite(r.z))return;
+      f.normalize();r.normalize();
+      // CR4.9.547: hold the left thumbstick button to sprint in Quest.
+      const speed=safePlayerMoveSpeed()*(G.vrSprint?1.45:1);
+      const d=f.scale(-y*speed*step).add(r.scale(x*speed*step));
+      // CR4.9.564: malformed/non-orthogonal XR camera axes must not
+      // accelerate diagonal thumbstick movement beyond the selected speed.
+      const mag2=d.x*d.x+d.z*d.z,maxStep=speed*step;
+      if(!Number.isFinite(mag2)||!Number.isFinite(maxStep)||maxStep<=0)return;
+      if(mag2>maxStep*maxStep){
+        const k=maxStep/Math.sqrt(mag2);d.x*=k;d.z*=k;
+      }
+      const ox=cam.position.x,oz=cam.position.z;
+      // CR4.9.559: failed/quarantined camera commits must never produce
+      // fake locomotion, footsteps or progress from partial setter writes.
+      const advanced=sweepPlayerHorizontal(cam,d.x,d.z,.30);
+      const moved=advanced?Math.hypot(cam.position.x-ox,cam.position.z-oz):0;
+      G.vrMoveMagnitude=Math.min(1,moved/Math.max(.0001,speed*step));
+      // Animate and play footsteps only when the player actually moves.
+      if(moved>.0001){
+        G.playerStepT-=step;
+        if(G.playerStepT<=0){G.playerStepT=.40+Math.random()*.08;footstepSound(.85);}
+      }
+    }
+  }
+  const turn=safeMovementAxis(G.turnAxis);
+  if(Math.abs(turn)>.12){
+    // CR4.9.564: a bad/stale quaternion must not abort the entire game tick.
+    try{
+      const a=safePlayerTurnSpeed()*turn*step*Math.PI/180;
+      const prior=cam.rotationQuaternion||B.Quaternion.Identity();
+      const next=B.Quaternion.RotationAxis(B.Axis.Y,a).multiply(prior);
+      if(next&&Number.isFinite(next.x)&&Number.isFinite(next.y)&&
+         Number.isFinite(next.z)&&Number.isFinite(next.w))
+        cam.rotationQuaternion=next;
+    }catch{}
+  }
+}
+
+function updateDesktopMovement(scene,dt){
+  G.desktopMoveMagnitude=0;
+  if(!G.desktop||!scene?.activeCamera||!Number.isFinite(dt)||dt<=0)return;
+  // CR4.9.565: avoid per-key rest-array allocations and keep desktop
+  // camera failures from aborting the entire physics/NPC simulation tick.
+  try{
+    const step=Math.min(.05,dt),cam=scene.activeCamera;
+    const down=code=>desktopKeys.has(code);
+    const x=(down('KeyD')||down('ArrowRight')?1:0)-
+      (down('KeyA')||down('ArrowLeft')?1:0)+safeMovementAxis(desktopTouch.x);
+    const z=(down('KeyW')||down('ArrowUp')?1:0)-
+      (down('KeyS')||down('ArrowDown')?1:0)-safeMovementAxis(desktopTouch.y);
+    if(Math.abs(x)+Math.abs(z)<.04)return;
+    const f=cam.getDirection(B.Axis.Z),r=cam.getDirection(B.Axis.X);
+    if(!f||!r)return;
+    f.y=0;r.y=0;
+    if(!Number.isFinite(f.x)||!Number.isFinite(f.z)||
+       !Number.isFinite(r.x)||!Number.isFinite(r.z)||
+       f.lengthSquared()<.001||r.lengthSquared()<.001)return;
+    f.normalize();r.normalize();
+    const v=f.scale(z).add(r.scale(x)),mag2=v.lengthSquared();
+    if(!Number.isFinite(mag2)||mag2<=0)return;
+    // Cap combined keyboard/touch and non-orthogonal camera axes.
+    if(mag2>1)v.scaleInPlace(1/Math.sqrt(mag2));
+    const speed=safePlayerMoveSpeed()*
+      (down('ShiftLeft')||down('ShiftRight')?1.45:1);
+    const d=v.scale(speed*step),ox=cam.position.x,oz=cam.position.z;
+    if(!Number.isFinite(d.x)||!Number.isFinite(d.z)||
+       !Number.isFinite(ox)||!Number.isFinite(oz))return;
+    const advanced=sweepPlayerHorizontal(cam,d.x,d.z,.30);
+    const moved=advanced?Math.hypot(cam.position.x-ox,cam.position.z-oz):0;
+    if(!Number.isFinite(moved))return;
+    G.desktopMoveMagnitude=Math.min(1,moved/Math.max(.0001,speed*step));
+    if(moved<.0001)return;
+    // Height setters can fail independently of a successful horizontal move.
+    try{cam.position.y=1.65;}catch{}
+    G.playerStepT-=step;
+    if(G.playerStepT<=0){G.playerStepT=.42;footstepSound(.6);}
+  }catch{}
+}
+
 function updateRisers(dt){for(const r of G.risers){if(!r.root||r.root.isDisposed?.())continue;r.t-=dt;if(r.t>0)continue;const d=r.targetY-r.root.position.y;r.root.position.y+=d*Math.min(1,dt*7);}}
 
-function performanceGuard(dt){G.perfT=(G.perfT||0)+dt;G.perfFrames=(G.perfFrames||0)+1;if(G.perfT>=2){const fps=G.perfFrames/G.perfT;G.perfT=0;G.perfFrames=0;try{if(fps<55&&G.perfScale<1.35){G.perfScale+=.1;engine.setHardwareScalingLevel(G.perfScale);}else if(fps>72&&G.perfScale>1.02){G.perfScale=Math.max(1,G.perfScale-.05);engine.setHardwareScalingLevel(G.perfScale);}if(fps<49)setRemoteDecorReduced(true);else if(fps>66)setRemoteDecorReduced(false);}catch{}}}
+// CR4.9.563: Babylon may apply a hardware-scale change and then throw.
+ // Reconcile against the engine's actual value rather than retrying a stale
+ // scale every two seconds. Engines without readback keep the old success path.
+function applyAdaptiveHardwareScale(next){
+  let accepted=false;
+  try{engine.setHardwareScalingLevel(next);accepted=true;}catch{}
+  try{
+    const actual=engine.getHardwareScalingLevel?.();
+    if(Number.isFinite(actual)&&actual>0){
+      G.perfScale=actual;
+      return Math.abs(actual-next)<.001;
+    }
+  }catch{}
+  if(accepted){G.perfScale=next;return true;}
+  return false;
+}
+function performanceGuard(dt){
+  // Measure uncapped wall-frame time; physics dt is capped at 33ms.
+  // Ignore hidden-tab stalls and invalid clocks rather than skewing FPS.
+  // CR4.9.560: browser tab suspension and long scheduling stalls are not
+  // evidence of sustained low GPU FPS; discard their partial sample windows.
+  if(!Number.isFinite(dt)||dt<=0||dt>.25||
+     (typeof document!=='undefined'&&document.hidden)){
+    G.perfT=0;G.perfFrames=0;return;
+  }
+  G.perfT=(G.perfT||0)+dt;G.perfFrames=(G.perfFrames||0)+1;
+  if(G.perfT>=2){
+    const fps=G.perfFrames/G.perfT;G.perfT=0;G.perfFrames=0;
+    try{
+      // Publish the scale only after Babylon accepts it. A throwing renderer
+      // must not desynchronize the recorded and actual scaling level.
+      if(fps<55&&G.perfScale<1.35){
+        const next=Math.min(1.35,G.perfScale+.1);
+        applyAdaptiveHardwareScale(next);
+      }else if(fps>72&&G.perfScale>1.02){
+        const next=Math.max(1,G.perfScale-.05);
+        applyAdaptiveHardwareScale(next);
+      }
+      // Avoid a decor-array filter every 2 seconds when its state is unchanged.
+      if(fps<49&&!G.remoteDecorReduced)setRemoteDecorReduced(true);
+      else if(fps>66&&G.remoteDecorReduced)setRemoteDecorReduced(false);
+    }catch{}
+  }
+}
+function hasActivePlayerSession(){
+  // Prevent combat simulation from continuing when the player leaves VR.
+  return G.desktop || !!G.xr?.baseExperience?.sessionManager?.inXRSession;
+}
+function advanceHubTransition(scene,dt){
+  // The end screen uses game time so it cannot finish while XR is disconnected.
+  const pending=G.pendingHub;
+  if(!pending||G.state!=='ending'||!G.ended)return;
+  pending.remaining-=Math.max(0,dt);
+  if(pending.remaining>0)return;
+  G.pendingHub=null;
+  buildHub(scene);
+}
+const npcTickFaults=new WeakMap();
+let tickInProgress=false;
 function tick(scene){
+  if(tickInProgress)return;
+  tickInProgress=true;
+  try{
+  const now=performance.now();
+  // Continue rendering but freeze NPC combat and in-game timers while there
+  // is no active player. Refresh the clock to avoid a catch-up spike on return.
+  if((G.state==='shift'||G.state==='ending')&&!hasActivePlayerSession()){
+    G.lastT=now;G.pausedForNoPlayer=true;return;
+  }
+  G.pausedForNoPlayer=false;
   updateContract();
-  const now=performance.now(),dt=Math.min(.033,(now-G.lastT)/1000); G.lastT=now; performanceGuard(dt); updateRisers(dt); updateJoystickMovement(scene,dt); updateFlatMovement(scene,dt); updateFlatBat(scene,dt);updateFlatActionPrompt(scene,dt);networkTick(scene,dt); updatePlayerBodyVisual(dt); const pp=playerPos(scene); if(G.state==='shift'){
-    G.shiftTime+=dt; G.directorT+=dt; G.incidentT+=dt; G.attackGrace=Math.max(0,G.attackGrace-dt); G.damageFlashT=Math.max(0,G.damageFlashT-dt); const key=scene.getLightByName('key'); if(key)key.intensity=G.damageFlashT>0?1.7:1.15; G.musicT-=dt; if(G.musicT<=0){G.musicT=G.boss?.38:G.chaos>70?.48:.72;musicPulse();} if(G.comboT>0){G.comboT-=dt;if(G.comboT<=0)G.combo=0;} else G.chaos=Math.max(0,G.chaos-dt*1.6);
-    const netGuest=G.net.role==='guest'&&G.net.connections.size>0;if(!netGuest)for(const n of [...G.npcs])n.update(dt,pp);
-    updateProps(dt,pp); updateHazards(dt,pp); updateBatCombat(scene,dt); if(!netGuest)objectiveTick();
-    if(!netGuest){const alive=G.npcs.filter(n=>!n.dead).length;if(alive===0&&!G.waveTransition) queueNextWave();if(G.incidentT>22 && !G.boss){G.incidentT=0;incident(scene);}if(G.waveMod==='PROP STORM'&&Math.floor(G.shiftTime)%7===0&&G.props.length<55&&Math.random()<dt*.55){const p=makeProp(scene,'folder',safeEnemySpawn(Math.floor(Math.random()*8),.2).add(new B.Vector3(0,2.2,0)),{material:'paper',mass:.5,damage:9,size:[.35,.05,.25]});p.vel=new B.Vector3((Math.random()-.5)*5,1.2,(Math.random()-.5)*5);}}
+  const rawDt=(now-G.lastT)/1000; const dt=Number.isFinite(rawDt)?Math.min(.033,Math.max(0,rawDt)):0; G.lastT=now; performanceGuard(rawDt); updateRisers(dt); updateJoystickMovement(scene,dt); updateDesktopMovement(scene,dt); updatePlayerBodyVisual(dt); advanceHubTransition(scene,dt); advanceWaveTransition(scene,dt); const pp=playerPos(scene); if(G.state==='shift'){
+    G.shiftTime+=dt; if(now>=officeTaskNextRefreshAt){officeTaskNextRefreshAt=Infinity;try{renderOfficeTasks();}catch{}} if(!retryWaveSpawns(scene,dt))return; G.directorT+=dt; G.incidentT+=dt; G.attackGrace=Math.max(0,G.attackGrace-dt); G.damageFlashT=Math.max(0,G.damageFlashT-dt); updateIncidentLighting(scene,dt); G.musicT-=dt; if(G.musicT<=0){G.musicT=G.boss?.38:G.chaos>70?.48:.72;musicPulse();} if(G.comboT>0){G.comboT-=dt;if(G.comboT<=0)G.combo=0;} else G.chaos=Math.max(0,G.chaos-dt*1.6);
+    // A corrupt roster or primitive NPC must never abort the whole shift tick.
+    let npcSnapshot=null,tickToken=null,tickWave=null,tickRoster=null,tickMembers=null;
+    const tickHole=Symbol('tick-roster-hole');
+    const tickNpcMembersOwned=()=>{
+      if(tickMembers===null)return true;
+      if(G.npcs!==tickRoster||tickRoster.length!==tickMembers.length)return false;
+      for(let i=0;i<tickMembers.length;i++){
+        const d=Object.getOwnPropertyDescriptor(tickRoster,String(i));
+        if(tickMembers[i]===tickHole){if(d)return false;}
+        else if(!d||!Object.prototype.hasOwnProperty.call(d,'value')||d.value!==tickMembers[i])return false;
+      }
+      return G.npcs===tickRoster&&G.waveToken===tickToken&&G.wave===tickWave&&
+        G.state==='shift'&&!G.waveTransition;
+    };
+    // A retirement belongs to the wave BEFORE any NPC update callback runs.
+    const sameTickWave=()=>{
+      try{
+        const t1=G.waveToken,w1=G.wave,s1=G.state;
+        const t2=G.waveToken,w2=G.wave,s2=G.state,tr=G.waveTransition;
+        const t3=G.waveToken,w3=G.wave,s3=G.state;
+        return Number.isSafeInteger(tickToken)&&Number.isSafeInteger(tickWave)&&tickWave>=1&&
+          t1===tickToken&&t2===tickToken&&t3===tickToken&&
+          w1===tickWave&&w2===tickWave&&w3===tickWave&&
+          s1==='shift'&&s2==='shift'&&s3==='shift'&&!tr&&tickNpcMembersOwned();
+      }catch{return false;}
+    };
+    try{
+      tickToken=G.waveToken;tickWave=G.wave;
+      const roster=G.npcs;
+      if(sameTickWave()&&Array.isArray(roster)&&roster.length<=128){
+        npcSnapshot=[];
+        const members=[];
+        for(let i=0;i<roster.length;i++){
+          const d=Object.getOwnPropertyDescriptor(roster,String(i));
+          if(d&&!Object.prototype.hasOwnProperty.call(d,'value'))throw new TypeError('Unsafe NPC roster accessor');
+          members.push(d?d.value:tickHole);
+          if(d)npcSnapshot.push(d.value);
+          if(!sameTickWave()||G.npcs!==roster)throw new Error('NPC roster changed during snapshot');
+        }
+        tickRoster=roster;tickMembers=members;
+        if(!sameTickWave())npcSnapshot=null;
+      }
+    }catch{npcSnapshot=null;}
+    // Never execute old-wave phases when the roster snapshot is untrustworthy.
+    if(!npcSnapshot)return;
+    if(npcSnapshot){
+      // retireNpcEntry requires an explicit scope since 4.9.174. Passing none
+      // silently prevented primitive and repeatedly throwing NPC retirement.
+      const retireTickNpc=(n)=>sameTickWave()&&
+        retireNpcEntry(n,{token:tickToken,wave:tickWave})&&sameTickWave();
+      for(const n of npcSnapshot){
+        if(!sameTickWave())break;
+        if(!n||(typeof n!=='object'&&typeof n!=='function')){
+          retireTickNpc(n);continue;
+        }
+        try{
+          // Read once: an update getter can synchronously change the wave.
+          const update=n.update;
+          if(!sameTickWave())break;
+          if(typeof update!=='function')throw new TypeError('Invalid NPC update');
+          update.call(n,dt,pp);
+          if(!sameTickWave())break;
+          npcTickFaults.delete(n);
+        }catch{
+          if(!sameTickWave())break;
+          // Fault counts belong to the exact wave, not merely the NPC identity.
+          // Reused NPC objects must receive three fresh failures in a new wave.
+          const prior=npcTickFaults.get(n);
+          const previous=prior&&prior.token===tickToken&&prior.wave===tickWave&&
+            Number.isSafeInteger(prior.count)&&prior.count>=0&&prior.count<3?prior.count:0;
+          const failures=previous+1;
+          if(failures<3){npcTickFaults.set(n,{token:tickToken,wave:tickWave,count:failures});continue;}
+          npcTickFaults.delete(n);
+          let dead=true,type=null;
+          try{dead=!!n.dead;}catch{}
+          try{type=n.type;}catch{}
+          // A failed retirement is not proof that the worker slot is free.
+          if(!dead&&(type!=='worker'&&type!=='boss'))continue;
+          const retired=dead?retireTickNpc(n):
+            sameTickWave()&&retireNpcWithRecovery(n,type,{token:tickToken,wave:tickWave});
+          if(!retired)continue;
+          if(!sameTickWave())break;
+          try{n.dispose?.();}catch{}
+        }
+      }
+    }
+    // A nested NPC/physics callback can start another wave or shift. Never
+    // continue the remaining phases with an old player position or dt.
+    if(!sameTickWave())return;
+    updateProps(dt,pp);
+    if(!sameTickWave())return;
+    updateHazards(dt,pp);
+    if(!sameTickWave())return;
+    updateBatCombat(scene,dt);
+    if(!sameTickWave())return;
+    objectiveTick();
+    if(!sameTickWave())return;
+    const alive=countActiveNpcsForWave();
+    if(!sameTickWave())return;
+    if(alive===0&&!G.waveTransition){
+      if(!sameTickWave())return;
+      queueNextWave();
+      if(!sameTickWave())return;
+    }
+    if(!sameTickWave())return;
+    if(G.incidentT>22 && !G.boss){
+      if(!sameTickWave())return;
+      G.incidentT=0;
+      if(!sameTickWave())return;
+      incident(scene);
+      if(!sameTickWave())return;
+    }
+    if(!sameTickWave())return;
+    if(G.waveMod==='PROP STORM'&&Math.floor(G.shiftTime)%7===0&&G.props.length<55&&Math.random()<dt*.55){
+      try{
+        if(!sameTickWave())return;
+        const pos=safeEnemySpawn(Math.floor(Math.random()*8),.2);
+        if(!sameTickWave())return;
+        if(pos){
+          const dropPos=pos.add(new B.Vector3(0,2.2,0));
+          if(!sameTickWave())return;
+          const p=makeProp(scene,'folder',dropPos,{material:'paper',mass:.5,damage:9,size:[.35,.05,.25]});
+          if(!sameTickWave())return;
+          if(p){
+            const velocity=new B.Vector3((Math.random()-.5)*5,1.2,(Math.random()-.5)*5);
+            if(!sameTickWave())return;
+            p.vel=velocity;
+            if(!sameTickWave())return;
+          }
+        }
+      }catch{} // One failed storm prop must not abort the shift physics frame.
+    }
   } else if(G.state==='hub'){updateProps(dt,pp);}
   updateHUD();
+  }finally{tickInProgress=false;}
 }
 
-function updateHazards(dt,pp){ if(G.hazards.length>6){for(const h of G.hazards.splice(0,G.hazards.length-6)){try{h.mesh.dispose()}catch{}}} for(const h of [...G.hazards]){ h.t-=dt; if(h.armed && h.t<.25 && B.Vector3.DistanceSquared(h.mesh.position,new B.Vector3(pp.x,h.mesh.position.y,pp.z))<2.0){damagePlayer(h.damage||18,'BOSS HAZARD');h.armed=false;} if(h.t<=0){h.mesh.dispose();G.hazards.splice(G.hazards.indexOf(h),1);} } }
-function updateProps(dt,pp){
-  if(G.props.length>48){for(const p of [...G.props]){if(G.props.length<=48)break;if(!p.heldBy&&!p.npcOwner&&p.type!=='camera')disposeProp(p);}}
-  for(const p of [...G.props]){ if(p.heldBy||p.npcOwner)continue; if(p.vel.lengthSquared()<.003){p.vel.scaleInPlace(.85);continue;} p.grounded=false; p.vel.y-=(skinAbility()==='Low Gravity'?6.4:9.81)*dt; const old=p.mesh.position.clone();p.mesh.position.addInPlace(p.vel.scale(dt));try{p.mesh.rotation.y+=p.vel.x*dt*.18;p.mesh.rotation.x+=p.vel.z*dt*.18;}catch{}if(G.state==='shift'&&isBlockedPoint(p.mesh.position.x,p.mesh.position.y,p.mesh.position.z,.08)){p.mesh.position.x=old.x;p.mesh.position.z=old.z;p.vel.x*=-.22;p.vel.z*=-.22;} p.vel.scaleInPlace(.994); if(p.mesh.position.y<.12){const fall=Math.abs(p.vel.y);p.mesh.position.y=.12;if(fall>1.25&&performance.now()-(p.lastGroundSound||0)>300){p.lastGroundSound=performance.now();impactSound(p.material,Math.min(1,fall/7));if(fall>2.6)propSpecialSound(p.type,fall);}p.vel.y=fall*.18;p.vel.x*=.72;p.vel.z*=.72;if(Math.abs(p.vel.y)<.5)p.vel.y=0;} if(Math.abs(p.mesh.position.x)>8.5||Math.abs(p.mesh.position.z)>8.5){p.mesh.position.x=Math.max(-7,Math.min(7,p.mesh.position.x));p.mesh.position.z=Math.max(-7,Math.min(7,p.mesh.position.z));p.vel.scaleInPlace(.35);}
-    const speed=p.vel.length(); if(speed>2.8){ for(const n of G.npcs){ if(n.dead)continue; const d=B.Vector3.Distance(p.mesh.position,n.root.position.add(new B.Vector3(0,1,0))); if(d<.8 && performance.now()-p.lastHit>450){p.lastHit=performance.now(); n.hit(p.damage*Math.min(1.8,speed/5)*G.upgrade.improvised*skinPropMul(),p.vel.normalize(),'prop'); impactSound(p.material,Math.min(1,speed/8));propSpecialSound(p.type,speed); p.integrity-=Math.max(1,speed*.9); if(p.integrity<=0&&!p.broken){p.broken=true;addScore(120,'PROPERTY DAMAGE');tone(150,.08,'square',.025,-70);p.mesh.scaling.scaleInPlace(.72);p.damage*=.62;} p.vel.scaleInPlace(.35);} }
-      if(B.Vector3.Distance(p.mesh.position,pp)<.65 && (p.thrownByNPCUntil||0)>performance.now() && performance.now()-p.lastHit>450){p.lastHit=performance.now();damagePlayer(Math.max(2,Math.min(8,p.damage*.22)),'THROWN OBJECT');p.thrownByNPCUntil=0;p.vel.scaleInPlace(.22);} }
+// Per-list weak hazard identity journal: never repeat a fallible dispose attempt.
+// A hazard removed from one list can still be used by another list.
+const updateHazardsRetireLedger=new WeakMap();
+let updateHazardsTickBusy=false;
+function updateHazards(dt,pp){
+  // A physics callback may synchronously re-enter this same updater.
+  if(updateHazardsTickBusy)return;
+  updateHazardsTickBusy=true;
+  try{
+  // A callback inside hazard physics can synchronously start another wave.
+  // Keep the original list and stop before touching its replacement.
+  const hazards=G.hazards,token=G.waveToken,wave=G.wave;
+  // Capture exact own data slots. Same-array replacements and reorders
+  // must not silently change the set of hazards owned by this tick.
+  const members=[];
+  const scopeOwned=()=>{
+    try{
+      return Array.isArray(hazards)&&Number.isSafeInteger(token)&&Number.isSafeInteger(wave)&&wave>=1&&
+        G.state==='shift'&&G.waveToken===token&&G.wave===wave&&!G.waveTransition&&G.hazards===hazards&&
+        G.state==='shift'&&G.waveToken===token&&G.wave===wave&&!G.waveTransition&&G.hazards===hazards;
+    }catch{return false;}
+  };
+  const sameMembers=()=>{
+    try{
+      if(hazards.length!==members.length)return false;
+      for(let i=0;i<members.length;i++){
+        const d=Object.getOwnPropertyDescriptor(hazards,String(i));
+        if(!d||!Object.prototype.hasOwnProperty.call(d,'value')||d.value!==members[i])return false;
+      }
+      return true;
+    }catch{return false;}
+  };
+  const stillOwned=()=>scopeOwned()&&sameMembers()&&scopeOwned();
+  if(!scopeOwned())return;
+  try{
+    const count=hazards.length;
+    if(!Number.isSafeInteger(count)||count<0||count>128)return;
+    for(let i=0;i<count;i++){
+      const d=Object.getOwnPropertyDescriptor(hazards,String(i));
+      if(!d||!Object.prototype.hasOwnProperty.call(d,'value'))return;
+      members.push(d.value);
+    }
+  }catch{return;}
+  if(!stillOwned())return;
+  const step=Number.isFinite(dt)?Math.max(0,dt):0;
+  let retireJournal=updateHazardsRetireLedger.get(hazards);
+  if(!retireJournal){retireJournal=new WeakMap();updateHazardsRetireLedger.set(hazards,retireJournal);}
+  const retire=h=>{
+    if(!stillOwned())return false;
+    // Only objects can own a fallible mesh getter or disposer. Mark the exact
+    // hazard before either is read: a throw, wave change or ambiguous splice
+    // must not cause a second dispose attempt in a later tick.
+    const track=h!==null&&(typeof h==='object'||typeof h==='function');
+    if(track){
+      if(retireJournal.has(h))return false;
+      retireJournal.set(h,true);
+    }
+    try{
+      const mesh=track?h.mesh:null;
+      if(!stillOwned())return false;
+      const dispose=mesh?.dispose;
+      if(!stillOwned())return false;
+      if(typeof dispose==='function')dispose.call(mesh);
+    }catch{return false;}
+    if(!stillOwned())return false;
+    let i;
+    try{i=hazards.indexOf(h);}catch{return false;}
+    if(!stillOwned()||i<0)return false;
+    const next=members.slice();next.splice(i,1);
+    try{hazards.splice(i,1);}catch{return false;}
+    // The native splice or a hostile override may have modified other slots.
+    // Reconcile the expected result before allowing any further callbacks.
+    try{
+      if(!scopeOwned()||hazards.length!==next.length)return false;
+      for(let j=0;j<next.length;j++){
+        const d=Object.getOwnPropertyDescriptor(hazards,String(j));
+        if(!d||!Object.prototype.hasOwnProperty.call(d,'value')||d.value!==next[j])return false;
+      }
+      if(!scopeOwned())return false;
+    }catch{return false;}
+    members.splice(i,1);
+    return stillOwned();
+  };
+  // Retire overflow one item at a time; never splice a whole batch before
+  // invoking user/engine callbacks that may replace the active hazard list.
+  const snapshot=members.slice();
+  if(!stillOwned())return;
+  const excess=Math.max(0,snapshot.length-6);
+  for(let i=0;i<excess;i++){
+    if(!stillOwned()||!retire(snapshot[i]))return;
   }
+  for(let i=excess;i<snapshot.length;i++){
+    if(!stillOwned())return;
+    const h=snapshot[i];
+    // A prior retirement attempt is terminal, even if its disposer threw.
+    if(h!==null&&(typeof h==='object'||typeof h==='function')&&retireJournal.has(h))return;
+    // Invalid meshes are retired, but a getter that changes waves must not
+    // trigger disposal of any object belonging to the replacement wave.
+    let m=null,pos=null,valid=false;
+    try{
+      m=h?.mesh;pos=m?.position;
+      valid=!!m&&!m.isDisposed?.()&&!!pos&&Number.isFinite(pos.x)&&Number.isFinite(pos.y)&&Number.isFinite(pos.z)&&
+        Number.isFinite(h.t)&&(h.armT==null||Number.isFinite(h.armT));
+    }catch{}
+    if(!stillOwned())return;
+    if(!valid){if(!retire(h))return;continue;}
+    h.t-=step;
+    if(!stillOwned())return;
+    if(h.armT!=null){
+      if(!stillOwned())return;
+      h.armT=Math.max(0,h.armT-step);
+      if(!stillOwned())return;
+      if(h.armT===0&&h.t>0){
+        if(!stillOwned())return;
+        h.armT=null;h.armed=true;
+        if(!stillOwned())return;
+        try{m.scaling.scaleInPlace(1.6);}catch{if(!retire(h))return;continue;}
+        if(!stillOwned())return;
+        tone(95,.12,'square',.04,100);
+        if(!stillOwned())return;
+      }
+    }
+    // Only horizontal distance matters; avoid a Vector3 allocation.
+    if(!stillOwned())return;
+    if(h.armed&&h.t>0&&h.t<.25&&pp&&Number.isFinite(pp.x)&&Number.isFinite(pp.z)){
+      if(!stillOwned())return;
+      const dx=pos.x-pp.x,dz=pos.z-pp.z;
+      if(!stillOwned())return;
+      if(dx*dx+dz*dz<2.0){
+        const damage=h.damage||18;
+        if(!stillOwned())return;
+        damagePlayer(damage,'BOSS HAZARD');
+        if(!stillOwned())return;
+        h.armed=false;
+        if(!stillOwned())return;
+      }
+    }
+    if(!stillOwned())return;
+    if(h.t<=0&&!retire(h))return;
+  }
+  }finally{updateHazardsTickBusy=false;}
+}
+// NPC-thrown prop danger lasts 1.9 seconds of active gameplay, not wall-clock time.
+function advanceThrownNpcPropLifetime(p,dt){
+  if(!p||!Number.isFinite(p.thrownByNPCTimeRemaining)||p.thrownByNPCTimeRemaining<=0)return 0;
+  if(G.state!=='shift'||!hasActivePlayerSession()||!Number.isFinite(dt)||dt<=0)return p.thrownByNPCTimeRemaining;
+  p.thrownByNPCTimeRemaining=Math.max(0,p.thrownByNPCTimeRemaining-Math.min(.033,dt));
+  return p.thrownByNPCTimeRemaining;
+}
+// Impact and landing sound cooldowns advance only during active gameplay.
+function advancePropImpactCooldowns(p,dt){
+  if(!p||G.state!=='shift'||!hasActivePlayerSession()||!Number.isFinite(dt)||dt<=0)return;
+  const step=Math.min(.033,Math.max(0,dt));
+  p.hitCooldownT=Math.max(0,(Number.isFinite(p.hitCooldownT)?p.hitCooldownT:0)-step);
+  p.groundSoundCooldownT=Math.max(0,(Number.isFinite(p.groundSoundCooldownT)?p.groundSoundCooldownT:0)-step);
+  p.contactSoundCooldownT=Math.max(0,(Number.isFinite(p.contactSoundCooldownT)?p.contactSoundCooldownT:0)-step);
+  p.wallSoundCooldownT=Math.max(0,(Number.isFinite(p.wallSoundCooldownT)?p.wallSoundCooldownT:0)-step);
+  p.officeDominoCooldownT=Math.max(0,(Number.isFinite(p.officeDominoCooldownT)?p.officeDominoCooldownT:0)-step);
+}
+// Temporary office projectiles retire on active game time, not paused XR time.
+// A player carrying a paper prop keeps it; countdown resumes after release.
+function advanceTemporaryOfficePropLifetime(p,dt){
+  if(!p||!Number.isFinite(p.temporaryT)||p.temporaryT<=0)return false;
+  if(G.state!=='shift'||!hasActivePlayerSession()||p.heldBy||p.npcOwner||!Number.isFinite(dt)||dt<=0)return false;
+  p.temporaryT=Math.max(0,p.temporaryT-Math.min(.033,dt));
+  return p.temporaryT===0;
+}
+// Glue effects use active game time and never create permanent constraints.
+function advanceStickyOfficeProp(p,dt){
+  if(!p||!Number.isFinite(p.stickyT)||p.stickyT<=0)return false;
+  if(p.heldBy||p.npcOwner){p.stickyT=0;return false;}
+  if(G.state!=='shift'||!hasActivePlayerSession()||!Number.isFinite(dt)||dt<=0)return false;
+  p.stickyT=Math.max(0,p.stickyT-Math.min(.033,dt));
+  if(p.stickyT<=0||!p.grounded||!p.mesh||!p.vel)return false;
+  try{
+    if(!Number.isFinite(p.mesh.position.y)||p.mesh.position.y>.9)return false;
+    // Stationary taped objects need no repeated Babylon Vector3 writes.
+    const v=p.vel;
+    if(!v||!(Number.isFinite(v.x)&&Number.isFinite(v.y)&&Number.isFinite(v.z)))return false;
+    if(v.x!==0||v.y!==0||v.z!==0)v.set(0,0,0);
+    return true;
+  }catch{return false;}
+}
+
+// A scoring callback may synchronously start another wave. Never award a
+// newly created shift for a collision that happened in the previous one.
+function officeContactScoreContext(){
+  try{
+    const ctx={token:G.waveToken,wave:G.wave,props:G.props,tasks:G.officeTasks};
+    return officeContactScoreContextOwned(ctx)?ctx:null;
+  }catch{return null;}
+}
+function officeContactScoreContextOwned(ctx){
+  try{return !!ctx&&G.state==='shift'&&!G.waveTransition&&!G.ended&&
+    G.waveToken===ctx.token&&G.wave===ctx.wave&&G.props===ctx.props&&
+    G.officeTasks===ctx.tasks&&Array.isArray(ctx.props)&&Array.isArray(ctx.tasks);}
+  catch{return false;}
+}
+// CR4.9.458: reserve one pin at a time. A no-op, throwing or reentrant
+// setter cannot award duplicate points or an unverified bowling strike.
+const officeBowlingScoreInFlight=new WeakSet();
+function scoreOfficeBowlingContact(a,b,ballTowardPin=false){
+  if(ballTowardPin!==true)return false;
+  const ctx=officeContactScoreContext();if(!ctx)return false;
+  const pin=a?.officeBowlingPin&&b?.type==='bowlingball'?a:
+            b?.officeBowlingPin&&a?.type==='bowlingball'?b:null;
+  const ball=pin===a?b:pin===b?a:null;
+  const pins=G.officeBowlingPins;
+  if(!pin||!ball||pin.officeBowlingScored||pin.broken||ball.broken||
+     pin.heldBy||ball.heldBy||pin.npcOwner||ball.npcOwner||
+     !Array.isArray(pins)||pins.length<1||pins.length>6||
+     !pins.includes(pin)||!ctx.props.includes(pin)||!ctx.props.includes(ball)||
+     !officeContactScoreContextOwned(ctx)||G.officeBowlingPins!==pins||
+     officeBowlingScoreInFlight.has(pin))return false;
+  officeBowlingScoreInFlight.add(pin);
+  try{
+    // Commit-then-throw is acceptable ONLY when readback proves the reservation.
+    try{pin.officeBowlingScored=true;}catch{}
+    let reserved=false;
+    try{reserved=pin.officeBowlingScored===true;}catch{}
+    if(!reserved||!officeContactScoreContextOwned(ctx)||G.officeBowlingPins!==pins)return false;
+    try{addScore(75,'OFFICE BOWLING');}catch{}
+    if(!officeContactScoreContextOwned(ctx)||G.officeBowlingPins!==pins)return false;
+    try{
+      const allDown=pins.every(p=>p?.officeBowlingScored);
+      if(!officeContactScoreContextOwned(ctx)||G.officeBowlingPins!==pins)return false;
+      if(allDown){
+        try{addScore(300,'OFFICE STRIKE');}catch{}
+        if(!officeContactScoreContextOwned(ctx))return false;
+        try{completeOfficeTask('STRIKE',null,null);}catch{}
+        if(!officeContactScoreContextOwned(ctx))return false;
+        try{toast('OFFICE STRIKE! +300',1300);}catch{}
+        if(!officeContactScoreContextOwned(ctx))return false;
+        try{tone(740,.14,'triangle',.04,250);}catch{}
+      }
+    }catch{}
+    return true;
+  }finally{officeBowlingScoreInFlight.delete(pin);}
+}
+
+// CR4.9.381: never repeat an uncertain two-body collision impulse.
+// A velocity or grounded setter may commit and then throw. The pair is
+// quarantined until a verified physical separation, without retaining bodies.
+const uncertainOfficeContactPairs=new WeakMap();
+function officeContactPairMark(a,b){
+  let set=uncertainOfficeContactPairs.get(a);
+  if(!set){set=new WeakSet();uncertainOfficeContactPairs.set(a,set);}
+  set.add(b);
+}
+function officeContactPairClear(a,b){
+  uncertainOfficeContactPairs.get(a)?.delete(b);
+  uncertainOfficeContactPairs.get(b)?.delete(a);
+}
+// CR4.9.382: real chair/cart physics contacts can start office domino.
+// Constants are shared; no per-impact Set allocations or new physics bodies.
+const OFFICE_CART_CRASH_TARGETS=new Set(['monitor','laptop','printer']);
+const OFFICE_DOMINO_MOVERS=new Set(['chair','cart']);
+const OFFICE_DOMINO_TARGETS=new Set(['storagebox','toolbox','chair','cart']);
+// CR4.9.448: guard target cooldown publication against reentrant callbacks.
+const officeDominoScoreInFlight=new WeakSet();
+// Shared velocity clamp avoids allocating a new closure for each physics contact.
+const clampOfficeContactVelocity=v=>Math.max(-12,Math.min(12,v));
+// Optional challenge is awarded only for an actual pre-impulse cart-to-electronics impact.
+// The target must be a live physical prop in the same shift, never a decorative mesh.
+function scoreOfficeCartCrashContact(a,b,closing,approachingMover){
+  try{
+    if(!Number.isFinite(closing)||closing<2.4||approachingMover?.type!=='cart')return false;
+    const target=approachingMover===a?b:approachingMover===b?a:null;
+    if(!target||!OFFICE_CART_CRASH_TARGETS.has(target.type)||
+       approachingMover.broken||target.broken||approachingMover.heldBy||target.heldBy||
+       approachingMover.npcOwner||target.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(a)||!ctx.props.includes(b))return false;
+    return completeOfficeTask('CARTCRASH',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.457: a real moving shopping cart can knock down warehouse bowling pins.
+// This optional task is independent of the bowling-ball-only STRIKE reward.
+function scoreOfficeChairCrashContact(a,b,closing,approachingMover){
+  try{
+    if(!Number.isFinite(closing)||closing<2.4||approachingMover?.type!=='chair')return false;
+    const target=approachingMover===a?b:approachingMover===b?a:null;
+    if(!target||!OFFICE_CART_CRASH_TARGETS.has(target.type)||
+       approachingMover.broken||target.broken||approachingMover.heldBy||target.heldBy||
+       approachingMover.npcOwner||target.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(a)||!ctx.props.includes(b))return false;
+    return completeOfficeTask('CHAIRCRASH',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.457: a real moving shopping cart can knock down warehouse bowling pins.
+// This optional task is independent of the bowling-ball-only STRIKE reward.
+function scoreOfficeCartBowlingContact(a,b,closing,approachingMover){
+  try{
+    if(!Number.isFinite(closing)||closing<2.4||approachingMover?.type!=='cart')return false;
+    const pin=approachingMover===a?b:approachingMover===b?a:null;
+    if(!pin?.officeBowlingPin||pin.broken||approachingMover.broken||
+       pin.heldBy||approachingMover.heldBy||pin.npcOwner||approachingMover.npcOwner)return false;
+    const ctx=officeContactScoreContext(),pins=G.officeBowlingPins;
+    if(!ctx||!Array.isArray(pins)||pins.length<1||pins.length>6||
+       !pins.includes(pin)||!ctx.props.includes(pin)||
+       !ctx.props.includes(approachingMover)||G.officeBowlingPins!==pins||
+       !officeContactScoreContextOwned(ctx))return false;
+    return completeOfficeTask('CARTBOWL',null,null)===true;
+  }catch{return false;}
+}
+function scoreOfficeChairBowlingContact(a,b,closing,approachingMover){
+  try{
+    if(!Number.isFinite(closing)||closing<2.4||approachingMover?.type!=='chair')return false;
+    const pin=approachingMover===a?b:approachingMover===b?a:null;
+    if(!pin?.officeBowlingPin||pin.broken||approachingMover.broken||
+       pin.heldBy||approachingMover.heldBy||pin.npcOwner||approachingMover.npcOwner)return false;
+    const ctx=officeContactScoreContext(),pins=G.officeBowlingPins;
+    if(!ctx||!Array.isArray(pins)||pins.length<1||pins.length>6||
+       !pins.includes(pin)||!ctx.props.includes(pin)||
+       !ctx.props.includes(approachingMover)||G.officeBowlingPins!==pins||
+       !officeContactScoreContextOwned(ctx))return false;
+    return completeOfficeTask('CHAIRBOWL',null,null)===true;
+  }catch{return false;}
+}
+function scoreOfficeDominoContact(a,b,closing,chairTowardCart=false,moverApproaching=false,approachingMover=null){
+  const ctx=officeContactScoreContext();
+  if(!ctx||!Number.isFinite(closing)||closing<2.4)return false;
+  // When BOTH bodies are chairs/carts, credit the body that actually drove into the other.
+  // Previously a stationary first-index chair hid a moving second-index cart.
+  const mover=(moverApproaching===true&&(approachingMover===a||approachingMover===b))?
+    approachingMover:OFFICE_DOMINO_MOVERS.has(a?.type)?a:OFFICE_DOMINO_MOVERS.has(b?.type)?b:null;
+  const target=mover===a?b:mover===b?a:null;
+  if(!mover||!target||mover===target||!OFFICE_DOMINO_TARGETS.has(target.type)||
+     mover.broken||target.broken||mover.heldBy||target.heldBy||
+     mover.npcOwner||target.npcOwner||target.officeBowlingPin||
+     !ctx.props.includes(a)||!ctx.props.includes(b))return false;
+  // CHAIR VS CART is independent of the generic domino cooldown. Award it
+  // only when the chair was actually moving toward the cart BEFORE impulse.
+  if(chairTowardCart===true&&
+     ((a.type==='chair'&&b.type==='cart')||(a.type==='cart'&&b.type==='chair'))&&
+     officeContactScoreContextOwned(ctx)){
+    try{completeOfficeTask('CHAIRCLASH',null,null);}catch{}
+    if(!officeContactScoreContextOwned(ctx))return false;
+  }
+  // Independent of DOMINO cooldown: a second unique moving chair/cart can
+  // complete PINBALL even if this target is still cooling down.
+  if(moverApproaching===true&&officeContactScoreContextOwned(ctx)){
+    try{recordOfficePinballContact(mover,target,ctx,true);}catch{}
+    if(!officeContactScoreContextOwned(ctx))return false;
+  }
+  // A fast box hitting a stationary chair is NOT a rolling-chair domino.
+  // Require pre-impulse evidence that the chair/cart drove into the target.
+  if(moverApproaching!==true)return false;
+  // Cooldown setters can reject, throw after committing, or recursively
+  // trigger another physics callback. Only a verified 4.5s reservation scores.
+  if(officeDominoScoreInFlight.has(target))return false;
+  officeDominoScoreInFlight.add(target);
+  try{
+    let cooldown;
+    try{cooldown=target.officeDominoCooldownT;}catch{return false;}
+    if((cooldown!==undefined&&(!Number.isFinite(cooldown)||cooldown<0))||
+       cooldown>0||!officeContactScoreContextOwned(ctx))return false;
+    try{target.officeDominoCooldownT=4.5;}catch{return false;}
+    let published=false;
+    try{published=target.officeDominoCooldownT===4.5;}catch{return false;}
+    if(!published||!officeContactScoreContextOwned(ctx))return false;
+    try{addScore(25,'OFFICE DOMINO');}catch{}
+    if(!officeContactScoreContextOwned(ctx))return false;
+    try{completeOfficeTask('DOMINO',null,null);}catch{}
+    return officeContactScoreContextOwned(ctx);
+  }finally{officeDominoScoreInFlight.delete(target);}
+}
+// CR4.9.472: reward a shopping cart actually driven into a mostly stationary
+// office chair. The opposite CHAIR VS CART task remains independent.
+function scoreOfficeCartChairContact(a,b,closing,cartTowardChair){
+  try{
+    if(cartTowardChair!==true||!Number.isFinite(closing)||closing<=2.4||a===b)return false;
+    const cart=a?.type==='cart'?a:b?.type==='cart'?b:null;
+    const chair=cart===a?b:cart===b?a:null;
+    if(!cart||chair?.type!=='chair'||cart.broken||chair.broken||
+       cart.heldBy||chair.heldBy||cart.npcOwner||chair.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(cart)||!ctx.props.includes(chair))return false;
+    return completeOfficeTask('CARTCHAIR',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.465: the BALL VS CART stunt needs a real pre-impulse ball approach,
+// not a shopping cart rolling into a stationary bowling ball.
+function scoreOfficeBallCartContact(a,b,closing,ballTowardCart){
+  try{
+    if(ballTowardCart!==true||!Number.isFinite(closing)||closing<3)return false;
+    const ball=a?.type==='bowlingball'?a:b?.type==='bowlingball'?b:null;
+    const cart=ball===a?b:ball===b?a:null;
+    if(!ball||cart?.type!=='cart'||ball===cart||ball.broken||cart.broken||
+       ball.heldBy||cart.heldBy||ball.npcOwner||cart.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||!ctx.props.includes(ball)||
+       !ctx.props.includes(cart))return false;
+    return completeOfficeTask('BALLCART',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.475: a real rolling bowling ball must approach a loose chair before
+// collision impulses. A chair rolling into a stationary ball never counts.
+function scoreOfficeBallChairContact(a,b,closing,ballTowardChair){
+  try{
+    if(ballTowardChair!==true||!Number.isFinite(closing)||closing<3||a===b)return false;
+    const ball=a?.type==='bowlingball'?a:b?.type==='bowlingball'?b:null;
+    const chair=ball===a?b:ball===b?a:null;
+    if(!ball||chair?.type!=='chair'||ball.broken||chair.broken||
+       ball.heldBy||chair.heldBy||ball.npcOwner||chair.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||!ctx.props.includes(ball)||
+       !ctx.props.includes(chair))return false;
+    return completeOfficeTask('BALLCHAIR',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.468: award a head-on chair joust only for two loose chairs
+// approaching each other BEFORE the collision impulse. No decoration scores.
+function scoreOfficeChairJoustContact(a,b,closing,headOnChairs){
+  try{
+    if(headOnChairs!==true||!Number.isFinite(closing)||closing<3.4||
+       a===b||a?.type!=='chair'||b?.type!=='chair'||
+       a.broken||b.broken||a.heldBy||b.heldBy||a.npcOwner||b.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(a)||!ctx.props.includes(b))return false;
+    return completeOfficeTask('CHAIRJOUST',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.471: require two distinct live shopping carts moving TOWARD one another
+// before the collision impulse; a stationary cart or duplicate prop cannot score.
+function scoreOfficeCartJoustContact(a,b,closing,headOnCarts){
+  try{
+    if(headOnCarts!==true||!Number.isFinite(closing)||closing<3.4||
+       a===b||a?.type!=='cart'||b?.type!=='cart'||
+       a.broken||b.broken||a.heldBy||b.heldBy||a.npcOwner||b.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(a)||!ctx.props.includes(b))return false;
+    return completeOfficeTask('CARTJOUST',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.469: a real bowling-ball approach into office electronics earns
+// TECH BOWLING. A static ball hit by a moving monitor never counts.
+function scoreOfficeTechBowlingContact(a,b,closing,ballTowardTech){
+  try{
+    if(ballTowardTech!==true||!Number.isFinite(closing)||closing<3.2||a===b)return false;
+    const ball=a?.type==='bowlingball'?a:b?.type==='bowlingball'?b:null;
+    const target=ball===a?b:ball===b?a:null;
+    if(!ball||!target||!OFFICE_CART_CRASH_TARGETS.has(target.type)||
+       ball.broken||target.broken||ball.heldBy||target.heldBy||
+       ball.npcOwner||target.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(ball)||!ctx.props.includes(target))return false;
+    return completeOfficeTask('TECHBOWL',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.476: reward only a verified pre-impulse flying mug toward electronics.
+// A stationary mug struck by a moving computer is not a COFFEE CRASH.
+function scoreOfficeCoffeeCrashContact(a,b,closing,mugTowardTech){
+  try{
+    if(mugTowardTech!==true||!Number.isFinite(closing)||closing<3||a===b)return false;
+    const mug=a?.type==='mug'?a:b?.type==='mug'?b:null;
+    const tech=mug===a?b:mug===b?a:null;
+    if(!mug||!tech||!OFFICE_CART_CRASH_TARGETS.has(tech.type)||
+       mug.broken||tech.broken||mug.heldBy||tech.heldBy||
+       mug.npcOwner||tech.npcOwner)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(mug)||!ctx.props.includes(tech))return false;
+    return completeOfficeTask('COFFEECRASH',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.480: pre-impulse player paperball strike on printer/copier.
+function scoreOfficePaperJamContact(a,b,closing,paperTowardPrinter){
+  try{
+    if(paperTowardPrinter!==true||!Number.isFinite(closing)||closing<2.8||a===b)return false;
+    const paper=a?.type==='paperball'?a:b?.type==='paperball'?b:null;
+    const printer=paper===a?b:paper===b?a:null;
+    if(!paper||!printer||(printer.type!=='printer'&&printer.type!=='photocopier')||
+       paper.broken||printer.broken||paper.heldBy||printer.heldBy||
+       paper.npcOwner||printer.npcOwner||paper.thrownByNPCTimeRemaining>0)return false;
+    const ctx=officeContactScoreContext();
+    if(!ctx||!officeContactScoreContextOwned(ctx)||
+       !ctx.props.includes(paper)||!ctx.props.includes(printer))return false;
+    return completeOfficeTask('PAPERJAM',null,null)===true;
+  }catch{return false;}
+}
+// CR4.9.666: collisions with the desk bell or rubber duck trigger their
+// recognizable cartoon sounds, subject to the existing per-prop cooldown.
+function officeContactSpecialSoundType(a,b,closing){
+  if(!Number.isFinite(closing)||closing<=1.8)return null;
+  const ta=a?.type,tb=b?.type;
+  if(ta==='deskbell'||tb==='deskbell')return 'deskbell';
+  if(ta==='rubberduck'||tb==='rubberduck')return 'rubberduck';
+  return null;
+}
+function resolveOfficePropContacts(props,stillOwned,onImpact=null){
+  // At most 48 bodies and 12 contacts per frame; sleeping pairs are skipped.
+  if(!Array.isArray(props)||props.length>48||typeof stillOwned!=='function'||!stillOwned())return 0;
+  let impacts=0;
+  for(let i=0;i<props.length&&impacts<12;i++){
+    const a=props[i];
+    if(!a||a.broken||a.heldBy||a.npcOwner||pendingXRPropDetaches.has(a)||unsafeOfficePropMovement.has(a))continue;
+    for(let j=i+1;j<props.length&&impacts<12;j++){
+      const b=props[j];
+      if(!b||b.broken||b.heldBy||b.npcOwner||pendingXRPropDetaches.has(b)||unsafeOfficePropMovement.has(b))continue;
+      try{
+        // Check sleeping velocities before querying expensive Babylon world nodes.
+        const va=a.vel,vb=b.vel;
+        if(!va||!vb||!Number.isFinite(va.x)||!Number.isFinite(va.y)||!Number.isFinite(va.z)||
+           !Number.isFinite(vb.x)||!Number.isFinite(vb.y)||!Number.isFinite(vb.z))continue;
+        // CR4.9.467: sleeping quarantined pairs still need a separation check.
+        // Otherwise a commit-then-throw contact can lock two resting props forever.
+        const bothSleeping=va.x*va.x+va.z*va.z<.64&&vb.x*vb.x+vb.z*vb.z<.64;
+        if(bothSleeping&&!uncertainOfficeContactPairs.get(a)?.has(b)&&
+           !uncertainOfficeContactPairs.get(b)?.has(a))continue;
+        const pa=a.mesh?.position,pb=b.mesh?.position;
+        if(!pa||!pb)continue;
+        if(!Number.isFinite(pa.x)||!Number.isFinite(pa.y)||!Number.isFinite(pa.z)||
+           !Number.isFinite(pb.x)||!Number.isFinite(pb.y)||!Number.isFinite(pb.z))continue;
+        const dx=pb.x-pa.x,dz=pb.z-pa.z;
+        const ra=Number.isFinite(a.collisionRadius)?a.collisionRadius:.22;
+        const rb=Number.isFinite(b.collisionRadius)?b.collisionRadius:.22;
+        const radius=Math.max(.16,Math.min(1.3,ra+rb));
+        const d2=dx*dx+dz*dz;
+        if(!Number.isFinite(d2))continue;
+        // CR4.9.427: skip Babylon disposed-state calls for far/non-contact
+        // pairs. Keep the check for quarantined pairs before rearming them.
+        const uncertain=uncertainOfficeContactPairs.get(a)?.has(b)||
+                        uncertainOfficeContactPairs.get(b)?.has(a);
+        // CR4.9.657: near-coincident office props can still collide. The
+        // old <2cm early-out left fast objects overlapping without response.
+        if(!uncertain&&d2>=radius*radius)continue;
+        // CR4.9.434: a lofted cart/box can overlap in XZ but be far apart
+        // vertically. Reject normal non-contact pairs before expensive Babylon
+        // disposed-state callbacks; uncertain pairs still verify disposal.
+        const ha=Number.isFinite(a.collisionHalfHeight)?a.collisionHalfHeight:.2;
+        const hb=Number.isFinite(b.collisionHalfHeight)?b.collisionHalfHeight:.2;
+        const separatedVertically=Math.abs(pb.y-pa.y)>ha+hb;
+        if(!uncertain&&separatedVertically)continue;
+        if(uncertain){
+          // Quarantined pairs still check Babylon disposal before release.
+          if(a.mesh.isDisposed?.()||b.mesh.isDisposed?.())continue;
+          if(d2>=radius*radius||separatedVertically)officeContactPairClear(a,b);
+          continue;
+        }
+        // CR4.9.656: retain the exact velocities used to decide this contact.
+        // Babylon disposal and mass callbacks must not rewrite an impulse's basis.
+        const avx=va.x,avy=va.y,avz=va.z,bvx=vb.x,bvy=vb.y,bvz=vb.z;
+        if(![avx,avy,avz,bvx,bvy,bvz].every(Number.isFinite))continue;
+        // CR4.9.657: at a shared/near-shared centre the geometric normal
+        // is undefined. Use the relative horizontal velocity as a stable
+        // fallback, and skip motionless coincident pairs without NaN impulses.
+        const overlap=d2<.0004;
+        const relX=avx-bvx,relZ=avz-bvz;
+        const normalLength=overlap?Math.hypot(relX,relZ):Math.sqrt(d2);
+        if(!Number.isFinite(normalLength)||normalLength<1e-8)continue;
+        const nx=(overlap?relX:dx)/normalLength,nz=(overlap?relZ:dz)/normalLength;
+        const closing=relX*nx+relZ*nz;
+        // Separating contacts need no expensive Babylon disposed-state calls.
+        if(!Number.isFinite(closing)||closing<.8)continue;
+        // Record the pre-impact chair approach; post-impulse velocity is not proof.
+        // Cache signed approach speeds before mutating either velocity.
+        // When both bodies roll toward each other, the faster mover earns credit.
+        const towardA=avx*nx+avz*nz,towardB=-(bvx*nx+bvz*nz);
+        const ballTowardPin=closing>2.4&&(
+          (a.type==='bowlingball'&&b.officeBowlingPin&&towardA>1.5)||
+          (b.type==='bowlingball'&&a.officeBowlingPin&&towardB>1.5));
+        const ballTowardCart=closing>=3&&(
+          (a.type==='bowlingball'&&b.type==='cart'&&towardA>1.5)||
+          (b.type==='bowlingball'&&a.type==='cart'&&towardB>1.5));
+        const ballTowardChair=closing>=3&&(
+          (a.type==='bowlingball'&&b.type==='chair'&&towardA>1.5)||
+          (b.type==='bowlingball'&&a.type==='chair'&&towardB>1.5));
+        const ballTowardTech=closing>=3.2&&(
+          (a.type==='bowlingball'&&OFFICE_CART_CRASH_TARGETS.has(b.type)&&towardA>1.6)||
+          (b.type==='bowlingball'&&OFFICE_CART_CRASH_TARGETS.has(a.type)&&towardB>1.6));
+        const mugTowardTech=closing>=3&&(
+          (a.type==='mug'&&OFFICE_CART_CRASH_TARGETS.has(b.type)&&towardA>1.5)||
+          (b.type==='mug'&&OFFICE_CART_CRASH_TARGETS.has(a.type)&&towardB>1.5));
+        const paperTowardPrinter=closing>=2.8&&(
+          (a.type==='paperball'&&(b.type==='printer'||b.type==='photocopier')&&towardA>1.4)||
+          (b.type==='paperball'&&(a.type==='printer'||a.type==='photocopier')&&towardB>1.4));
+        const headOnChairs=closing>=3.4&&a.type==='chair'&&b.type==='chair'&&
+          towardA>1.2&&towardB>1.2;
+        const headOnCarts=closing>=3.4&&a.type==='cart'&&b.type==='cart'&&
+          towardA>1.2&&towardB>1.2;
+        const chairTowardCart=closing>2.4&&(
+          (a.type==='chair'&&b.type==='cart'&&towardA>1.5)||
+          (b.type==='chair'&&a.type==='cart'&&towardB>1.5));
+        const cartTowardChair=closing>2.4&&(
+          (a.type==='cart'&&b.type==='chair'&&towardA>1.5&&towardB<.5)||
+          (b.type==='cart'&&a.type==='chair'&&towardB>1.5&&towardA<.5));
+        const aApproaching=OFFICE_DOMINO_MOVERS.has(a.type)&&towardA>1.5;
+        const bApproaching=OFFICE_DOMINO_MOVERS.has(b.type)&&towardB>1.5;
+        const moverApproaching=closing>2.4&&(aApproaching||bApproaching);
+        const approachingMover=moverApproaching?
+          (bApproaching&&(!aApproaching||towardB>towardA)?b:a):null;
+        if(a.mesh.isDisposed?.()||b.mesh.isDisposed?.())continue;
+        const ma=Math.max(.1,Math.min(60,Number.isFinite(a.mass)?a.mass:2));
+        const mb=Math.max(.1,Math.min(60,Number.isFinite(b.mass)?b.mass:2));
+        const impulse=Math.min(18,1.25*closing/(1/ma+1/mb));
+        const ax=clampOfficeContactVelocity(avx-impulse/ma*nx),az=clampOfficeContactVelocity(avz-impulse/ma*nz);
+        const bx=clampOfficeContactVelocity(bvx+impulse/mb*nx),bz=clampOfficeContactVelocity(bvz+impulse/mb*nz);
+        const ay=clampOfficeContactVelocity(avy+Math.min(.4,closing*.05));
+        const by=clampOfficeContactVelocity(bvy+Math.min(1.3,closing*.18));
+        // Revalidate ownership between EVERY fallible pair write. A velocity
+        // setter can switch waves, reparent a body or replace its velocity.
+        // Never apply the second impulse to a foreign-wave prop.
+        // CR4.9.651: a grounded setter may also teleport a contact body.
+        // Snapshot the two collision positions before applying either impulse.
+        const apx=pa.x,apy=pa.y,apz=pa.z,bpx=pb.x,bpy=pb.y,bpz=pb.z;
+        const pairOwned=()=>stillOwned()&&a.vel===va&&b.vel===vb&&
+          a.mesh?.position===pa&&b.mesh?.position===pb&&
+          pa.x===apx&&pa.y===apy&&pa.z===apz&&
+          pb.x===bpx&&pb.y===bpy&&pb.z===bpz&&
+          !a.heldBy&&!b.heldBy&&!a.npcOwner&&!b.npcOwner&&!a.broken&&!b.broken&&
+          !pendingXRPropDetaches.has(a)&&!pendingXRPropDetaches.has(b)&&
+          !unsafeOfficePropMovement.has(a)&&!unsafeOfficePropMovement.has(b);
+        if(!pairOwned()||va.x!==avx||va.y!==avy||va.z!==avz||
+           vb.x!==bvx||vb.y!==bvy||vb.z!==bvz)return impacts;
+        officeContactPairMark(a,b);officeContactPairMark(b,a);
+        va.set(ax,ay,az);
+        // Babylon Vector3.set is exact; reject hostile/clamped partial writes
+        // before touching the other body in this contact pair.
+        if(!pairOwned()||va.x!==ax||va.y!==ay||va.z!==az)return impacts;
+        vb.set(bx,by,bz);
+        if(!pairOwned()||vb.x!==bx||vb.y!==by||vb.z!==bz||
+           va.x!==ax||va.y!==ay||va.z!==az)return impacts;
+        // CR4.9.651: a wake flag must be verified like the velocity impulse.
+        // Failed or ambiguous commits keep the contact pair quarantined.
+        a.grounded=false;
+        if(!pairOwned()||a.grounded!==false||
+           va.x!==ax||va.y!==ay||va.z!==az||
+           vb.x!==bx||vb.y!==by||vb.z!==bz||!pairOwned())return impacts;
+        b.grounded=false;
+        if(!pairOwned()||a.grounded!==false||b.grounded!==false||
+           va.x!==ax||va.y!==ay||va.z!==az||
+           vb.x!==bx||vb.y!==by||vb.z!==bz||!pairOwned())return impacts;
+        officeContactPairClear(a,b);
+        impacts++;
+        if(closing>2.4&&typeof onImpact==='function'){
+          try{onImpact(a,b,closing,chairTowardCart,moverApproaching,approachingMover,ballTowardPin,ballTowardCart,headOnChairs,ballTowardTech,headOnCarts,cartTowardChair,ballTowardChair,mugTowardTech,paperTowardPrinter);}catch{}
+          if(!stillOwned())return impacts;
+        }
+      }catch{return impacts;} // A partial setter must not trigger more pairs this tick.
+    }
+  }
+  return impacts;
+}
+
+// CR4.9.633: continuous swept-sphere collision against live office walls.
+// One bounded snapshot replaces up to 16 separate 18cm blocker scans.
+// Never accept a clear path if a Babylon callback changes obstacle geometry.
+// CR4.9.637: reuse a depth-isolated proof roster on the hot prop sweep.
+// CR4.9.638: reuse depth-isolated proof rows and clear retained mesh references.
+const officePropSweepProofPool=[];
+const officePropSweepRowsPool=[];
+let officePropSweepProofDepth=0;
+function officePropWallSweepBlocked(x0,y0,z0,x1,y1,z1,radius=.08){
+  if(officePropSweepProofDepth>=6||
+     !Number.isFinite(x0)||!Number.isFinite(y0)||!Number.isFinite(z0)||
+     !Number.isFinite(x1)||!Number.isFinite(y1)||!Number.isFinite(z1)||
+     !Number.isFinite(radius)||radius<0)return true;
+  const dx=x1-x0,dy=y1-y0,dz=z1-z0,dist2=dx*dx+dy*dy+dz*dz;
+  if(!Number.isFinite(dist2)||dist2>8.2944)return true;
+  let blockers;
+  try{blockers=G.blockers;}catch{return true;}
+  // CR4.9.636: even an empty blocker list can have a hostile/revoked
+  // proxy or a getter that throws on the second read. Fail closed, not tick-crash.
+  if(!Array.isArray(blockers))return true;
+  let count;
+  try{count=blockers.length;if(count>4096)return true;}catch{return true;}
+  if(!count){try{return G.blockers!==blockers||blockers.length!==0;}catch{return true;}}
+  const minX=Math.min(x0,x1),maxX=Math.max(x0,x1);
+  const minY=Math.min(y0,y1),maxY=Math.max(y0,y1);
+  const minZ=Math.min(z0,z1),maxZ=Math.max(z0,z1);
+  const proof=officePropSweepProofPool[officePropSweepProofDepth]||
+    (officePropSweepProofPool[officePropSweepProofDepth]=[]);
+  const rows=officePropSweepRowsPool[officePropSweepProofDepth]||
+    (officePropSweepRowsPool[officePropSweepProofDepth]=[]);
+  proof.length=0;
+  officePropSweepProofDepth++;
+  try{
+    for(let i=0;i<count;i++){
+      if(G.blockers!==blockers||blockers.length!==count)return true;
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||!slot.value)return true;
+      const entry=slot.value,ms=Object.getOwnPropertyDescriptor(entry,'mesh');
+      const ps=Object.getOwnPropertyDescriptor(entry,'pad');
+      if(!ms||!('value' in ms)||!ms.value||(ps&&!('value' in ps)))return true;
+      const mesh=ms.value,pad=ps?ps.value:0;
+      if(!Number.isFinite(pad)||pad<0)return true;
+      const disposed=!!mesh.isDisposed?.();
+      if(disposed){const row=rows[i]||(rows[i]=[]);row.length=0;row.push(entry,mesh,pad,true);proof.push(row);continue;}
+      mesh.computeWorldMatrix(true);
+      const bb=mesh.getBoundingInfo()?.boundingBox,mn=bb?.minimumWorld,mx=bb?.maximumWorld;
+      if(!mn||!mx)return true;
+      const ax=mn.x,ay=mn.y,az=mn.z,bx=mx.x,by=mx.y,bz=mx.z;
+      if(!Number.isFinite(ax)||!Number.isFinite(ay)||!Number.isFinite(az)||
+         !Number.isFinite(bx)||!Number.isFinite(by)||!Number.isFinite(bz)||
+         ax>bx||ay>by||az>bz)return true;
+      const row=rows[i]||(rows[i]=[]);row.length=0;
+      row.push(entry,mesh,pad,false,mn,mx,ax,ay,az,bx,by,bz);proof.push(row);
+      const expand=pad*.35+radius;
+      const loX=ax-expand,hiX=bx+expand,loY=ay-radius,hiY=by+radius;
+      const loZ=az-expand,hiZ=bz+expand;
+      if(maxX<loX||minX>hiX||maxY<loY||minY>hiY||
+         maxZ<loZ||minZ>hiZ)continue;
+      let enter=0,leave=1;
+      for(let axis=0;axis<3;axis++){
+        const origin=axis===0?x0:axis===1?y0:z0;
+        const velocity=axis===0?dx:axis===1?dy:dz;
+        const low=axis===0?loX:axis===1?loY:loZ;
+        const high=axis===0?hiX:axis===1?hiY:hiZ;
+        if(velocity===0){if(origin<low||origin>high){enter=2;break;}continue;}
+        let t0=(low-origin)/velocity,t1=(high-origin)/velocity;
+        if(t0>t1){const t=t0;t0=t1;t1=t;}
+        if(t0>enter)enter=t0;
+        if(t1<leave)leave=t1;
+        if(enter>leave)break;
+      }
+      if(enter<=leave)return true;
+    }
+    const intact=(refresh)=>{
+      if(G.blockers!==blockers||blockers.length!==count)return false;
+      for(let i=0;i<count;i++){
+        const p=proof[i],slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+        if(!p||!slot||!('value' in slot)||slot.value!==p[0])return false;
+        const ms=Object.getOwnPropertyDescriptor(p[0],'mesh');
+        const ps=Object.getOwnPropertyDescriptor(p[0],'pad');
+        if(!ms||!('value' in ms)||ms.value!==p[1]||
+           (ps&&!('value' in ps))||(ps?ps.value:0)!==p[2])return false;
+        const mesh=p[1];
+        if(!!mesh.isDisposed?.()!==p[3])return false;
+        if(p[3])continue;
+        if(refresh)mesh.computeWorldMatrix(true);
+        const bb=mesh.getBoundingInfo()?.boundingBox;
+        if(!bb||bb.minimumWorld!==p[4]||bb.maximumWorld!==p[5])return false;
+        const mn=p[4],mx=p[5];
+        if(mn.x!==p[6]||mn.y!==p[7]||mn.z!==p[8]||
+           mx.x!==p[9]||mx.y!==p[10]||mx.z!==p[11])return false;
+      }
+      return G.blockers===blockers&&blockers.length===count;
+    };
+    if(!intact(true)||!intact(false))return true;
+    // CR4.9.667: finish the final descriptor callback pass BEFORE the
+    // scalar geometry proof. A later descriptor trap may mutate an earlier
+    // bounding vector; interleaving the checks used to miss that mutation.
+    for(let i=0;i<count;i++){
+      const p=proof[i],slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==p[0])return true;
+    }
+    for(let i=0;i<count;i++){
+      const p=proof[i];
+      if(p[3])continue;
+      const mn=p[4],mx=p[5];
+      if(mn.x!==p[6]||mn.y!==p[7]||mn.z!==p[8]||
+         mx.x!==p[9]||mx.y!==p[10]||mx.z!==p[11])return true;
+    }
+    return G.blockers!==blockers||blockers.length!==count;
+  }catch{return true;}
+  finally{for(let i=0;i<proof.length;i++)proof[i].length=0;proof.length=0;officePropSweepProofDepth--;}
+}
+// CR4.9.634: return ALL three coordinates after a blocked 3D sweep.
+// Previously Y was left beyond a horizontal obstacle even when X/Z bounced.
+// Material-aware wall thuds are limited per prop to avoid audio spam on Quest.
+// CR4.9.639: wall impacts get distinct, bounded material responses.
+function officePropWallRestitution(type){
+  return type==='rubberduck'?.46:type==='bowlingball'?.33:type==='paperball'?.08:.22;
+}
+function reboundOfficePropWall(p,oldX,oldY,oldZ,world){
+  // A throwing or silently clamping vector setter makes the impact ambiguous.
+  // The caller quarantines this prop rather than replaying partial movement.
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const vx=vel.x,vy=vel.y,vz=vel.z;
+  if(![oldX,oldY,oldZ,vx,vy,vz].every(Number.isFinite))throw Error('invalid prop rebound');
+  const speed=Math.hypot(vx,vy,vz),r=officePropWallRestitution(p.type);
+  const nx=-vx*r,ny=-vy*r,nz=-vz*r;
+  pos.x=oldX;pos.y=oldY;pos.z=oldZ;
+  if(mesh.position!==pos||pos.x!==oldX||pos.y!==oldY||pos.z!==oldZ)
+    throw Error('ambiguous prop wall restore');
+  vel.x=nx;vel.y=ny;vel.z=nz;
+  if(p.mesh!==mesh||p.vel!==vel||mesh.position!==pos||
+     vel.x!==nx||vel.y!==ny||vel.z!==nz||
+     pos.x!==oldX||pos.y!==oldY||pos.z!==oldZ)
+    throw Error('ambiguous prop wall impulse');
+  if(speed>1.25&&(p.wallSoundCooldownT||0)<=0){
+    p.wallSoundCooldownT=.25;
+    try{
+      impactSound(p.material,Math.min(1,speed/7));
+      if(p.type==='rubberduck'&&speed>3.4)propSpecialSound('rubberduck',speed);
+    }catch{}
+  }
+  if(speed>3.1)damageOfficeProp(world,p,speed*.70,'WALL');
+}
+// CR4.9.635: prop physics position commits can partially succeed and throw
+// through a proxied Babylon vector. Roll back each axis independently and
+// quarantine the identity, never replay an ambiguous movement next frame.
+const unsafeOfficePropMovement=new WeakSet();
+function advanceOfficePropPosition(p,step,out){
+  let mesh=null,pos=null,ox=NaN,oy=NaN,oz=NaN;
+  try{
+    mesh=p.mesh;pos=mesh.position;
+    const vel=p.vel;
+    ox=pos.x;oy=pos.y;oz=pos.z;
+    const vx=vel.x,vy=vel.y,vz=vel.z;
+    const nx=ox+vx*step,ny=oy+vy*step,nz=oz+vz*step;
+    if(!Number.isFinite(step)||step<0||!Number.isFinite(ox)||
+       !Number.isFinite(oy)||!Number.isFinite(oz)||
+       !Number.isFinite(vx)||!Number.isFinite(vy)||!Number.isFinite(vz)||
+       !Number.isFinite(nx)||!Number.isFinite(ny)||!Number.isFinite(nz))throw Error('invalid prop step');
+    if(step>0){
+      pos.x=nx;pos.y=ny;pos.z=nz;
+      if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+         pos.x!==nx||pos.y!==ny||pos.z!==nz||
+         vel.x!==vx||vel.y!==vy||vel.z!==vz)throw Error('ambiguous prop step');
+    }
+    out.x=ox;out.y=oy;out.z=oz;
+    return true;
+  }catch{
+    unsafeOfficePropMovement.add(p);
+    if(pos){
+      if(Number.isFinite(ox))try{pos.x=ox;}catch{}
+      if(Number.isFinite(oy))try{pos.y=oy;}catch{}
+      if(Number.isFinite(oz))try{pos.z=oz;}catch{}
+    }
+    return false;
+  }
+}
+// CR4.9.653: gravity and airborne drag are verified physics transactions.
+// A proxy vector may silently ignore writes or mutate mesh/velocity identity.
+// Quarantine the prop before subsequent wall, floor or scoring interactions.
+function applyOfficePropGravity(p,gravity,step){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const px=pos.x,py=pos.y,pz=pos.z,vx=vel.x,vy=vel.y,vz=vel.z;
+  const ny=vy-gravity*step;
+  if(![px,py,pz,vx,vy,vz,gravity,step,ny].every(Number.isFinite)||step<0)
+    throw Error('invalid prop gravity');
+  vel.y=ny;
+  if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+     pos.x!==px||pos.y!==py||pos.z!==pz||
+     vel.x!==vx||vel.y!==ny||vel.z!==vz)
+    throw Error('ambiguous prop gravity');
+}
+function dampOfficePropAirVelocity(p,damping){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const px=pos.x,py=pos.y,pz=pos.z,vx=vel.x,vy=vel.y,vz=vel.z;
+  const nx=vx*damping,ny=vy*damping,nz=vz*damping;
+  if(![px,py,pz,vx,vy,vz,damping,nx,ny,nz].every(Number.isFinite)||
+     damping<0||damping>1)throw Error('invalid prop air damping');
+  vel.scaleInPlace(damping);
+  if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+     pos.x!==px||pos.y!==py||pos.z!==pz||
+     vel.x!==nx||vel.y!==ny||vel.z!==nz)
+    throw Error('ambiguous prop air damping');
+}
+// CR4.9.654: waking and fluttering office props must not allow partial
+// setter side effects to enter subsequent collision and scoring logic.
+function wakeOfficePropForMotion(p){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const px=pos.x,py=pos.y,pz=pos.z,vx=vel.x,vy=vel.y,vz=vel.z;
+  if(![px,py,pz,vx,vy,vz].every(Number.isFinite))
+    throw Error('invalid prop wake state');
+  p.grounded=false;
+  if(p.grounded!==false||p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+     pos.x!==px||pos.y!==py||pos.z!==pz||
+     vel.x!==vx||vel.y!==vy||vel.z!==vz)
+    throw Error('ambiguous prop wake');
+}
+// CR4.9.659: paper airflow must advance even when hub shiftTime is frozen.
+// Commit the per-sheet clock only after both velocity writes are proven.
+const officePrintSheetFlutterClocks=new WeakMap();
+function flutterOfficePrintSheet(p,step){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const px=pos.x,py=pos.y,pz=pos.z,vx=vel.x,vy=vel.y,vz=vel.z;
+  if(!Number.isFinite(px)||!Number.isFinite(py)||!Number.isFinite(pz)||
+     !Number.isFinite(vx)||!Number.isFinite(vy)||!Number.isFinite(vz)||
+     !Number.isFinite(step)||step<0||step>.05)
+    throw Error('invalid paper flutter');
+  const last=officePrintSheetFlutterClocks.get(p)||0;
+  const next=(last+step)%((Math.PI*2*1000)/7);
+  const phase=next*7+px*2.3+pz*1.7;
+  const nx=vx+Math.sin(phase)*step*.8,nz=vz+Math.cos(phase*.73)*step*.6;
+  if(!Number.isFinite(nx)||!Number.isFinite(nz))
+    throw Error('invalid paper flutter impulse');
+  vel.x=nx;
+  if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+     pos.x!==px||pos.y!==py||pos.z!==pz||
+     vel.x!==nx||vel.y!==vy||vel.z!==vz)
+    throw Error('ambiguous paper flutter x');
+  vel.z=nz;
+  if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+     pos.x!==px||pos.y!==py||pos.z!==pz||
+     vel.x!==nx||vel.y!==vy||vel.z!==nz)
+    throw Error('ambiguous paper flutter z');
+  officePrintSheetFlutterClocks.set(p,next);
+}
+// CR4.9.640: idle floor clamps are verified, not silently ignored.
+// A partially applied position/velocity setter quarantines this prop.
+// CR4.9.641: verify active floor velocity response; partial vector setters
+// must quarantine a prop instead of silently corrupting future physics.
+function applyOfficePropFloorResponse(p,fall,damping){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const px=pos.x,pz=pos.z;
+  if(!Number.isFinite(px)||!Number.isFinite(pz))throw Error('invalid active floor position');
+  const x=vel.x*damping,z=vel.z*damping;
+  const rawY=vel.y<0?fall*officePropFloorRestitution(p.type):vel.y;
+  const y=Math.abs(rawY)<.5?0:rawY;
+  if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(z))
+    throw Error('invalid prop floor response');
+  vel.y=y;vel.x=x;vel.z=z;
+  if(p.vel!==vel||p.mesh!==mesh||mesh.position!==pos||
+     pos.x!==px||pos.y!==.12||pos.z!==pz||
+     vel.x!==x||vel.y!==y||vel.z!==z)
+    throw Error('ambiguous prop floor response');
+}
+// CR4.9.647: an idle prop must never silently enter grounded state after
+// a partial/ignored damping write or a grounding setter that moves its mesh.
+function settleIdleOfficeProp(p,damping){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const vx=vel.x,vy=vel.y,vz=vel.z,px=pos.x,pz=pos.z;
+  if(!Number.isFinite(px)||!Number.isFinite(pz)||
+     !Number.isFinite(damping)||damping<0||damping>1||
+     !Number.isFinite(vx)||!Number.isFinite(vy)||!Number.isFinite(vz))
+    throw Error('invalid idle prop damping');
+  const nx=vx*damping,ny=vy*damping,nz=vz*damping;
+  if(pos.y<.12){
+    pos.y=.12;
+    if(pos.x!==px||pos.y!==.12||pos.z!==pz||
+       p.mesh!==mesh||mesh.position!==pos)
+      throw Error('ambiguous idle floor clamp');
+  }
+  const finalY=pos.y;
+  vel.scaleInPlace(damping);
+  if(p.vel!==vel||p.mesh!==mesh||mesh.position!==pos||
+     pos.x!==px||pos.y!==finalY||pos.z!==pz||
+     vel.x!==nx||vel.y!==ny||vel.z!==nz)
+    throw Error('ambiguous idle prop damping');
+  p.grounded=true;
+  if(p.grounded!==true||p.vel!==vel||p.mesh!==mesh||
+     mesh.position!==pos||pos.x!==px||pos.y!==finalY||pos.z!==pz||
+     vel.x!==nx||vel.y!==ny||vel.z!==nz)
+    throw Error('ambiguous idle prop grounding');
+}
+const updatePropsRetireLedger=new WeakMap();
+let updatePropsTickBusy=false;
+// CR4.9.648: bowling balls keep rolling; rubber ducks lose momentum faster.
+// Values are precomputed once per tick so the hot prop loop adds no pow calls.
+function officePropSurfaceFriction(type,normal,bowling,duck){
+  return type==='bowlingball'?bowling:type==='rubberduck'?duck:normal;
+}
+// CR4.9.649 gameplay: rolling bowling balls visibly rotate around their
+// actual travel axis; other office props keep the previous cartoon tumble.
+// Rotation is visual-only, with no extra collision bodies or allocations.
+// CR4.9.655: paper balls visibly roll; rubber ducks waddle with their
+// horizontal speed and settle flat while resting. No new meshes or bodies.
+// Keep rolling Euler angles bounded during very long sandbox sessions.
+// CR4.9.658: bounded, visual-only prop motion. Floating print sheets
+// flutter, moving mugs rock and resting objects settle without new bodies.
+// CR4.9.659: retain 4.9.658 sheet/mug animation and 4.9.657
+// coincident-contact physics; use per-prop simulation phases in hub/shift.
+// Weak keys retire automatically, and no extra physics bodies are created.
+const officePropVisualPhases=new WeakMap();
+function advanceOfficePropRotation(p,dt){
+  if(!Number.isFinite(dt)||dt<=0)return;
+  const step=Math.min(dt,.05);
+  const mesh=p?.mesh,vel=p?.vel,rot=mesh?.rotation,pos=mesh?.position;
+  if(!rot||!vel||!pos||
+     !Number.isFinite(vel.x)||!Number.isFinite(vel.y)||!Number.isFinite(vel.z)||
+     !Number.isFinite(pos.x)||!Number.isFinite(pos.y)||!Number.isFinite(pos.z)||
+     !Number.isFinite(rot.x)||!Number.isFinite(rot.y)||!Number.isFinite(rot.z))return;
+  // CR4.9.664: idle ducks, mugs and bowling pins skip Math.hypot too.
+  // CR4.9.661: compute horizontal speed only for props that wobble.
+  // Generic props and rolling balls need no per-frame Math.hypot.
+  const type=p.type,onFloor=pos.y<=.55;
+  if((type==='bowlingball'||type==='paperball')&&onFloor){
+    const radius=type==='paperball'?.12:
+      Number.isFinite(p.collisionRadius)&&p.collisionRadius>.1?p.collisionRadius:.24;
+    rot.z-=vel.x*step/radius;
+    rot.x+=vel.z*step/radius;
+  }else if(type==='rubberduck'&&onFloor){
+    const speed2=vel.x*vel.x+vel.z*vel.z;
+    const speed=speed2>.0009?Math.min(10,Math.hypot(vel.x,vel.z)):0;
+    const tilt=Math.min(.28,speed*.035);
+    if(speed>.03){
+      const phase=((officePropVisualPhases.get(p)||0)+step*(6+speed*2.5))%(Math.PI*2);
+      officePropVisualPhases.set(p,phase);
+      rot.z=Math.sin(phase)*tilt;
+      rot.x=Math.sin(phase+1.1)*tilt*.5;
+    }else{rot.x=0;rot.z=0;}
+    rot.y+=vel.x*step*.08;
+  }else if(type==='printsheet'){
+    if(pos.y>.2){
+      const airSpeed=Math.min(12,Math.hypot(vel.x,vel.y,vel.z));
+      const flutter=Math.min(.35,.04+airSpeed*.027);
+      const phase=((officePropVisualPhases.get(p)||0)+step*(8+airSpeed*1.4))%(Math.PI*2);
+      officePropVisualPhases.set(p,phase);
+      rot.x=Math.sin(phase+pos.x*1.7)*flutter;
+      rot.z=Math.cos(phase+pos.z*1.2)*flutter*.85;
+      rot.y+=vel.x*step*.15;
+    }else{
+      const settle=Math.max(0,1-step*8);
+      rot.x*=settle;rot.z*=settle;
+    }
+  }else if(type==='mug'&&onFloor){
+    const speed2=vel.x*vel.x+vel.z*vel.z;
+    const speed=speed2>.0009?Math.min(12,Math.hypot(vel.x,vel.z)):0;
+    const tilt=Math.min(.22,speed*.022);
+    if(speed>.03){
+      const phase=((officePropVisualPhases.get(p)||0)+step*(8+speed*1.2))%(Math.PI*2);
+      officePropVisualPhases.set(p,phase);
+      rot.x=Math.cos(phase)*tilt;
+      rot.z=Math.sin(phase+1.2)*tilt;
+    }else{rot.x=0;rot.z=0;}
+    rot.y+=vel.x*step*.18;
+  }else if((type==='coffeepot'||type==='thermos'||type==='deskbell')&&onFloor){
+    // CR4.9.663: coffee pots slosh, thermoses sway and desk bells quiver
+    // after sliding across a desk. Mesh rotation only, no physics bodies.
+    const speed2=vel.x*vel.x+vel.z*vel.z;
+    if(speed2>.0009){
+      const speed=Math.min(12,Math.hypot(vel.x,vel.z));
+      const isBell=type==='deskbell';
+      const tilt=Math.min(isBell?.14:.27,speed*(isBell?.025:.034));
+      const phase=((officePropVisualPhases.get(p)||0)+step*(isBell?19:8+speed*1.5))%(Math.PI*2);
+      officePropVisualPhases.set(p,phase);
+      rot.x=Math.sin(phase+1.4)*tilt;
+      rot.z=Math.cos(phase)*tilt*.85;
+    }else{
+      const settle=Math.max(0,1-step*(type==='deskbell'?20:12));
+      rot.x*=settle;rot.z*=settle;
+    }
+    rot.y+=vel.x*step*.08;
+  }else if((type==='cone'&&!p.officeBowlingPin||type==='trophy')&&onFloor){
+    // CR4.9.665: preserve the dedicated bowling-pin animation for cone pins.
+    // CR4.9.662: ordinary traffic cones and desk trophies teeter when shoved.
+    // Visual-only: no additional physics bodies or Babylon allocations.
+    const speed2=vel.x*vel.x+vel.z*vel.z;
+    if(speed2>.0009){
+      const speed=Math.min(12,Math.hypot(vel.x,vel.z));
+      const tilt=type==='cone'?Math.min(.42,speed*.06):Math.min(.26,speed*.028);
+      const phase=((officePropVisualPhases.get(p)||0)+step*(6+speed*1.6))%(Math.PI*2);
+      officePropVisualPhases.set(p,phase);
+      rot.x=Math.sin(phase+1.2)*tilt*.7;
+      rot.z=Math.cos(phase)*tilt;
+    }else{
+      const settle=Math.max(0,1-step*14);
+      rot.x*=settle;rot.z*=settle;
+    }
+    rot.y+=vel.x*step*.10;
+  }else if((type==='stapler'||type==='keyboard'||type==='calculator')&&onFloor){
+    // CR4.9.672: small desk gadgets rattle after a shove and settle
+    // instead of rotating endlessly. Visual-only, no extra physics bodies.
+    const speed2=vel.x*vel.x+vel.z*vel.z;
+    if(speed2>.0009){
+      const speed=Math.min(12,Math.hypot(vel.x,vel.z));
+      const isKeyboard=type==='keyboard';
+      const tilt=Math.min(isKeyboard?.11:.25,speed*(isKeyboard?.015:.033));
+      const phase=((officePropVisualPhases.get(p)||0)+step*(isKeyboard?12:15+speed*1.7))%(Math.PI*2);
+      officePropVisualPhases.set(p,phase);
+      rot.x=Math.sin(phase)*tilt*.6;
+      rot.z=Math.cos(phase+1.2)*tilt;
+    }else{
+      const settle=Math.max(0,1-step*18);
+      rot.x*=settle;rot.z*=settle;
+    }
+    rot.y+=vel.x*step*.09;
+  }else if(p.officeBowlingPin&&onFloor){
+    const speed2=vel.x*vel.x+vel.z*vel.z;
+    const speed=speed2>.0009?Math.min(12,Math.hypot(vel.x,vel.z)):0;
+    const tilt=Math.min(.65,speed*.08);
+    if(speed>.03){
+      const phase=((officePropVisualPhases.get(p)||0)+step*(7+speed*1.8))%(Math.PI*2);
+      officePropVisualPhases.set(p,phase);
+      rot.z=Math.sin(phase)*tilt+Math.max(-.2,Math.min(.2,vel.x*.035));
+      rot.x=Math.sin(phase+1.1)*tilt*.6+Math.max(-.2,Math.min(.2,vel.z*.035));
+    }else{rot.x=0;rot.z=0;}
+    rot.y+=vel.x*step*.12;
+  }else{
+    rot.y+=vel.x*step*.18;
+    rot.x+=vel.z*step*.18;
+  }
+  if(Math.abs(rot.x)>Math.PI*8)rot.x%=Math.PI*2;
+  if(Math.abs(rot.y)>Math.PI*8)rot.y%=Math.PI*2;
+  if(Math.abs(rot.z)>Math.PI*8)rot.z%=Math.PI*2;
+}
+// CR4.9.638: playful material-specific bounce, no additional physics bodies.
+function officePropFloorRestitution(type){
+  return type==='rubberduck'?.42:type==='bowlingball'?.30:type==='paperball'?.10:.18;
+}
+// CR4.9.644: an out-of-arena prop clamp is an atomic, verified physics
+// operation. Throwing, silently ignored or partially committed setters
+// quarantine the prop rather than aborting every other prop's tick.
+function clampEscapedOfficeProp(p){
+  let mesh=null,pos=null,vel=null,ox=NaN,oy=NaN,oz=NaN,vx=NaN,vy=NaN,vz=NaN;
+  try{
+    mesh=p.mesh;pos=mesh.position;vel=p.vel;
+    ox=pos.x;oy=pos.y;oz=pos.z;vx=vel.x;vy=vel.y;vz=vel.z;
+    if(!Number.isFinite(ox)||!Number.isFinite(oy)||!Number.isFinite(oz)||
+       !Number.isFinite(vx)||!Number.isFinite(vy)||!Number.isFinite(vz))
+      throw Error('invalid prop boundary state');
+    if(Math.abs(ox)<=8.5&&Math.abs(oz)<=8.5)return true;
+    const nx=Math.max(-7,Math.min(7,ox)),nz=Math.max(-7,Math.min(7,oz));
+    pos.x=nx;
+    if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+       pos.x!==nx||pos.y!==oy||pos.z!==oz)throw Error('ambiguous boundary x');
+    pos.z=nz;
+    if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+       pos.x!==nx||pos.y!==oy||pos.z!==nz)throw Error('ambiguous boundary z');
+    vel.scaleInPlace(.35);
+    if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+       pos.x!==nx||pos.y!==oy||pos.z!==nz||
+       !Number.isFinite(vel.x)||!Number.isFinite(vel.y)||!Number.isFinite(vel.z)||
+       vel.x!==vx*.35||vel.y!==vy*.35||vel.z!==vz*.35)
+      throw Error('ambiguous boundary velocity');
+    return true;
+  }catch{
+    unsafeOfficePropMovement.add(p);
+    try{
+      if(pos&&p.mesh===mesh&&mesh.position===pos){
+        if(Number.isFinite(ox))pos.x=ox;
+        if(Number.isFinite(oy))pos.y=oy;
+        if(Number.isFinite(oz))pos.z=oz;
+      }
+      if(vel&&p.vel===vel){
+        if(Number.isFinite(vx))vel.x=vx;
+        if(Number.isFinite(vy))vel.y=vy;
+        if(Number.isFinite(vz))vel.z=vz;
+      }
+    }catch{}
+    return false;
+  }
+}
+// CR4.9.668: swept actor contacts stop fast office props passing straight
+// through NPCs or the player between frames. Pure scalar geometry; no
+// Babylon allocations or additional physics bodies.
+function officePropSweptActorHit(x0,y0,z0,x1,y1,z1,ax,ay,az,radius){
+  if(!Number.isFinite(x0)||!Number.isFinite(y0)||!Number.isFinite(z0)||
+     !Number.isFinite(x1)||!Number.isFinite(y1)||!Number.isFinite(z1)||
+     !Number.isFinite(ax)||!Number.isFinite(ay)||!Number.isFinite(az)||
+     !Number.isFinite(radius)||radius<=0)return false;
+  // Cheap broad phase: most actors are nowhere near the prop's travel.
+  if(ax<Math.min(x0,x1)-radius||ax>Math.max(x0,x1)+radius||
+     ay<Math.min(y0,y1)-radius||ay>Math.max(y0,y1)+radius||
+     az<Math.min(z0,z1)-radius||az>Math.max(z0,z1)+radius)return false;
+  const dx=x1-x0,dy=y1-y0,dz=z1-z0;
+  const length2=dx*dx+dy*dy+dz*dz;
+  if(!Number.isFinite(length2))return false;
+  const px=ax-x0,py=ay-y0,pz=az-z0;
+  const dot=px*dx+py*dy+pz*dz;
+  if(!Number.isFinite(dot))return false;
+  const t=length2>1e-12?Math.max(0,Math.min(1,dot/length2)):0;
+  const rx=x0+dx*t-ax,ry=y0+dy*t-ay,rz=z0+dz*t-az;
+  const distance2=rx*rx+ry*ry+rz*rz;
+  return Number.isFinite(distance2)&&distance2<radius*radius;
+}
+// CR4.9.669: scoring a mug/paper ball must not leave half-applied
+// velocity or position changes after a throwing Babylon setter.
+function parkScoredOfficeProp(p,target){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const ox=pos.x,oy=pos.y,oz=pos.z;
+  const vx=vel.x,vy=vel.y,vz=vel.z;
+  const tx=target?.x,ty=target?.y,tz=target?.z;
+  if(![ox,oy,oz,vx,vy,vz,tx,ty,tz].every(Number.isFinite))
+    throw Error('invalid scored prop placement');
+  vel.set(0,0,0);
+  if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+     pos.x!==ox||pos.y!==oy||pos.z!==oz||
+     vel.x!==0||vel.y!==0||vel.z!==0||
+     target.x!==tx||target.y!==ty||target.z!==tz)
+    throw Error('ambiguous scored prop stop');
+  pos.copyFrom(target);
+  if(p.mesh!==mesh||mesh.position!==pos||p.vel!==vel||
+     pos.x!==tx||pos.y!==ty||pos.z!==tz||
+     vel.x!==0||vel.y!==0||vel.z!==0||
+     target.x!==tx||target.y!==ty||target.z!==tz)
+    throw Error('ambiguous scored prop placement');
+}
+// CR4.9.670: a thrown NPC prop that hits the player must not resume
+// moving after an ambiguous throw-timer setter or partial velocity damping.
+function finishNpcThrownPropPlayerHit(p){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const px=pos.x,py=pos.y,pz=pos.z,vx=vel.x,vy=vel.y,vz=vel.z;
+  if(![px,py,pz,vx,vy,vz].every(Number.isFinite))
+    throw Error('invalid NPC thrown prop impact');
+  p.thrownByNPCTimeRemaining=0;
+  if(p.thrownByNPCTimeRemaining!==0||p.mesh!==mesh||
+     mesh.position!==pos||p.vel!==vel||
+     pos.x!==px||pos.y!==py||pos.z!==pz||
+     vel.x!==vx||vel.y!==vy||vel.z!==vz)
+    throw Error('ambiguous NPC thrown prop impact');
+  dampOfficePropAirVelocity(p,.22);
+}
+// CR4.9.671: use a verified scalar speed snapshot instead of calling
+// arbitrary Vector3.length() callbacks in the live prop/NPC contact loop.
+function verifiedOfficePropSpeed(p){
+  const mesh=p.mesh,pos=mesh.position,vel=p.vel;
+  const px=pos.x,py=pos.y,pz=pos.z;
+  const vx=vel.x,vy=vel.y,vz=vel.z;
+  const squared=vx*vx+vy*vy+vz*vz;
+  if(![px,py,pz,vx,vy,vz,squared].every(Number.isFinite))
+    throw Error('invalid office prop speed');
+  const speed=Math.sqrt(squared);
+  if(!Number.isFinite(speed)||p.mesh!==mesh||mesh.position!==pos||
+     p.vel!==vel||pos.x!==px||pos.y!==py||pos.z!==pz||
+     vel.x!==vx||vel.y!==vy||vel.z!==vz)
+    throw Error('ambiguous office prop speed');
+  return speed;
+}
+function updateProps(dt,pp){
+  // One updateProps at a time, including nested calls from mesh/NPC callbacks.
+  if(updatePropsTickBusy)return;
+  updatePropsTickBusy=true;
+  try{
+  // Read only own array data slots; do not execute accessor properties while
+  // capturing the membership snapshot. A bounded list avoids quadratic stalls.
+  const props=G.props,roster=G.npcs,mode=G.state,token=G.waveToken,wave=G.wave,sceneRef=scene,transition=G.waveTransition;
+  let expectedProps;
+  try{
+    if(!Array.isArray(props)||props.length>256)return;
+    expectedProps=[];
+    for(let i=0;i<props.length;i++){
+      const d=Object.getOwnPropertyDescriptor(props,String(i));
+      if(!d||!('value' in d))return;
+      expectedProps.push(d.value);
+    }
+  }catch{return;}
+  const sameMembers=(expected=expectedProps)=>{
+    try{
+      if(props.length!==expected.length)return false;
+      for(let i=0;i<expected.length;i++){
+        const d=Object.getOwnPropertyDescriptor(props,String(i));
+        if(!d||!('value' in d)||d.value!==expected[i])return false;
+      }
+      return true;
+    }catch{return false;}
+  };
+  const scopeOwned=()=>{
+    try{return G.props===props&&G.npcs===roster&&
+      G.state===mode&&(mode==='shift'||mode==='hub')&&G.waveToken===token&&G.wave===wave&&
+      G.waveTransition===transition&&(mode!=='shift'||(!G.waveTransition&&!G.ended))&&scene===sceneRef&&
+      G.props===props&&G.npcs===roster&&G.state===mode&&G.waveToken===token&&G.wave===wave;}
+    catch{return false;}
+  };
+  const stillPropsOwned=()=>scopeOwned()&&sameMembers()&&scopeOwned();
+  // One disposal attempt per exact prop object and exact props list. An
+  // exception or ambiguous splice is terminal for this identity/list pair.
+  let retireJournal=updatePropsRetireLedger.get(props);
+  if(!retireJournal){retireJournal=new WeakMap();updatePropsRetireLedger.set(props,retireJournal);}
+  // Retire from the captured list only. Mesh disposal may run hostile callbacks:
+  // verify the original members before the splice, and verify exactly one
+  // removal afterward. Do not replay ambiguous or throwing disposal.
+  const retireScopedProp=p=>{
+    if(!stillPropsOwned())return false;
+    const i=expectedProps.indexOf(p);
+    if(i<0)return false;
+    const track=p!==null&&(typeof p==='object'||typeof p==='function');
+    // Record BEFORE any fallible mesh/dispose access. Do not retry after a
+    // throwing getter, throwing disposer or uncertain list splice.
+    if(track){
+      if(retireJournal.has(p))return false;
+      retireJournal.set(p,true);
+    }
+    if(track){
+      try{
+        const mesh=p.mesh;
+        if(!stillPropsOwned())return false;
+        const dispose=mesh?.dispose;
+        if(!stillPropsOwned())return false;
+        if(typeof dispose==='function')dispose.call(mesh,false,true);
+      }catch{return false;}
+      if(!stillPropsOwned())return false;
+    }
+    const next=expectedProps.slice();next.splice(i,1);
+    try{props.splice(i,1);}catch{return false;}
+    if(!scopeOwned()||!sameMembers(next)||!scopeOwned())return false;
+    expectedProps=next;
+    return true;
+  };
+  if(!stillPropsOwned())return;
+  const activeStep=Number.isFinite(dt)?Math.max(0,Math.min(.033,dt)):0;
+  // CR4.9.606: consistent office-prop friction at 60/72/90/120 Hz.
+  // Compute four factors ONCE per physics tick, not for each moving prop.
+  const dampingTime=activeStep*60;
+  const idlePropDamping=Math.pow(.85,dampingTime);
+  const airPropDamping=Math.pow(.994,dampingTime);
+  const paperPropDamping=Math.pow(.97,dampingTime);
+  const groundPropDamping=Math.pow(.72,dampingTime);
+  const bowlingGroundDamping=Math.pow(.88,dampingTime);
+  const duckGroundDamping=Math.pow(.65,dampingTime);
+  const bowlingIdleDamping=Math.pow(.94,dampingTime);
+  const duckIdleDamping=Math.pow(.72,dampingTime);
+  // Reuse the already verified own-slot snapshot; avoid a second array allocation.
+  if(props.length>48){for(const p of expectedProps){if(!stillPropsOwned())return;if(props.length<=48)break;if(p&&!p.heldBy&&!p.npcOwner&&!pendingXRPropDetaches.has(p)&&p.type!=='camera'){if(!retireScopedProp(p))return;}}}
+  // The retirement journal reassigns expectedProps, preserving this iteration snapshot.
+  const previousPropPosition={x:0,y:0,z:0};
+  for(const p of expectedProps){
+    if(!stillPropsOwned())return;
+    // Retire orphaned/disposed props before physics reads their mesh or velocity.
+    if(!p){if(!retireScopedProp(p))return;continue;}
+    // The private XR quarantine survives failed public ownership setters.
+    if(pendingXRPropDetaches.has(p)||unsafeOfficePropMovement.has(p))continue;
+    // A disposed or throwing Babylon mesh must not abort the entire physics tick.
+    // Scalar finite checks also avoid allocating an array for every live prop.
+    let pos=null,meshLive=false;
+    try{const mesh=p.mesh;pos=mesh?.position;meshLive=!!pos&&!mesh.isDisposed?.()&&Number.isFinite(pos.x)&&Number.isFinite(pos.y)&&Number.isFinite(pos.z);}catch{}
+    if(!stillPropsOwned())return;
+    if(!meshLive){if(!retireScopedProp(p))return;continue;}
+    if(p.broken){
+      p.brokenDisposeT=Math.max(0,(Number.isFinite(p.brokenDisposeT)?p.brokenDisposeT:0)-activeStep);
+      if(!stillPropsOwned())return;
+      if(p.brokenDisposeT===0){if(!retireScopedProp(p))return;}
+      continue;
+    }
+    let velocity2=NaN;
+    if(!p.heldBy&&!p.npcOwner){
+      // Throwing or nonfinite velocity getters must not abort the physics frame.
+      try{
+        // CR4.9.674: snapshot velocity components without invoking arbitrary
+        // Babylon lengthSquared callbacks during the prop physics hot path.
+        const v=p.vel,mesh=p.mesh,position=mesh?.position;
+        const vx=v?.x,vy=v?.y,vz=v?.z;
+        if(Number.isFinite(vx)&&Number.isFinite(vy)&&Number.isFinite(vz)){
+          const squared=vx*vx+vy*vy+vz*vz;
+          if(Number.isFinite(squared)&&p.vel===v&&p.mesh===mesh&&
+             mesh?.position===position&&v.x===vx&&v.y===vy&&v.z===vz)
+            velocity2=squared;
+        }
+      }catch{}
+      if(!stillPropsOwned())return;
+      if(!Number.isFinite(velocity2)){if(!retireScopedProp(p))return;continue;}
+    }
+    advanceThrownNpcPropLifetime(p,activeStep);
+    if(!stillPropsOwned())return;
+    advancePropImpactCooldowns(p,activeStep);
+    if(!stillPropsOwned())return;
+    const temporaryExpired=advanceTemporaryOfficePropLifetime(p,activeStep);
+    if(!stillPropsOwned())return;
+    if(temporaryExpired){if(!retireScopedProp(p))return;continue;}
+    const stuck=advanceStickyOfficeProp(p,activeStep);
+    if(!stillPropsOwned())return;
+    if(p.heldBy||p.npcOwner||stuck)continue;
+    if(!stillPropsOwned())return;
+    if(velocity2<.003){let idle=false;try{idle=!!p.grounded||p.mesh.position.y<=.12;}catch{unsafeOfficePropMovement.add(p);continue;}if(idle){try{settleIdleOfficeProp(p,officePropSurfaceFriction(p.type,idlePropDamping,bowlingIdleDamping,duckIdleDamping));if(p.type==='rubberduck'||p.type==='mug'||p.type==='printsheet'||p.type==='stapler'||p.type==='keyboard'||p.type==='calculator'||p.officeBowlingPin)advanceOfficePropRotation(p,activeStep);}catch{unsafeOfficePropMovement.add(p);}continue;}} try{wakeOfficePropForMotion(p);}catch{unsafeOfficePropMovement.add(p);continue;} const isFlyingSheet=p.type==='printsheet';
+    const gravity=(skinAbility()==='Low Gravity'?6.4:9.81)*(isFlyingSheet?.42:1);
+    if(!stillPropsOwned())return;
+    try{applyOfficePropGravity(p,gravity,activeStep);}catch{unsafeOfficePropMovement.add(p);continue;}
+    // Light paper floats and flutters without adding extra physics bodies or meshes.
+    // Time is clamped by activeStep; invalid shift clocks default to zero.
+    if(isFlyingSheet&&activeStep>0){
+      try{flutterOfficePrintSheet(p,activeStep);}
+      catch{unsafeOfficePropMovement.add(p);continue;}
+    }
+    if(!stillPropsOwned())return;
+    if(!advanceOfficePropPosition(p,activeStep,previousPropPosition))continue;const oldX=previousPropPosition.x,oldY=previousPropPosition.y,oldZ=previousPropPosition.z;try{advanceOfficePropRotation(p,activeStep);}catch{}if(!stillPropsOwned())return;let blockedPoint=false;try{blockedPoint=G.state==='shift'&&officePropWallSweepBlocked(oldX,oldY,oldZ,p.mesh.position.x,p.mesh.position.y,p.mesh.position.z,.08);}catch{unsafeOfficePropMovement.add(p);continue;}if(!stillPropsOwned())return;if(blockedPoint){try{reboundOfficePropWall(p,oldX,oldY,oldZ,scene);}catch{unsafeOfficePropMovement.add(p);continue;}if(!stillPropsOwned())return;}if(!stillPropsOwned())return;if(p.broken)continue; try{dampOfficePropAirVelocity(p,p.type==='printsheet'?paperPropDamping:airPropDamping);}catch{unsafeOfficePropMovement.add(p);continue;} if(p.mesh.position.y<.12){try{const fall=Math.max(0,-p.vel.y);const floorPos=p.mesh.position,fx=floorPos.x,fz=floorPos.z;floorPos.y=.12;if(p.mesh.position!==floorPos||floorPos.x!==fx||floorPos.y!==.12||floorPos.z!==fz)throw Error('ambiguous active floor clamp');applyOfficePropFloorResponse(p,fall,officePropSurfaceFriction(p.type,groundPropDamping,bowlingGroundDamping,duckGroundDamping));if(!stillPropsOwned())return;if(fall>1.25&&(p.groundSoundCooldownT||0)<=0){p.groundSoundCooldownT=.30;impactSound(p.material,Math.min(1,fall/7));if(fall>2.6)propSpecialSound(p.type,fall);}if(fall>2.8){damageOfficeProp(scene,p,fall*.72,'FLOOR');if(!stillPropsOwned())return;}if(p.broken)continue;}catch{unsafeOfficePropMovement.add(p);continue;}} // CR4.9.673: a boundary reset is a teleport, not a physical travel
+    // segment. Never damage NPCs/players along the artificial clamp path.
+    let actorSweepX=oldX,actorSweepY=oldY,actorSweepZ=oldZ;
+    if(Math.abs(p.mesh.position.x)>8.5||Math.abs(p.mesh.position.z)>8.5){
+      if(!clampEscapedOfficeProp(p))continue;
+      actorSweepX=p.mesh.position.x;actorSweepY=p.mesh.position.y;actorSweepZ=p.mesh.position.z;
+    }
+    if(!stillPropsOwned())return;let speed;try{speed=verifiedOfficePropSpeed(p);}catch{unsafeOfficePropMovement.add(p);continue;}if(!stillPropsOwned())return; if(speed>1.4&&p.type==='mug'&&G.officeTargets?.bin){
+      const mugTarget=G.officeTargets.bin;
+      const mugDunk=completeOfficeMugDunk(p,scene,mugTarget,speed,oldY,oldX,oldZ);
+      if(!stillPropsOwned())return;
+      if(mugDunk){try{parkScoredOfficeProp(p,mugTarget);}catch{unsafeOfficePropMovement.add(p);}continue;}
+      if(!stillPropsOwned())return;
+    }
+    if(speed>1.4&&p.type==='paperball'&&G.officeTargets){const target=G.officeTargets.bin;if(officeBasketShotValid(p,target,speed,oldY,oldX,oldZ)){const completedBin=completeOfficeTask('BIN',scene,target);if(!stillPropsOwned())return;const doubleDunk=recordOfficeDoubleDunk(p,scene,target);if(!stillPropsOwned())return;const mixedDunk=recordOfficeMixedDunk(p,scene,target,true);if(!stillPropsOwned())return;if(completedBin||doubleDunk||mixedDunk){try{parkScoredOfficeProp(p,target);}catch{unsafeOfficePropMovement.add(p);}continue;}}}if(speed>2.2){hitOfficePanic(scene,p.mesh.position,speed);if(!stillPropsOwned())return;}if(speed>2.8){ for(const n of roster){if(!stillPropsOwned())return;
+        let near=false;
+        try{
+          if(!n||n.dead||!n.root||n.root.isDisposed?.())continue;
+          const np=n.root.position;
+          if(!np||!Number.isFinite(np.x)||!Number.isFinite(np.y)||!Number.isFinite(np.z))continue;
+          near=(p.hitCooldownT||0)<=0&&officePropSweptActorHit(
+            actorSweepX,actorSweepY,actorSweepZ,p.mesh.position.x,p.mesh.position.y,p.mesh.position.z,
+            np.x,np.y+1,np.z,.8);
+        }catch{continue;}
+        if(!near)continue;
+        let dmg=NaN;
+        try{dmg=p.damage*Math.min(1.8,speed/5)*G.upgrade.improvised*skinPropMul();}catch{}
+        if(!Number.isFinite(dmg)||dmg<=0)continue;
+        try{
+          const dir=p.vel.clone().normalize(),point=p.mesh.position.clone();
+          n.hit(dmg,dir,'prop',point);
+          if(!stillPropsOwned())return;
+          p.hitCooldownT=.45;
+        }catch{if(!stillPropsOwned())return;continue;}
+        if(!stillPropsOwned())return;
+        try{if(p.type==='mug'||p.type==='coffeepot')completeOfficeTask('COFFEE',scene,p.mesh.position.clone());}catch{}if(!stillPropsOwned())return;
+        try{if(p.type==='stapler')completeOfficeTask('STAPLER',scene,p.mesh.position.clone());}catch{}if(!stillPropsOwned())return;
+        try{impactSound(p.material,Math.min(1,speed/8));}catch{}if(!stillPropsOwned())return;
+        try{propSpecialSound(p.type,speed);}catch{}if(!stillPropsOwned())return;
+        try{damageOfficeProp(scene,p,speed*1.25,'COWORKER');}catch{}if(!stillPropsOwned())return;
+        try{dampOfficePropAirVelocity(p,.35);}catch{unsafeOfficePropMovement.add(p);break;}
+      }
+      if(!stillPropsOwned())return;if((p.thrownByNPCTimeRemaining||0)>0&&G.state==='shift'&&hasActivePlayerSession()&&(p.hitCooldownT||0)<=0&&pp&&Number.isFinite(pp.x)&&Number.isFinite(pp.y)&&Number.isFinite(pp.z)){if(!stillPropsOwned())return;const closeToPlayer=officePropSweptActorHit(
+          actorSweepX,actorSweepY,actorSweepZ,p.mesh.position.x,p.mesh.position.y,p.mesh.position.z,
+          pp.x,pp.y,pp.z,.65);if(!stillPropsOwned())return;if(closeToPlayer){p.hitCooldownT=.45;damagePlayer(Math.max(2,Math.min(8,p.damage*.22)),'THROWN OBJECT');if(!stillPropsOwned())return;try{finishNpcThrownPropPlayerHit(p);}catch{unsafeOfficePropMovement.add(p);}}} }
+  }
+  if(mode==='shift'&&stillPropsOwned())resolveOfficePropContacts(expectedProps,stillPropsOwned,(a,b,closing,chairTowardCart,moverApproaching,approachingMover,ballTowardPin,ballTowardCart,headOnChairs,ballTowardTech,headOnCarts,cartTowardChair,ballTowardChair,mugTowardTech,paperTowardPrinter)=>{
+    if(!stillPropsOwned())return;
+    // CR4.9.466: independent challenges must not be starved by a hostile
+    // scorer callback. Recheck original wave/prop roster between each.
+    try{scoreOfficeBowlingContact(a,b,ballTowardPin);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeCartBowlingContact(a,b,closing,approachingMover);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeChairBowlingContact(a,b,closing,approachingMover);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeDominoContact(a,b,closing,chairTowardCart,moverApproaching,approachingMover);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeCartCrashContact(a,b,closing,approachingMover);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeChairCrashContact(a,b,closing,approachingMover);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeBallCartContact(a,b,closing,ballTowardCart);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeBallChairContact(a,b,closing,ballTowardChair);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeChairJoustContact(a,b,closing,headOnChairs);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeCartChairContact(a,b,closing,cartTowardChair);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeCartJoustContact(a,b,closing,headOnCarts);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeTechBowlingContact(a,b,closing,ballTowardTech);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficeCoffeeCrashContact(a,b,closing,mugTowardTech);}catch{}
+    if(!stillPropsOwned())return;
+    try{scoreOfficePaperJamContact(a,b,closing,paperTowardPrinter);}catch{}
+    if(!stillPropsOwned())return;
+    if((a.contactSoundCooldownT||0)<=0&&(b.contactSoundCooldownT||0)<=0){
+      a.contactSoundCooldownT=.25;b.contactSoundCooldownT=.25;
+      try{impactSound(b.material||'plastic',Math.min(1,closing/8));}catch{}
+      if(!stillPropsOwned())return;
+      try{const special=officeContactSpecialSoundType(a,b,closing);
+        if(special)propSpecialSound(special,closing);
+      }catch{}
+    }
+    if(!stillPropsOwned())return;
+    if(closing>3.8){
+      try{if(FRAGILE_PROP_TYPES.has(a.type))damageOfficeProp(scene,a,closing*.75,'PROP');}catch{}
+      if(!stillPropsOwned())return;
+      try{if(FRAGILE_PROP_TYPES.has(b.type))damageOfficeProp(scene,b,closing*.75,'PROP');}catch{}
+    }
+  });
+  }finally{updatePropsTickBusy=false;}
 }
 
 function attachBatToController(ctrl){if(!G.batMesh||!ctrl)return;G.batMesh.parent=ctrl.grip||ctrl.pointer;G.batMesh.position=new B.Vector3(0,-.02,.02);G.batMesh.rotationQuaternion=B.Quaternion.FromEulerAngles(Math.PI/2,0,0);G.batMesh.metadata.lastWorldHit=0;}
 function spawnAbilityFX(scene,pos,ability){
   const colors={BURN:'#ff6b2c',CHAIN:'#7df6ff',SLOW:'#a9e8ff',POISON:'#8dff55',KNOCKBACK:'#d2b5ff',WIND:'#d8f8ff',MAGNET:'#ff6be6',GHOST:'#d9e3ff',RANDOM:'#ff79d8',STUN:'#ffd16a',BLEED:'#ff4f61',ECHO:'#83c8ff',BOUNCE:'#ffe36b',EXECUTE:'#ca7cff'};
   const col=colors[ability];if(!col||!scene)return;
-  try{const r=B.MeshBuilder.CreateTorus('abilityFx',{diameter:.22,thickness:.018,tessellation:16},scene);r.position.copyFrom(pos);r.rotation.x=Math.PI/2;const m=mat(scene,'abilityFxMat'+Math.random(),col,.22);m.emissiveColor=B.Color3.FromHexString(col).scale(.75);m.alpha=.88;r.material=m;const start=performance.now();const obs=scene.onBeforeRenderObservable.add(()=>{const t=(performance.now()-start)/180;r.scaling.setAll(1+t*3.6);m.alpha=Math.max(0,.88-t);r.rotation.z+=.08;if(t>=1){scene.onBeforeRenderObservable.remove(obs);r.dispose(false,true);}});}catch{}
+  const fxOwned=captureShiftFxOwner(scene);if(!fxOwned())return;
+  try{
+    const r=B.MeshBuilder.CreateTorus('abilityFx',{diameter:.22,thickness:.018,tessellation:16},scene);
+    r.position.copyFrom(pos);r.rotation.x=Math.PI/2;
+    const m=mat(scene,'abilityFxMat'+Math.random(),col,.22);
+    m.emissiveColor=B.Color3.FromHexString(col).scale(.75);m.alpha=.88;r.material=m;
+    let age=0,released=false,obs=null;
+    const release=()=>{
+      if(released)return;
+      released=true;
+      try{scene.onBeforeRenderObservable.remove(obs);}catch{}
+      try{if(!r.isDisposed?.())r.dispose(false,true);else if(!m.isDisposed?.())m.dispose();}catch{}
+    };
+    if(!fxOwned()){release();return;}
+    try{obs=scene.onBeforeRenderObservable.add(()=>{
+      if(released)return;
+      if(!fxOwned()||r.isDisposed?.()){release();return;}
+      if(!hasActivePlayerSession()){if(!fxOwned())release();return;}
+      if(!fxOwned()){release();return;}
+      let rawDt;
+      if(!shiftFxStep(fxOwned,()=>{rawDt=scene.getEngine().getDeltaTime()/1000;})){release();return;}
+      const dt=Number.isFinite(rawDt)?Math.min(.04,Math.max(0,rawDt)):0;
+      if(dt<=0)return;
+      age+=dt;
+      const t=Math.min(1,age/.18);
+      if(!shiftFxStep(fxOwned,()=>{r.scaling.setAll(1+t*3.6);})){release();return;}
+      if(!shiftFxStep(fxOwned,()=>{m.alpha=Math.max(0,.88-t);})){release();return;}
+      if(!shiftFxStep(fxOwned,()=>{r.rotation.z+=dt*4.8;})){release();return;}
+      if(t>=1)release();
+    });}catch{release();}
+    if(released&&obs!==null)try{scene.onBeforeRenderObservable.remove(obs)}catch{}
+    if(!fxOwned())release();
+  }catch{}
+}
+// Delayed ECHO bat damage advances only on active simulation frames.
+// CR4.9.608: ECHO hits obey the active wave and bounded simulation time.
+// Reentrant scoring, invalid dt and stale queued hits cannot damage a new wave.
+function advanceNpcEchoHits(n,dt){
+  if(!n||n.dead||!n.pendingEchoHits?.length||G.state!=='shift'||!hasActivePlayerSession())return;
+  const step=Number.isFinite(dt)?Math.max(0,Math.min(.033,dt)):0;
+  if(!step)return;
+  const token=G.waveToken,wave=G.wave,roster=G.npcs;
+  if(!Array.isArray(roster)||!roster.includes(n)||G.waveTransition||G.ended)return;
+  const owned=()=>G.state==='shift'&&!G.waveTransition&&!G.ended&&
+    G.waveToken===token&&G.wave===wave&&G.npcs===roster&&
+    !n.dead&&hasActivePlayerSession();
+  const queued=n.pendingEchoHits;
+  if(!Array.isArray(queued)||queued.length>64)return;
+  // CR4.9.618: atomically detach the old queue. A failed setter cannot
+  // produce duplicate delayed hits, and stale callbacks cannot hijack it.
+  const pending=[];
+  try{n.pendingEchoHits=pending;if(n.pendingEchoHits!==pending)return;}catch{return;}
+  for(const echo of queued){
+    if(!owned())break;
+    if(!echo||!Number.isFinite(echo.t)||!Number.isFinite(echo.damage)||echo.damage<=0)continue;
+    // A timer setter can commit and throw. Discard the ambiguous entry
+    // rather than crashing the NPC frame or retrying possible damage.
+    let remaining;
+    try{remaining=Math.max(0,echo.t-step);echo.t=remaining;
+      if(echo.t!==remaining)continue;
+    }catch{continue;}
+    if(!owned()||n.pendingEchoHits!==pending)break;
+    if(remaining>0){pending.push(echo);continue;}
+    // A throwing hit may already have applied damage: never retry ambiguously.
+    try{n.hit(echo.damage,echo.dir,'ability');}catch{continue;}
+    if(!owned())break;
+    try{tone(520,.045,'triangle',.026,-120);}catch{}
+  }
+  if(n.dead&&n.pendingEchoHits===pending)n.pendingEchoHits=[];
 }
 function applyCombatAbility(n,dir){
-  if(!n||n.dead||G.net.role==='guest')return; const bat=selectedBatDef(), sa=skinAbility(); const a=bat.ability||'';
+  if(!n||n.dead)return; const bat=selectedBatDef(), sa=skinAbility(); const a=bat.ability||'';
   if(a==='BURN'||sa==='Burn'){n.burnT=Math.max(n.burnT,2.8);n.burnDps=Math.max(n.burnDps,5.5);}
   if(a==='POISON'||sa==='Poison'){n.poisonT=Math.max(n.poisonT,4);n.poisonDps=Math.max(n.poisonDps,3.4);}
   if(a==='SLOW'||sa==='Slow'){n.slowT=Math.max(n.slowT,2.4);}
   if(a==='KNOCKBACK'||sa==='Knockback'){moveNpcWithCollision(n,dir.scale(n.type==='boss'?.28:.7));}
   if(a==='EXECUTE'&&n.hp>0&&n.hp<n.maxHp*.18)n.hit(Math.min(42,n.maxHp*.12),dir,'ability');
-  if(a==='CHAIN'||sa==='Chain'){const other=G.npcs.find(o=>o!==n&&!o.dead&&B.Vector3.Distance(o.root.position,n.root.position)<2.6);if(other&&Math.random()<.3){other.hit(10,dir,'ability');tone(680,.045,'square',.025,-180);}}
+  if(a==='CHAIN'||sa==='Chain'){const other=G.npcs.find(o=>o&&o!==n&&!o.dead&&o.root&&!o.root.isDisposed?.()&&o.root.position&&B.Vector3.Distance(o.root.position,n.root.position)<2.6);if(other&&Math.random()<.3){other.hit(10,dir,'ability');tone(680,.045,'square',.025,-180);}}
   if(a==='COMBO'){G.combo=Math.min(99,G.combo+1);G.comboT=3.5;}
   if(a==='WIND')moveNpcWithCollision(n,dir.scale(n.type==='boss'?.4:1.05));
-  if(a==='MAGNET'){for(const p of G.props){if(!p.heldBy&&!p.npcOwner&&B.Vector3.Distance(p.mesh.position,n.root.position)<3.5)p.vel=n.root.position.subtract(p.mesh.position).normalize().scale(2.8);}}
+  if(a==='MAGNET'){
+    // Combat may run before updateProps retires a broken or externally disposed prop.
+    let center=null;
+    try{if(n.root&&!n.root.isDisposed?.())center=n.root.position;}catch{}
+    if(center&&[center.x,center.y,center.z].every(Number.isFinite)){
+      for(const p of G.props||[]){
+        if(!p||p.heldBy||p.npcOwner||p.broken)continue;
+        let pos=null;
+        try{if(p.mesh&&!p.mesh.isDisposed?.())pos=p.mesh.position;}catch{}
+        if(!pos||![pos.x,pos.y,pos.z].every(Number.isFinite))continue;
+        const dx=center.x-pos.x,dy=center.y-pos.y,dz=center.z-pos.z,d2=dx*dx+dy*dy+dz*dz;
+        if(d2<12.25){const k=d2>0?2.8/Math.sqrt(d2):0;p.vel=new B.Vector3(dx*k,dy*k,dz*k);}
+      }
+    }
+  }
   if(a==='GHOST'&&Math.random()<.25){G.attackGrace=Math.max(G.attackGrace,.45);G.score+=35;}
   if(a==='RANDOM'){const r=Math.random();if(r<.25){n.burnT=2;n.burnDps=5;}else if(r<.5)n.slowT=2;else if(r<.75)moveNpcWithCollision(n,dir.scale(.8));else G.score+=80;}
   if(a==='STUN'){n.attackT=Math.max(n.attackT,1.0);n.windup=0;n.pendingAttack='';}
   if(a==='BLEED'){n.poisonT=Math.max(n.poisonT,2.2);n.poisonDps=Math.max(n.poisonDps,4.2);}
-  if(a==='ECHO'&&Math.random()<.28){const echoDir=dir.clone();setTimeout(()=>{if(n&&!n.dead){n.hit(9*G.upgrade.power,echoDir,'ability');tone(520,.045,'triangle',.026,-120);}},90);}
+  if(a==='ECHO'&&Math.random()<.28){(n.pendingEchoHits||(n.pendingEchoHits=[])).push({t:.09,damage:9*G.upgrade.power,dir:dir.clone()});}
   if(a==='BOUNCE'){moveNpcWithCollision(n,dir.scale(n.type==='boss'?.34:.92));n.attackT=Math.max(n.attackT,.65);}
   if(a==='SCORE'||sa==='Bonus Score')G.score+=20;
 }
-function npcHitProbe(n,p){
-  let best=null,bestD=1e9;
-  for(const m of (n.hitMeshes||[])){
-    if(!m||m.isDisposed?.())continue;
-    try{m.computeWorldMatrix(true);const bs=m.getBoundingInfo().boundingSphere,c=bs.centerWorld,r=Math.max(.09,bs.radiusWorld);const d=B.Vector3.Distance(p,c);if(d<=r+.14&&d<bestD){const nm=(m.name||'').toLowerCase(),zone=nm.includes('head')?'head':nm.includes('body')||nm.includes('hips')||nm.includes('tie')?'torso':nm.includes('arm')?'arm':'leg';best={mesh:m,zone,center:c,radius:r,distance:d};bestD=d;}}catch{}
+// Combat cooldowns use active shift simulation time; XR disconnects freeze this clock.
+function combatTimeMs(){return 1000+Math.max(0,Number.isFinite(G.shiftTime)?G.shiftTime:0)*1000;}
+function isBlockedBatSweep(from,to,radius=.07){
+  try{
+    const x=from.x,y=from.y,z=from.z,dx=to.x-x,dy=to.y-y,dz=to.z-z;
+    if(![x,y,z,dx,dy,dz,radius].every(Number.isFinite)||radius<0)return true;
+    let near=0,far=1;
+    const axis=(p,d,lo,hi)=>{
+      if(d===0)return p>=lo&&p<=hi;
+      const a=(lo-p)/d,b=(hi-p)/d;
+      near=Math.max(near,Math.min(a,b));far=Math.min(far,Math.max(a,b));
+      return near<=far;
+    };
+    for(const b of G.blockers||[]){
+      const m=b?.mesh;
+      if(!m||m.isDisposed?.())continue;
+      m.computeWorldMatrix(true);
+      const bb=m.getBoundingInfo().boundingBox,mn=bb.minimumWorld,mx=bb.maximumWorld;
+      const pad=b.pad??0;
+      if(![mn.x,mn.y,mn.z,mx.x,mx.y,mx.z,pad].every(Number.isFinite)||
+         mn.x>mx.x||mn.y>mx.y||mn.z>mx.z||pad<0)return true;
+      const r=pad*.35+radius;
+      if(!Number.isFinite(r))return true;
+      near=0;far=1;
+      if(axis(x,dx,mn.x-r,mx.x+r)&&axis(y,dy,mn.y-radius,mx.y+radius)&&
+         axis(z,dz,mn.z-r,mx.z+r))return true;
+    }
+    return false;
+  }catch{return true;}
+}
+function isBlockedBatPose(tip,batMesh,prevTip=null,prevShaft=null,shaftOut=null){
+  // Check the tip and all three shaft points, including movement between XR frames,
+  // with a single blocker bounds lookup. Invalid transforms fail closed.
+  try{
+    if(prevShaft!=null&&(!Array.isArray(prevShaft)||prevShaft.length!==3||!prevTip))return true;
+    const wm=batMesh.getWorldMatrix();
+    const samples=[{p:tip,r:.07,from:prevTip}];
+    for(let i=0;i<3;i++){
+      const yy=i===0?.22:i===1?.44:.68;
+      samples.push({p:B.Vector3.TransformCoordinates(new B.Vector3(0,yy,0),wm),r:.06,
+        from:prevShaft?prevShaft[i]:null});
+    }
+    for(const {p,from} of samples){
+      if(!p||![p.x,p.y,p.z].every(Number.isFinite))return true;
+      if(from&&(![from.x,from.y,from.z].every(Number.isFinite)||
+         ![p.x-from.x,p.y-from.y,p.z-from.z].every(Number.isFinite)))return true;
+    }
+    if(shaftOut){
+      if(!Array.isArray(shaftOut))return true;
+      for(let i=1;i<samples.length;i++){
+        const p=samples[i].p;shaftOut.push({x:p.x,y:p.y,z:p.z});
+      }
+    }
+    let near=0,far=1;
+    const axis=(p,d,lo,hi)=>{
+      if(d===0)return p>=lo&&p<=hi;
+      const a=(lo-p)/d,b=(hi-p)/d;
+      near=Math.max(near,Math.min(a,b));far=Math.min(far,Math.max(a,b));
+      return near<=far;
+    };
+    // Precompute a conservative swept-bat envelope once per XR frame.
+    let batMinX=Infinity,batMinY=Infinity,batMinZ=Infinity;
+    let batMaxX=-Infinity,batMaxY=-Infinity,batMaxZ=-Infinity;
+    for(const {p,from} of samples){
+      batMinX=Math.min(batMinX,p.x);batMaxX=Math.max(batMaxX,p.x);
+      batMinY=Math.min(batMinY,p.y);batMaxY=Math.max(batMaxY,p.y);
+      batMinZ=Math.min(batMinZ,p.z);batMaxZ=Math.max(batMaxZ,p.z);
+      if(from){
+        batMinX=Math.min(batMinX,from.x);batMaxX=Math.max(batMaxX,from.x);
+        batMinY=Math.min(batMinY,from.y);batMaxY=Math.max(batMaxY,from.y);
+        batMinZ=Math.min(batMinZ,from.z);batMaxZ=Math.max(batMaxZ,from.z);
+      }
+    }
+    const blockers=G.blockers;
+    if(!Array.isArray(blockers))return true;
+    for(let bi=0;bi<blockers.length;bi++){
+      const b=blockers[bi];
+      const m=b?.mesh;
+      if(!m)return true;
+      if(m.isDisposed?.())continue;
+      m.computeWorldMatrix(true);
+      const bb=m.getBoundingInfo().boundingBox,mn=bb.minimumWorld,mx=bb.maximumWorld,pad=b.pad??0;
+      if(![mn.x,mn.y,mn.z,mx.x,mx.y,mx.z,pad].every(Number.isFinite)||
+         mn.x>mx.x||mn.y>mx.y||mn.z>mx.z||pad<0)return true;
+      // Skip distant blockers before running expensive shaft/triangle tests.
+      const maxSpread=pad*.35+.07;
+      const bx0=mn.x-maxSpread,bx1=mx.x+maxSpread;
+      const by0=mn.y-.07,by1=mx.y+.07;
+      const bz0=mn.z-maxSpread,bz1=mx.z+maxSpread;
+      if(!Number.isFinite(maxSpread)||!Number.isFinite(bx0)||!Number.isFinite(bx1)||
+         !Number.isFinite(by0)||!Number.isFinite(by1)||
+         !Number.isFinite(bz0)||!Number.isFinite(bz1))return true;
+      if(batMaxX<bx0||batMinX>bx1||batMaxY<by0||batMinY>by1||
+         batMaxZ<bz0||batMinZ>bz1)continue;
+      // Test the complete shaft, not just four discrete points. The swept
+      // shaft between XR frames is covered by two triangles per shaft span.
+      const extents=r=>{
+        const spread=pad*.35+r;
+        const loX=mn.x-spread,hiX=mx.x+spread;
+        const loY=mn.y-r,hiY=mx.y+r;
+        const loZ=mn.z-spread,hiZ=mx.z+spread;
+        if(!Number.isFinite(spread)||!Number.isFinite(loX)||!Number.isFinite(hiX)||
+           !Number.isFinite(loY)||!Number.isFinite(hiY)||
+           !Number.isFinite(loZ)||!Number.isFinite(hiZ))return null;
+        return {loX,hiX,loY,hiY,loZ,hiZ};
+      };
+      const segmentHit=(a,c,r)=>{
+        const e=extents(r);if(!e)return true;
+        near=0;far=1;
+        return axis(a.x,c.x-a.x,e.loX,e.hiX)&&
+          axis(a.y,c.y-a.y,e.loY,e.hiY)&&
+          axis(a.z,c.z-a.z,e.loZ,e.hiZ);
+      };
+      const triangleHit=(a,b,c,r)=>{
+        const e=extents(r);if(!e)return true;
+        const hx=(e.hiX-e.loX)*.5,hy=(e.hiY-e.loY)*.5,hz=(e.hiZ-e.loZ)*.5;
+        const cx=e.loX+hx,cy=e.loY+hy,cz=e.loZ+hz;
+        const ax=a.x-cx,ay=a.y-cy,az=a.z-cz;
+        const bx=b.x-cx,by=b.y-cy,bz=b.z-cz;
+        const dx=c.x-cx,dy=c.y-cy,dz=c.z-cz;
+        if(!Number.isFinite(hx)||!Number.isFinite(hy)||!Number.isFinite(hz)||
+           !Number.isFinite(ax)||!Number.isFinite(ay)||!Number.isFinite(az)||
+           !Number.isFinite(bx)||!Number.isFinite(by)||!Number.isFinite(bz)||
+           !Number.isFinite(dx)||!Number.isFinite(dy)||!Number.isFinite(dz))return true;
+        if(Math.max(ax,bx,dx)<-hx||Math.min(ax,bx,dx)>hx||
+           Math.max(ay,by,dy)<-hy||Math.min(ay,by,dy)>hy||
+           Math.max(az,bz,dz)<-hz||Math.min(az,bz,dz)>hz)return false;
+        // Triangle/AABB separating-axis test: face normal and nine edge axes.
+        const separated=(nx,ny,nz)=>{
+          const p0=ax*nx+ay*ny+az*nz,p1=bx*nx+by*ny+bz*nz,p2=dx*nx+dy*ny+dz*nz;
+          const rad=hx*Math.abs(nx)+hy*Math.abs(ny)+hz*Math.abs(nz);
+          if(!Number.isFinite(p0)||!Number.isFinite(p1)||
+             !Number.isFinite(p2)||!Number.isFinite(rad))return false; // fail closed
+          return Math.min(p0,p1,p2)>rad||Math.max(p0,p1,p2)<-rad;
+        };
+        const abx=bx-ax,aby=by-ay,abz=bz-az;
+        const acx=dx-ax,acy=dy-ay,acz=dz-az;
+        if(separated(aby*acz-abz*acy,abz*acx-abx*acz,abx*acy-aby*acx))return false;
+        const edgeSeparated=(ex,ey,ez)=>
+          separated(0,-ez,ey)||separated(ez,0,-ex)||separated(-ey,ex,0);
+        if(edgeSeparated(abx,aby,abz)||edgeSeparated(dx-bx,dy-by,dz-bz)||
+           edgeSeparated(ax-dx,ay-dy,az-dz))return false;
+        return true;
+      };
+      for(const {p,r,from} of samples){
+        if(segmentHit(p,p,r)||from&&segmentHit(from,p,r))return true;
+      }
+      for(let i=1;i<samples.length;i++){
+        const a=samples[i-1],c=samples[i],r=Math.max(a.r,c.r);
+        if(segmentHit(a.p,c.p,r))return true;
+        if(a.from&&c.from){
+          if(segmentHit(a.from,c.from,r))return true;
+          // Cheap swept-quad broadphase avoids expensive triangle tests far from furniture.
+          const e=extents(r);if(!e)return true;
+          if(Math.max(a.from.x,c.from.x,a.p.x,c.p.x)<e.loX||
+             Math.min(a.from.x,c.from.x,a.p.x,c.p.x)>e.hiX||
+             Math.max(a.from.y,c.from.y,a.p.y,c.p.y)<e.loY||
+             Math.min(a.from.y,c.from.y,a.p.y,c.p.y)>e.hiY||
+             Math.max(a.from.z,c.from.z,a.p.z,c.p.z)<e.loZ||
+             Math.min(a.from.z,c.from.z,a.p.z,c.p.z)>e.hiZ)continue;
+          if(triangleHit(a.from,c.from,c.p,r)||
+             triangleHit(a.from,c.p,a.p,r))return true;
+        }
+      }
+    }
+    return false;
+  }catch{return true;}
+}
+// Squared-distance collision against a shaft swept through one XR frame.
+// A swept span is two triangles, so hits between shaft samples are not lost.
+// Fallback cooldown protects NPCs whose lastBatHit getter/setter is malformed.
+// WeakMap keys are validated NPC objects; entries disappear when NPCs are collected.
+const batNpcHitCooldown=new WeakMap();
+// Static geometry helpers avoid allocating two nested closures for every NPC candidate.
+function batNpcSegmentDist2(c,a,b){
+  const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z;
+  const dd=dx*dx+dy*dy+dz*dz;
+  const t=dd>1e-14?Math.max(0,Math.min(1,((c.x-a.x)*dx+(c.y-a.y)*dy+(c.z-a.z)*dz)/dd)):0;
+  const x=a.x+dx*t-c.x,y=a.y+dy*t-c.y,z=a.z+dz*t-c.z;
+  return x*x+y*y+z*z;
+}
+function batNpcTriangleContact(c,a,b,d,r2){
+  const ux=b.x-a.x,uy=b.y-a.y,uz=b.z-a.z;
+  const vx=d.x-a.x,vy=d.y-a.y,vz=d.z-a.z;
+  const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;
+  const nn=nx*nx+ny*ny+nz*nz;
+  if(nn>1e-14){
+    const dot=(c.x-a.x)*nx+(c.y-a.y)*ny+(c.z-a.z)*nz;
+    if(dot*dot<r2*nn){
+      const x=c.x-dot*nx/nn-a.x,y=c.y-dot*ny/nn-a.y,z=c.z-dot*nz/nn-a.z;
+      const uu=ux*ux+uy*uy+uz*uz,uv=ux*vx+uy*vy+uz*vz,vv=vx*vx+vy*vy+vz*vz;
+      const up=x*ux+y*uy+z*uz,vp=x*vx+y*vy+z*vz,den=uu*vv-uv*uv;
+      if(den>1e-14){
+        const s=(up*vv-vp*uv)/den,t=(vp*uu-up*uv)/den;
+        if(s>=-1e-10&&t>=-1e-10&&s+t<=1+1e-10)return true;
+      }
+    }
   }
-  return best;
+  return batNpcSegmentDist2(c,a,b)<r2||batNpcSegmentDist2(c,b,d)<r2||batNpcSegmentDist2(c,d,a)<r2;
+}
+function batSweptNpcContact(c,nowPts,oldPts,r2=.9025){
+  for(let i=0;i<4;i++)if(batNpcSegmentDist2(c,oldPts[i],nowPts[i])<r2)return true;
+  for(let i=0;i<3;i++){
+    if(batNpcSegmentDist2(c,oldPts[i],oldPts[i+1])<r2||batNpcSegmentDist2(c,nowPts[i],nowPts[i+1])<r2||
+       batNpcTriangleContact(c,oldPts[i],oldPts[i+1],nowPts[i+1],r2)||
+       batNpcTriangleContact(c,oldPts[i],nowPts[i+1],nowPts[i],r2))return true;
+  }
+  return false;
+}
+// Hide the right-hand bat only while it conflicts with a held VR prop.
+// Track the exact mesh we hid, so other game systems retain visibility ownership.
+let batHiddenForGrab=null;
+function syncBatGrabVisibility(){
+  let bat=null,holding=false,broken=false;
+  try{bat=G.batMesh;holding=!!G.handState?.get('right')?.grabbing;broken=!!G.bat?.broken;}catch{return;}
+  if(batHiddenForGrab&&batHiddenForGrab!==bat)batHiddenForGrab=null;
+  if(!bat||typeof bat.setEnabled!=='function')return;
+  if(holding&&!broken){
+    if(batHiddenForGrab===bat)return;
+    try{
+      if(bat.isDisposed?.()||!bat.isEnabled?.())return;
+      bat.setEnabled(false);batHiddenForGrab=bat;
+    }catch{}
+    return;
+  }
+  if(batHiddenForGrab===bat){
+    if(broken){batHiddenForGrab=null;return;}
+    try{
+      if(!bat.isDisposed?.())bat.setEnabled(true);
+      batHiddenForGrab=null;
+    }catch{}
+  }
 }
 function updateBatCombat(scene,dt){
-  if(G.bat.broken||!G.batMesh||!G.right)return; const st=G.handState.get('right'); if(!st)return; const p=(G.batTip||G.batMesh).getAbsolutePosition();const now=performance.now();let worldHit=isBlockedPoint(p.x,p.y,p.z,.07);try{const wm=G.batMesh.getWorldMatrix();for(const yy of [.22,.44,.68]){const q=B.Vector3.TransformCoordinates(new B.Vector3(0,yy,0),wm);if(isBlockedPoint(q.x,q.y,q.z,.06)){worldHit=true;break;}}}catch{}if(worldHit){if(now-(G.batMesh.metadata.lastWorldHit||0)>160){G.batMesh.metadata.lastWorldHit=now;impactSound('wood',1.05);tone(105,.05,'square',.03,-35);haptic(G.right,.72,48);}G.batMesh.position.z+=(0.10-G.batMesh.position.z)*.45;st.prevBat=p.clone();return;}else{G.batMesh.position.z+=(-.08-G.batMesh.position.z)*.25;} if(!st.prevBat)st.prevBat=p.clone(); const vel=p.subtract(st.prevBat).scale(1/Math.max(dt,.008)); st.prevBat.copyFrom(p); const speed=vel.length(); if(speed>2.8&&now-(st.lastWhooshT||0)>135){st.lastWhooshT=now;whooshSound(Math.min(1.25,speed/7));} if(speed<1.9)return;
-  for(const n of G.npcs){if(n.dead||performance.now()-n.lastBatHit<330)continue;const hit=npcHitProbe(n,p);if(!hit)continue;n.lastBatHit=performance.now();const zoneMul=hit.zone==='head'?1.18:hit.zone==='torso'?1:hit.zone==='arm'?.90:.86;const dmg=(12+speed*5.5)*G.upgrade.power*zoneMul;n.hit(dmg,vel.normalize(),'bat');applyCombatAbility(n,vel.normalize());spawnAbilityFX(scene,hit.center,selectedBatDef().ability);bodyHitSound(Math.min(1.25,speed/7)*(hit.zone==='head'?1.05:1));abilityHitSound(selectedBatDef().ability,Math.min(1.3,speed/7));spawnHitFX(scene,hit.center,Math.min(1.4,speed/6));haptic(G.right,Math.min(1,.38+speed*.075),55);if(hit.zone==='head'&&Math.random()<.28){tone(770,.032,'triangle',.018,-180);npcBubble(n,'OW—MY HEAD!','#ffd8c9');}}
+  let st=null;try{st=G.handState?.get('right');}catch{return;}
+  syncBatGrabVisibility();
+  // Grabbing with the right controller must not simultaneously hit NPCs with the bat.
+  if(st?.grabbing){try{st.prevBat=null;st.prevBatShaft=null;st.prevBatFrameClock=null;}catch{}return;}
+  if(G.bat.broken||!G.batMesh||!G.right){
+    if(st){try{st.prevBat=null;st.prevBatShaft=null;st.prevBatFrameClock=null;}catch{}}
+    return;
+  }
+  if(!st)return; let p=null,valid=false;try{const tip=G.batTip||G.batMesh;if(tip&&!tip.isDisposed?.()&&!G.batMesh.isDisposed?.()){G.batMesh.computeWorldMatrix?.(true);tip.computeWorldMatrix?.(true);p=tip.getAbsolutePosition();valid=!!p&&Number.isFinite(p.x)&&Number.isFinite(p.y)&&Number.isFinite(p.z);}}catch{}if(!valid){st.prevBat=null;st.prevBatShaft=null;st.prevBatFrameClock=null;return;}
+let frameClock=NaN;
+try{frameClock=performance.now();}catch{try{frameClock=Date.now();}catch{}}
+try{
+  const last=st.prevBatFrameClock;
+  if(!Number.isFinite(frameClock)||!Number.isFinite(last)||
+     frameClock<last||frameClock-last>140){
+    st.prevBat=null;st.prevBatShaft=null;
+  }
+  st.prevBatFrameClock=Number.isFinite(frameClock)?frameClock:null;
+}catch{try{st.prevBat=null;st.prevBatShaft=null;}catch{}}
+const now=combatTimeMs();
+// One swept blocker traversal checks both the tip and the entire sampled shaft.
+let worldHit=true;const shaftNow=[];let shaftPrev=null;try{shaftPrev=st.prevBatShaft;}catch{}
+try{
+  worldHit=isBlockedBatPose(p,G.batMesh,st.prevBat,st.prevBatShaft,shaftNow);
+  st.prevBatShaft=worldHit?null:shaftNow;
+}catch{worldHit=true;try{st.prevBatShaft=null;}catch{}}
+if(worldHit){
+  let impact=false;
+  try{
+    const md=G.batMesh.metadata;
+    if(md&&now-(Number.isFinite(md.lastWorldHit)?md.lastWorldHit:0)>160){md.lastWorldHit=now;impact=true;}
+  }catch{}
+  if(impact){try{impactSound('wood',1.05);}catch{}try{tone(105,.05,'square',.03,-35);}catch{}try{haptic(G.right,.72,48);}catch{}}
+  try{const z=G.batMesh.position?.z;if(Number.isFinite(z))G.batMesh.position.z=z+(0.10-z)*.45;}catch{}
+  try{st.prevBat=p.clone();}catch{st.prevBat=null;}
+  return;
+}else{
+  try{const z=G.batMesh.position?.z;if(Number.isFinite(z))G.batMesh.position.z=z+(-.08-z)*.25;}catch{}
+} let prev=null;
+try{const candidate=st.prevBat;if(candidate&&Number.isFinite(candidate.x)&&Number.isFinite(candidate.y)&&Number.isFinite(candidate.z)&&typeof candidate.copyFrom==='function')prev=candidate;}catch{}
+if(!prev){try{prev=p.clone();st.prevBat=prev;}catch{return;}}
+let batMs=0;try{batMs=engine.getDeltaTime();}catch{}
+const batDt=Number.isFinite(batMs)&&batMs>=4&&batMs<=100?batMs/1000:0;
+let vel=null;const swingFromX=prev.x,swingFromY=prev.y,swingFromZ=prev.z;
+try{vel=p.subtract(prev).scale(batDt?1/batDt:0);prev.copyFrom(p);}catch{try{st.prevBat=p.clone();}catch{}return;}
+let speed=vel.length();
+if(batDt&&Array.isArray(shaftPrev)&&shaftPrev.length===3&&shaftNow.length===3){
+  for(let i=0;i<3;i++){
+    const a=shaftPrev[i],b=shaftNow[i];
+    const dx=b.x-a.x,dy=b.y-a.y,dz=b.z-a.z;
+    const s=Math.hypot(dx,dy,dz)/batDt;
+    if(Number.isFinite(s)&&s>speed){speed=s;vel.x=dx/batDt;vel.y=dy/batDt;vel.z=dz/batDt;}
+  }
+}
+if(!batDt||!Number.isFinite(speed)||speed>20)return;
+if(speed>2.8&&now-(st.lastWhooshT||0)>135){try{st.lastWhooshT=now;whooshSound(Math.min(1.25,speed/7));}catch{}}
+try{hitOfficePanic(scene,p,speed);}catch{}
+if(speed<1.9)return;
+const nowPts=[p,...shaftNow];
+const oldPts=[{x:swingFromX,y:swingFromY,z:swingFromZ},
+  ...(Array.isArray(shaftPrev)&&shaftPrev.length===3?shaftPrev:shaftNow)];
+if(nowPts.length!==4||oldPts.length!==4)return;
+let minX=Infinity,minY=Infinity,minZ=Infinity,maxX=-Infinity,maxY=-Infinity,maxZ=-Infinity;
+for(let qi=0;qi<8;qi++){
+  const q=qi<4?nowPts[qi]:oldPts[qi-4];
+  if(!q||!Number.isFinite(q.x)||!Number.isFinite(q.y)||!Number.isFinite(q.z))return;
+  minX=Math.min(minX,q.x);maxX=Math.max(maxX,q.x);
+  minY=Math.min(minY,q.y);maxY=Math.max(maxY,q.y);
+  minZ=Math.min(minZ,q.z);maxZ=Math.max(maxZ,q.z);
+}
+let npcs=null,npcCount=0;
+try{npcs=G.npcs;if(!Array.isArray(npcs))return;npcCount=npcs.length;}catch{return;}
+// A single reusable NPC center avoids per-candidate allocations.
+const npcCenter={x:0,y:0,z:0};
+for(let ni=0;ni<npcCount;ni++){
+  let n=null,lastHit=0,hit=null,cx=0,cy=0,cz=0;
+  try{
+    n=npcs[ni];
+    if(!n||(typeof n!=='object'&&typeof n!=='function')||n.dead)continue;
+    const root=n.root;
+    if(!root||root.isDisposed?.())continue;
+    const pos=root.position;
+    if(!pos)continue;
+    // Snapshot each potentially hostile getter once, while guarded.
+    const x=pos.x,y=pos.y,z=pos.z;
+    if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(z))continue;
+    cx=x;cy=y+1.1;cz=z;
+    hit=n.hit;
+    if(typeof hit!=='function')continue;
+    let raw=NaN;
+    try{raw=n.lastBatHit;}catch{}
+    if(Number.isFinite(raw)&&raw<=now)lastHit=raw;
+    const fallback=batNpcHitCooldown.get(n);
+    if(Number.isFinite(fallback)&&fallback<=now&&fallback>lastHit)lastHit=fallback;
+  }catch{continue;}
+  if(now-lastHit<330)continue;
+  if(cx<minX-.95||cx>maxX+.95||cy<minY-.95||cy>maxY+.95||cz<minZ-.95||cz>maxZ+.95)continue;
+  npcCenter.x=cx;npcCenter.y=cy;npcCenter.z=cz;
+  if(!batSweptNpcContact(npcCenter,nowPts,oldPts))continue;
+  let dmg=NaN;
+  try{dmg=(12+speed*5.5)*G.upgrade.power;}catch{continue;}
+  if(!Number.isFinite(dmg)||dmg<=0)continue;
+  try{
+    // Reserve the cooldown even when a hostile setter or hit hook throws.
+    batNpcHitCooldown.set(n,now);
+    try{n.lastBatHit=now;}catch{}
+    hit.call(n,dmg,vel.normalize(),'bat',p);
+  }catch{continue;}
+  try{applyCombatAbility(n,vel.normalize());spawnAbilityFX(scene,p,selectedBatDef().ability);
+    bodyHitSound(Math.min(1.25,speed/7));abilityHitSound(selectedBatDef().ability,Math.min(1.3,speed/7));
+    spawnHitFX(scene,p,Math.min(1.4,speed/6));haptic(G.right,Math.min(1,.38+speed*.075),55);
+  }catch{}
+}
 }
 
 async function setupXR(scene){
   if(G.xr)return G.xr; ui.status.textContent='Preparing WebXR…'; const xr=await scene.createDefaultXRExperienceAsync({floorMeshes:[]}); G.xr=xr;
-  xr.input.onControllerAddedObservable.add(ctrl=>{
-    ctrl.onMotionControllerInitObservable.add(mc=>{
-      const handed=ctrl.inputSource.handedness||'none';try{ctrl.onMeshLoadedObservable?.add(m=>m.setEnabled(false));if(ctrl.mesh)ctrl.mesh.setEnabled(false);}catch{}G.handState.set(handed,{ctrl,grabbing:null,prevPos:null,prevBat:null}); if(handed==='right'){G.right=ctrl;attachBatToController(ctrl);} if(handed==='left')G.left=ctrl; buildHandVisual(scene,handed,ctrl); refreshPlayerCosmetics();
-      const grip=mc.getComponent('xr-standard-squeeze'); if(grip){ grip.onButtonStateChangedObservable.add(()=>{ if(grip.changes.pressed){ if(grip.pressed)tryGrab(scene,handed,ctrl); else releaseGrab(handed,ctrl); } }); }
-      const trig=mc.getComponent('xr-standard-trigger'); if(trig){ trig.onButtonStateChangedObservable.add(()=>{if(trig.changes.pressed&&trig.pressed)triggerInteract(scene,ctrl);}); }
-      const stick=mc.getComponent('xr-standard-thumbstick'); if(stick){stick.onAxisValueChangedObservable.add(v=>{if(handed==='left'){G.joystick.x=v.x||0;G.joystick.y=v.y||0;}else if(handed==='right'){G.turnAxis=v.x||0;}});}
-    });
-  });
+  // Invalidate observers from a previous XR session even if a controller object is reused.
+  let xrInputEpoch=0;
+  let xrSessionActive=false;
+  const pendingXRInit=new Map();
+  // Babylon may notify removal before controllers[] is updated. Coalesce bounded
+  // rechecks without risking an old event removing a rebound controller.
+  const pendingXRRemoval=new Map();
+  const cancelXRRemoval=ctrl=>{
+    const pending=pendingXRRemoval.get(ctrl);
+    if(pending){clearTimeout(pending.timer);pendingXRRemoval.delete(ctrl);}
+  };
+  const controllerTokens=new WeakMap();
+  // Babylon observables retain callbacks until their observer handles are removed.
+  const liveControllerTokens=new Map();
+  const observeXR=(token,observable,callback)=>{
+    if(!observable?.add)return;
+    const handle=observable.add(callback);
+    if(handle!==undefined&&handle!==null)token.observers.push({observable,handle});
+  };
+  const forgetXRController=(ctrl,token=controllerTokens.get(ctrl))=>{
+    cancelXRRemoval(ctrl);
+    if(!token)return;
+    for(const {observable,handle} of token.observers){try{observable.remove?.(handle);}catch{}}
+    token.observers.length=0;
+    if(controllerTokens.get(ctrl)===token)controllerTokens.delete(ctrl);
+    if(liveControllerTokens.get(ctrl)===token)liveControllerTokens.delete(ctrl);
+    pendingXRInit.delete(ctrl);
+  };
+  // CR4.9.462: reject invalid XR axes and clamp out-of-range controller data.
+  // A NaN/Infinity or malformed event must never enter player locomotion.
+  const safeXRStickAxis=value=>Number.isFinite(value)?Math.max(-1,Math.min(1,value)):0;
+  // Controller initialization can precede Babylon's XR-session-init event.
+  const activateXRController=(ctrl,mc,controllerEpoch,controllerToken)=>{
+      const handed=ctrl.inputSource?.handedness||'none';
+      if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||
+         (!xrSessionActive&&!xr.baseExperience.sessionManager.inXRSession))return;
+      // Ignore initialization delivered after removal, and avoid duplicate observers.
+      // The epoch and ownership token are authoritative: Babylon can populate controllers[] after init.
+      const previous=G.handState.get(handed);
+      if(previous?.ctrl===ctrl)return;
+      if(previous){
+        releaseGrab(handed,previous.ctrl,true);
+        forgetXRController(previous.ctrl);
+        if(handed==='left'){G.joystick.set(0,0);G.vrSprint=false;}else if(handed==='right')G.turnAxis=0;
+        if(G.handVisuals[handed]){disposeMeshSafe(G.handVisuals[handed]);G.handVisuals[handed]=null;}
+      }
+      try{observeXR(controllerToken,ctrl.onMeshLoadedObservable,m=>m.setEnabled(false));if(ctrl.mesh)ctrl.mesh.setEnabled(false);}catch{}
+      G.handState.set(handed,{ctrl,grabbing:null,prevPos:null,prevBat:null}); if(handed==='right'){G.right=ctrl;attachBatToController(ctrl);} if(handed==='left')G.left=ctrl; buildHandVisual(scene,handed,ctrl); refreshPlayerCosmetics();
+      const grip=mc.getComponent('xr-standard-squeeze'); if(grip){ observeXR(controllerToken,grip.onButtonStateChangedObservable,()=>{ if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(grip.changes.pressed){ if(grip.pressed)tryGrab(scene,handed,ctrl); else releaseGrab(handed,ctrl); } }); }
+      const trig=mc.getComponent('xr-standard-trigger'); if(trig){ observeXR(controllerToken,trig.onButtonStateChangedObservable,()=>{if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(trig.changes.pressed&&trig.pressed)triggerInteract(scene,ctrl);}); }
+      // CR4.9.601: thumbstick movement, sprint and prop reset require a
+      // currently connected native XR input source, not only a stale controller token.
+      const stick=mc.getComponent('xr-standard-thumbstick'); if(stick){
+        observeXR(controllerToken,stick.onAxisValueChangedObservable,v=>{if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl||!xrGrabControllerLive(handed,ctrl))return; if(handed==='left'){G.joystick.x=safeXRStickAxis(v?.x);G.joystick.y=safeXRStickAxis(v?.y);}else if(handed==='right'){G.turnAxis=safeXRStickAxis(v?.x);}});
+        if(stick.onButtonStateChangedObservable)
+          observeXR(controllerToken,stick.onButtonStateChangedObservable,()=>{
+            if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||
+               !xr.baseExperience.sessionManager.inXRSession||
+               G.handState.get(handed)?.ctrl!==ctrl||
+               !xrGrabControllerLive(handed,ctrl))return;
+            if(handed==='left')G.vrSprint=!!stick.pressed;
+            else if(handed==='right'&&stick.changes?.pressed&&stick.pressed){
+              try{if(resetNearestLooseOfficeProp(controllerPos(ctrl),!!(G.vrSprint&&xrGrabControllerLive('left',G.left))))haptic(ctrl,.24,55);}catch{}
+            }
+          });
+      }
+  };
+  const acceptXRMotionController=(ctrl,mc,controllerEpoch,controllerToken)=>{
+    if(!mc||controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken)return;
+    if(!xrSessionActive&&!xr.baseExperience.sessionManager.inXRSession){
+      pendingXRInit.set(ctrl,{mc,epoch:controllerEpoch,token:controllerToken});
+      return;
+    }
+    pendingXRInit.delete(ctrl);
+    activateXRController(ctrl,mc,controllerEpoch,controllerToken);
+  };
+  const registerXRController=ctrl=>{
+    if(!ctrl)return;
+    cancelXRRemoval(ctrl);
+    const controllerEpoch=xrInputEpoch;
+    const existingToken=controllerTokens.get(ctrl);
+    if(existingToken?.epoch===controllerEpoch){
+      // An init event may have been missed while the XR session was restarting.
+      if(ctrl.motionController)acceptXRMotionController(ctrl,ctrl.motionController,controllerEpoch,existingToken);
+      return;
+    }
+    if(existingToken)forgetXRController(ctrl,existingToken);
+    const controllerToken={epoch:controllerEpoch,observers:[]};
+    controllerTokens.set(ctrl,controllerToken);
+    liveControllerTokens.set(ctrl,controllerToken);
+    observeXR(controllerToken,ctrl.onMotionControllerInitObservable,mc=>
+      acceptXRMotionController(ctrl,mc,controllerEpoch,controllerToken));
+    // Babylon can reuse an already initialized input source on the next XR session.
+    // Its onMotionControllerInitObservable will not necessarily fire a second time.
+    if(ctrl.motionController)acceptXRMotionController(ctrl,ctrl.motionController,controllerEpoch,controllerToken);
+  };
+  xr.input.onControllerAddedObservable.add(registerXRController);
   xr.input.onControllerRemovedObservable.add(ctrl=>{
-    const handed=ctrl.inputSource?.handedness||'none';
-    releaseGrab(handed,ctrl);
-    G.handState.delete(handed);
-    if(G.handVisuals[handed]){disposeMeshSafe(G.handVisuals[handed]); G.handVisuals[handed]=null;}
-    if(handed==='right')G.right=null;
-    if(handed==='left'){G.left=null;G.joystick.set(0,0);} if(handed==='right')G.turnAxis=0; refreshPlayerCosmetics();
+    // Trust native XRSession.inputSources over Babylon's possibly stale controllers[]
+    // when it is available. Fall back to the bounded Babylon poll otherwise.
+    const nativeSourcePresent=()=>{
+      if(!xrSessionActive||!xr.baseExperience.sessionManager.inXRSession||!ctrl.inputSource)return null;
+      const sources=xr.baseExperience.sessionManager.session?.inputSources;
+      if(!sources)return null;
+      try{
+        for(const source of sources)if(source===ctrl.inputSource)return true;
+        return false;
+      }catch{return null;}
+    };
+    const controllerAbsent=()=>{
+      const present=nativeSourcePresent();
+      return present===null?!xr.input.controllers?.includes(ctrl):!present;
+    };
+    const removeIfAbsent=()=>{
+      if(!controllerAbsent())return;
+      forgetXRController(ctrl);
+      const handed=ctrl.inputSource?.handedness||'none';
+      // A delayed removal from an old controller must not clear its replacement.
+      if(G.handState.get(handed)?.ctrl!==ctrl)return;
+      releaseGrab(handed,ctrl,true);
+      G.handState.delete(handed);
+      if(G.handVisuals[handed]){disposeMeshSafe(G.handVisuals[handed]); G.handVisuals[handed]=null;}
+      if(handed==='right')G.right=null;
+      if(handed==='left'){G.left=null;G.joystick.set(0,0);G.vrSprint=false;} if(handed==='right')G.turnAxis=0; refreshPlayerCosmetics();
+    };
+    if(controllerAbsent()){removeIfAbsent();return;}
+    // Ignore stale removal while still listed, but recover if Babylon updates
+    // controllers[] shortly AFTER notifying us of a genuine disconnect.
+    if(pendingXRRemoval.has(ctrl))return;
+    const token=controllerTokens.get(ctrl),epoch=xrInputEpoch;
+    let attempts=0;
+    const recheck=()=>{
+      const pending=pendingXRRemoval.get(ctrl);
+      if(!pending||pending.token!==token||pending.epoch!==epoch)return;
+      if(controllerTokens.get(ctrl)!==token||xrInputEpoch!==epoch||!xrSessionActive){
+        pendingXRRemoval.delete(ctrl);return;
+      }
+      if(controllerAbsent()){
+        pendingXRRemoval.delete(ctrl);removeIfAbsent();return;
+      }
+      // Allow slow Babylon controller-list updates up to 2 seconds while
+      // tapering the poll rate after 300ms to limit Quest main-thread work.
+      if(++attempts>=23){pendingXRRemoval.delete(ctrl);return;}
+      pending.timer=setTimeout(recheck,attempts<6?50:100);
+    };
+    pendingXRRemoval.set(ctrl,{token,epoch,timer:setTimeout(recheck,50)});
   });
-  xr.baseExperience.sessionManager.onXRSessionInit.add(()=>{ui.boot.style.display='none';ui.hud.style.display='flex';setTouchUIVisible(false);const r=document.getElementById('reticle');if(r)r.style.display='none';});
+  xr.baseExperience.sessionManager.onXRSessionInit.add(()=>{
+    xrSessionActive=true;
+    // Rebind controllers retained across XR sessions even if no new Added event fires.
+    for(const ctrl of xr.input.controllers||[])registerXRController(ctrl);
+    for(const [ctrl,pending] of [...pendingXRInit]){
+      pendingXRInit.delete(ctrl);
+      if(pending.epoch!==xrInputEpoch||controllerTokens.get(ctrl)!==pending.token)continue;
+      activateXRController(ctrl,pending.mc,pending.epoch,pending.token);
+    }
+    G.hubInteractionEpoch=(G.hubInteractionEpoch||0)+1; // Cancel pending desktop button presses.
+    // A player can enter VR after using desktop preview. Disable desktop movement
+    // and rebuild the body under the actual XR camera, not the preview camera.
+    G.desktop=false;G.desktopMoveMagnitude=0;desktopKeys.clear();desktopTouch.x=desktopTouch.y=0;
+    ui.boot.style.display='none';ui.hud.style.display='flex';refreshPlayerCosmetics();
+  });
   xr.baseExperience.sessionManager.onXRSessionEnded.add(()=>{
-    for(const [hand,st] of [...G.handState]) releaseGrab(hand,st.ctrl);
-    G.handState.clear(); G.right=null; G.left=null; clearPlayerVisuals();
+    xrSessionActive=false;
+    for(const ctrl of [...pendingXRRemoval.keys()])cancelXRRemoval(ctrl);
+    xrInputEpoch++; // Expire all pending init and input callbacks from the ended session.
+    pendingXRInit.clear();
+    G.hubInteractionEpoch=(G.hubInteractionEpoch||0)+1; // Cancel pending presses across VR disconnects.
+    for(const [hand,st] of [...G.handState]) releaseGrab(hand,st.ctrl,true);
+    for(const [ctrl,token] of [...liveControllerTokens])forgetXRController(ctrl,token);
+    G.handState.clear(); G.right=null; G.left=null; G.joystick.set(0,0); G.turnAxis=0; G.vrSprint=false; G.vrMoveMagnitude=0; clearPlayerVisuals();
     ui.boot.style.display='flex';
   });
   return xr;
 }
 
-function controllerPos(ctrl){ return (ctrl.grip||ctrl.pointer)?.absolutePosition?.clone?.() || (ctrl.grip||ctrl.pointer)?.getAbsolutePosition?.() || B.Vector3.Zero(); }
+function controllerPos(ctrl){
+  // Missing or invalid XR tracking must not masquerade as world origin.
+  // Return a fresh finite snapshot: Babylon can reuse mutable world vectors.
+  try{
+    const node=ctrl?.grip||ctrl?.pointer;
+    if(!node)return null;
+    const p=node.absolutePosition||node.getAbsolutePosition?.();
+    if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z))return null;
+    return new B.Vector3(p.x,p.y,p.z);
+  }catch{return null;}
+}
 
 function pickHubInteractive(scene,origin,fwd,maxDist=8){
   if(!scene||!origin||!fwd)return null;
@@ -11131,7 +19410,7 @@ function setHubButtonHover(mesh,on){
   if(glow)glow.setEnabled(!!on);
   if(face?.material){
     try{
-      const f=md.faceSign||-1; face.position.z = f*(on ? .118 : .105);
+      face.position.z = on ? -0.105 : -0.09;
       face.material.emissiveColor = B.Color3.FromHexString(md.baseColor||'#777777').scale(on ? .18 : .07);
       face.material.roughness = on ? .20 : .28;
       face.material.metallic = on ? .28 : .18;
@@ -11150,14 +19429,14 @@ function setHubButtonHover(mesh,on){
 }
 
 function pressHubButton(mesh,ctrl,callback){
-  if(!mesh?.metadata||mesh.metadata._pressing)return;
+  if(G.state!=='hub'||!hasActivePlayerSession()||!mesh?.metadata||mesh.isDisposed?.()||!G.hubButtons?.includes(mesh)||mesh.metadata._pressing)return;
   const md=mesh.metadata;md._pressing=true;
+  const pressEpoch=G.hubInteractionEpoch||0;
   const root=mesh.parent;
   const originalZ=root?.position?.z ?? 0;
   try{
-    const f=md.faceSign||-1;
-    if(root)root.position.z=originalZ-f*.045;
-    if(md.faceMesh)md.faceMesh.position.z=f*.080;
+    if(root)root.position.z=originalZ-.045;
+    if(md.faceMesh)md.faceMesh.position.z=-.072;
     if(md.hoverGlow){
       md.hoverGlow.setEnabled(true);
       md.hoverGlow.material.alpha=.95;
@@ -11169,22 +19448,31 @@ function pressHubButton(mesh,ctrl,callback){
     if(ctrl)haptic(ctrl,.42,38);
   }catch{}
   setTimeout(()=>{
+    // Never execute a delayed action after leaving the hub or switching XR sessions.
+    // CR4.9.490: a delayed XR button press must not survive controller
+    // disconnect/replacement, even if desktop fallback keeps the hub active.
+    const valid=G.state==='hub'&&hasActivePlayerSession()&&
+      (!ctrl||xrGrabControllerLive(ctrl?.inputSource?.handedness,ctrl))&&
+      G.hubInteractionEpoch===pressEpoch&&G.hubButtons?.includes(mesh)&&!mesh.isDisposed?.();
+    if(!valid){md._pressing=false;return;}
     try{
-      const f=md.faceSign||-1;
       if(root)root.position.z=originalZ;
-      if(md.faceMesh)md.faceMesh.position.z=f*.105;
+      if(md.faceMesh)md.faceMesh.position.z=-.09;
       if(md.hoverGlow){
         md.hoverGlow.material.alpha=.68;
         md.hoverGlow.material.emissiveColor=B.Color3.FromHexString('#fff2a9').scale(.95);
       }
       if(md.glossMesh?.material)md.glossMesh.material.alpha=.16;
-      md._pressing=false;
-      setHubButtonHover(mesh,!!md._hovered);
-    }catch{}
-    try{callback?.();}catch(e){console.error('Button action failed',e);}
+      const hovered=!!md._hovered;md._hovered=null;setHubButtonHover(mesh,hovered);
+    }catch{}finally{md._pressing=false;}
+    // CR4.9.492: visual reset/hover callbacks can end the XR session after
+    // the initial validity proof. Recheck immediately before gameplay action.
+    try{if(G.state==='hub'&&hasActivePlayerSession()&&
+      G.hubInteractionEpoch===pressEpoch&&G.hubButtons?.includes(mesh)&&
+      !mesh.isDisposed?.()&&(!ctrl||xrGrabControllerLive(ctrl?.inputSource?.handedness,ctrl)))
+        callback?.();}catch(e){console.error('Button action failed',e);}
   },95);
 }
-
 function updateHubButtonHover(scene){
   if(G.state!=='hub' || !G.hubButtons?.length)return;
   const hits=new Set();
@@ -11214,22 +19502,2531 @@ function updateHubButtonHover(scene){
   }
 }
 
-function triggerInteract(scene,ctrl){ if(G.state==='shift'){const handed=ctrl.inputSource?.handedness||'none';const st=G.handState.get(handed);if(st?.grabbing?.type==='camera'){addScore(65,'SNAPSHOT');tone(720,.04,'square',.03,-180);haptic(ctrl,.25,25);toast('OFFICE CAM • SNAPSHOT',700);return;}return;} if(G.state!=='hub')return; const node=ctrl.pointer||ctrl.grip; if(!node)return; const origin=node.getAbsolutePosition(); const fwd=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix()).normalize(); const picked=pickHubInteractive(scene,origin,fwd,8); if(picked){const md=picked.metadata;pressHubButton(picked,ctrl,()=>{if(md.interact==='mode')startShift(scene,md.mode||'LEVELS');else if(md.interact==='station')stationAction(md.station);});return;} const p=origin; let best=null,bd=1.6; for(const mm of scene.meshes){if(mm.metadata?.interact){const d=B.Vector3.Distance(p,mm.getAbsolutePosition());if(d<bd){best=mm;bd=d;}}} if(best){const md=best.metadata;pressHubButton(best,ctrl,()=>{if(md.interact==='mode')startShift(scene,md.mode||'LEVELS');else stationAction(md.station);});} }
-function tryGrab(scene,handed,ctrl){
-  if(G.state!=='shift'||handed!=='left')return;
-  const st=G.handState.get(handed);if(!st||st.grabbing)return;
-  const p=controllerPos(ctrl);let best=null,bd=.58;
-  for(const pr of G.props){
-    if(pr.heldBy||pr.npcOwner||pr.broken)continue;
-    const d=B.Vector3.Distance(p,pr.mesh.getAbsolutePosition());if(d<bd){bd=d;best=pr;}
+const uncertainOfficeLooseImpulses=new WeakSet();
+const uncertainOfficeChairCatapultTargets=new WeakSet();
+const uncertainOfficeStaplerShots=new WeakSet();
+const uncertainOfficeTapeTargets=new WeakSet();
+const uncertainOfficeFirstAidUses=new WeakSet();
+const uncertainOfficeGlueTargets=new WeakSet();
+const uncertainOfficeGloveTargets=new WeakSet();
+const uncertainOfficeHammerProps=new WeakSet();
+const uncertainOfficeHammerNPCs=new WeakSet();
+function activateHeldOfficeDevice(scene,ctrl,device,desktopRay=null){
+  if(!device||(device.type!=='printer'&&device.type!=='photocopier'&&device.type!=='aircannon'&&device.type!=='fan'&&device.type!=='deskbell'&&device.type!=='papercannon'&&device.type!=='microwave'&&device.type!=='suctioncannon'&&device.type!=='magnetgun'&&device.type!=='vendingmachine'&&device.type!=='confetticannon'&&device.type!=='watercooler'&&device.type!=='rubberduck'&&device.type!=='deskphone'&&device.type!=='projector'&&device.type!=='coffeepot'&&device.type!=='keyboard'&&device.type!=='calculator'&&device.type!=='stapler'&&device.type!=='tapedispenser'&&device.type!=='firstaid'&&device.type!=='rubberhammer'&&device.type!=='boxingglove'&&device.type!=='chaircatapult'&&device.type!=='gluegun'&&device.type!=='bowlingball'&&device.type!=='cart'&&device.type!=='chair'&&device.type!=='trashcan'&&device.type!=='storagebox'&&device.type!=='briefcase'&&device.type!=='toolbox'&&device.type!=='monitor'&&device.type!=='plantpot'&&device.type!=='mug'&&device.type!=='wrench'&&device.type!=='thermos'&&device.type!=='donutbox'&&device.type!=='folder'&&device.type!=='clipboard'&&device.type!=='trophy'&&device.type!=='umbrella'&&device.type!=='paperball'&&device.type!=='printsheet'&&device.type!=='broom'&&device.type!=='binder'&&device.type!=='newspaper'&&device.type!=='nameplate')||device.broken||!device.mesh)return false;
+  // Never activate a device outside a live shift or through a disposed mesh.
+  if(G.state!=='shift')return false;
+  const interactionWaveToken=G.waveToken,interactionWave=G.wave;
+  const selectedMesh=device.mesh;
+  // Capture desktop aim BEFORE the first mesh callback; later proof must
+  // reject a changed ray/camera even if it changed before impulse selection.
+  let desktopEntry=null;
+  if(desktopRay){
+    try{
+      if(!G.desktop||!scene?.activeCamera)return false;
+      const o=desktopRay.origin,d=desktopRay.direction;
+      if(!o||!d||![o.x,o.y,o.z,d.x,d.y,d.z].every(Number.isFinite))return false;
+      desktopEntry={camera:scene.activeCamera,o,d,ox:o.x,oy:o.y,oz:o.z,dx:d.x,dy:d.y,dz:d.z};
+    }catch{return false;}
   }
-  if(!best)return;const node=ctrl.grip||ctrl.pointer;if(!node)return;
-  best.heldBy=handed;best.vel.set(0,0,0);best.grounded=false;best.mesh.setParent(node);best.mesh.position=new B.Vector3(0,-.03,.06);
-  best._lastHandVel=B.Vector3.Zero();st.grabbing=best;st.prevPos=p.clone();grabSound(best.material);if(['deskphone','stapler','deskbell','mug','coffeepot','toolbox','wrench','rubberduck'].includes(best.type))propSpecialSound(best.type,.8);haptic(ctrl,.25,28);
-}
-function releaseGrab(handed,ctrl){ const st=G.handState.get(handed); if(!st?.grabbing)return; const pr=st.grabbing; let v=pr._lastHandVel?.clone?.()||B.Vector3.Zero(); const max=11;if(v.length()>max)v.normalize().scaleInPlace(max); pr.mesh.setParent(null); pr.heldBy=null; pr.vel=v.scale(.9); pr._lastHandVel=null; st.grabbing=null; st.prevPos=null; releaseSound(pr.material,pr.vel.length());if(pr.vel.length()>2.4)propSpecialSound(pr.type,pr.vel.length()); }
+  const desktopEntryIntact=()=>{try{
+    if(!desktopEntry)return true;
+    const p=desktopEntry,o=desktopRay?.origin,d=desktopRay?.direction;
+    return G.desktop===true&&scene.activeCamera===p.camera&&o===p.o&&d===p.d&&
+      o.x===p.ox&&o.y===p.oy&&o.z===p.oz&&
+      d.x===p.dx&&d.y===p.dy&&d.z===p.dz;
+  }catch{return false;}};
+  // Verify the exact pre-spawn roster BEFORE makeProp runs callbacks.
+  const officePropRosterProof=(roster,maxCount=48)=>{try{
+    if(!Array.isArray(roster)||roster.length>=maxCount||G.props!==roster||
+       G.state!=='shift'||G.waveToken!==interactionWaveToken||
+       G.wave!==interactionWave||G.waveTransition||G.ended)return null;
+    const entries=[];
+    for(let j=0;j<roster.length;j++){
+      const slot=Object.getOwnPropertyDescriptor(roster,String(j));
+      if(!slot||!('value' in slot))return null;
+      entries.push(slot.value);
+    }
+    // Duplicate identities would make post-spawn ownership ambiguous.
+    if(new Set(entries).size!==entries.length)return null;
+    return G.props===roster&&roster.length===entries.length?{roster,entries}:null;
+  }catch{return null;}};
+  const spawnedOfficePropIntact=(proof,prop)=>{try{
+    if(!proof||!prop||G.state!=='shift'||G.waveToken!==interactionWaveToken||
+       G.wave!==interactionWave||G.waveTransition||G.ended||
+       device.mesh!==selectedMesh||device.broken||selectedMesh.isDisposed?.())return false;
+    const {roster,entries}=proof;
+    if(!Array.isArray(entries)||G.props!==roster||roster.length!==entries.length+1||
+       roster.length>48)return false;
+    let matches=0;
+    for(let j=0;j<roster.length;j++){
+      const slot=Object.getOwnPropertyDescriptor(roster,String(j));
+      if(!slot||!('value' in slot))return false;
+      if(j<entries.length&&slot.value!==entries[j])return false;
+      if(j===entries.length&&slot.value!==prop)return false;
+      if(slot.value===prop)matches++;
+    }
+    return matches===1&&G.props===roster&&G.waveToken===interactionWaveToken&&
+      G.wave===interactionWave&&G.state==='shift'&&!G.waveTransition&&!G.ended;
+  }catch{return false;}};
+  // Snapshot NPC identities via own data slots; never execute roster getters.
+  const officeNpcRosterProof=roster=>{try{
+    if(!Array.isArray(roster)||roster.length>96||G.npcs!==roster||
+       G.state!=='shift'||G.waveToken!==interactionWaveToken||
+       G.wave!==interactionWave||G.waveTransition||G.ended)return null;
+    const entries=[];
+    for(let i=0;i<roster.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+      if(!slot||!('value' in slot))return null;
+      entries.push(slot.value);
+    }
+    if(new Set(entries).size!==entries.length)return null;
+    return G.npcs===roster&&roster.length===entries.length?{roster,entries}:null;
+  }catch{return null;}};
+  const officeNpcRosterIntact=proof=>{try{
+    if(!proof||G.state!=='shift'||G.waveToken!==interactionWaveToken||
+       G.wave!==interactionWave||G.waveTransition||G.ended||
+       device.mesh!==selectedMesh||device.broken||selectedMesh.isDisposed?.())return false;
+    const {roster,entries}=proof;
+    if(G.npcs!==roster||roster.length!==entries.length)return false;
+    for(let i=0;i<entries.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+      if(!slot||!('value' in slot)||slot.value!==entries[i])return false;
+    }
+    return G.npcs===roster&&G.waveToken===interactionWaveToken&&
+      G.wave===interactionWave&&G.state==='shift';
+  }catch{return false;}};
+  let now=0,origin=null;
+  try{
+    if(selectedMesh.isDisposed?.())return false;
+    now=performance.now();
+    const p=selectedMesh.getAbsolutePosition();
+    origin={x:p.x,y:p.y,z:p.z};
+    if(G.state!=='shift'||device.mesh!==selectedMesh||device.broken||selectedMesh.isDisposed?.()||
+       !desktopEntryIntact())return false;
+  }catch{return false;}
+  if(!Number.isFinite(now)||!origin||![origin.x,origin.y,origin.z].every(Number.isFinite))return false;
+  if(Number.isFinite(device._deviceNextAt)&&now<device._deviceNextAt)return false;
+  if(device.type==='bowlingball'||device.type==='cart'||device.type==='chair'||device.type==='trashcan'||device.type==='storagebox'||device.type==='briefcase'||device.type==='toolbox'||device.type==='monitor'||device.type==='plantpot'||device.type==='mug'||device.type==='wrench'||device.type==='thermos'||device.type==='donutbox'||device.type==='folder'||device.type==='clipboard'||device.type==='trophy'||device.type==='umbrella'||device.type==='paperball'||device.type==='printsheet'||device.type==='broom'||device.type==='binder'||device.type==='newspaper'||device.type==='nameplate'){
+    // Aim at a loose bowling ball, office cart or swivel chair and tap
+    // VR trigger to roll/shove it. All reuse existing physics bodies.
+    const roster=G.props;
+    let impulseType=null,impulseVel=null;
+    try{impulseType=device.type;impulseVel=device.vel;}catch{return false;}
+    if(!['bowlingball','cart','chair','trashcan','storagebox','briefcase','toolbox','monitor','plantpot','mug','wrench','thermos','donutbox','folder','clipboard','trophy','umbrella','paperball','printsheet','broom','binder','newspaper','nameplate'].includes(impulseType)||
+       !impulseVel||typeof impulseVel.set!=='function'||
+       !Array.isArray(roster)||roster.length>256||device.heldBy||
+       device.npcOwner||device.broken)return false;
+    // CR4.9.348: require one own data slot in the active prop roster. A
+    // replaced/disposed/parented mesh cannot receive a loose-cart impulse.
+    const size=roster.length;
+    let index=-1;
+    const rosterSnapshot=[];
+    try{
+      for(let i=0;i<size;i++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+        if(!slot||!('value' in slot))return false;
+        rosterSnapshot.push(slot.value);
+        if(slot.value===device){if(index!==-1)return false;index=i;}
+      }
+    }catch{return false;}
+    if(index<0)return false;
+    const stillLoose=()=>{try{
+      const slot=Object.getOwnPropertyDescriptor(roster,String(index));
+      if(!(G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&
+        !G.waveTransition&&!G.ended&&G.props===roster&&roster.length===size&&
+        !!slot&&('value' in slot)&&slot.value===device&&
+        device.mesh===selectedMesh&&device.type===impulseType&&device.vel===impulseVel&&
+        !selectedMesh.isDisposed?.()&&selectedMesh.parent==null&&
+        !device.heldBy&&!device.npcOwner&&!device.broken))return false;
+      // A velocity setter or collision callback can alias this prop into another
+      // roster slot without changing the array length or original slot.
+      for(let i=0;i<size;i++){
+        const other=Object.getOwnPropertyDescriptor(roster,String(i));
+        if(!other||!('value' in other)||other.value!==rosterSnapshot[i]||
+           (i!==index&&other.value===device))return false;
+      }
+      const own=Object.getOwnPropertyDescriptor(roster,String(index));
+      return G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&
+        !G.waveTransition&&!G.ended&&G.props===roster&&roster.length===size&&
+        !!own&&('value' in own)&&own.value===device&&
+        device.mesh===selectedMesh&&device.type===impulseType&&device.vel===impulseVel&&
+        !selectedMesh.isDisposed?.()&&selectedMesh.parent==null&&
+        !device.heldBy&&!device.npcOwner&&!device.broken;
+    }catch{return false;}};
+    if(!stillLoose()||uncertainOfficeLooseImpulses.has(device))return false;
+    let forward=null,hand=null,node=null,desktopCamera=null,desktopAimRaw=null,vrAimRaw=null;
+    try{
+      node=ctrl?.grip||ctrl?.pointer;
+      if(node){
+        node.computeWorldMatrix?.(true);
+        forward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+        hand=node.getAbsolutePosition();
+      }else if(!ctrl&&G.desktop===true&&desktopRay&&scene?.activeCamera){
+        // Browser actions require the original raycast-confirmed prop.
+        if(!desktopEntryIntact())return false;
+        desktopCamera=scene.activeCamera;
+        forward={x:desktopRay.direction?.x,y:desktopRay.direction?.y,z:desktopRay.direction?.z};
+        hand={x:desktopRay.origin?.x,y:desktopRay.origin?.y,z:desktopRay.origin?.z};
+      }else return false;
+      if(!forward||!hand||![forward.x,forward.y,forward.z,hand.x,hand.y,hand.z].every(Number.isFinite))return false;
+      // Flatten only the impulse vector, not the ray used for stale-pick proof.
+      if(desktopCamera)desktopAimRaw={x:forward.x,y:forward.y,z:forward.z};
+      else vrAimRaw={x:forward.x,y:forward.y,z:forward.z};
+      const flat=Math.hypot(forward.x,forward.z);
+      if(flat<.20)return false;
+      forward.x/=flat;forward.z/=flat;
+      if(Math.hypot(hand.x-origin.x,hand.y-origin.y,hand.z-origin.z)>(desktopCamera?2.8:1.2))return false;
+    }catch{return false;}
+    if(!stillLoose())return false;
+    // Raycast-validated desktop picks must keep the same camera and ray.
+    const desktopAimIntact=()=>{try{
+      if(!desktopCamera)return true;
+      const o=desktopRay?.origin,d=desktopRay?.direction;
+      return desktopEntryIntact()&&G.desktop===true&&scene.activeCamera===desktopCamera&&
+        !!o&&!!d&&o.x===hand.x&&o.y===hand.y&&o.z===hand.z&&
+        !!desktopAimRaw&&d.x===desktopAimRaw.x&&
+        d.y===desktopAimRaw.y&&d.z===desktopAimRaw.z;
+    }catch{return false;}};
+    const vrAimIntact=()=>{try{
+      if(desktopCamera)return true;
+      if(!node||!vrAimRaw||(ctrl?.grip||ctrl?.pointer)!==node)return false;
+      node.computeWorldMatrix?.(true);
+      const liveHand=node.getAbsolutePosition();
+      const liveForward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      return !!liveHand&&!!liveForward&&
+        [liveHand.x,liveHand.y,liveHand.z,liveForward.x,liveForward.y,liveForward.z].every(Number.isFinite)&&
+        Math.hypot(liveHand.x-hand.x,liveHand.y-hand.y,liveHand.z-hand.z)<=.08&&
+        Math.hypot(liveForward.x-vrAimRaw.x,liveForward.y-vrAimRaw.y,liveForward.z-vrAimRaw.z)<=.045;
+    }catch{return false;}};
+    try{
+      if(!desktopAimIntact()||!vrAimIntact())return false;
+      if(!desktopCamera){
+        if((ctrl?.grip||ctrl?.pointer)!==node)return false;
+        const liveHand=node.getAbsolutePosition();
+        if(!liveHand||![liveHand.x,liveHand.y,liveHand.z].every(Number.isFinite)||
+           Math.hypot(liveHand.x-hand.x,liveHand.y-hand.y,liveHand.z-hand.z)>.08)return false;
+      }
+      const current=selectedMesh.getAbsolutePosition();
+      if(!current||![current.x,current.y,current.z].every(Number.isFinite)||
+         current.x!==origin.x||current.y!==origin.y||current.z!==origin.z)return false;
+    }catch{return false;}
+    if(!stillLoose()||!desktopAimIntact()||!vrAimIntact())return false;
+    // Validate wall clearance again after fallible controller/mesh callbacks.
+    if(!desktopCamera&&officeDeviceOccluded(hand,origin))return false;
+    if(!stillLoose()||!desktopAimIntact()||!vrAimIntact())return false;
+    const cart=impulseType==='cart',chair=impulseType==='chair';
+    const bin=impulseType==='trashcan',box=impulseType==='storagebox';
+    const tool=impulseType==='toolbox',caseProp=impulseType==='briefcase';
+    const screen=impulseType==='monitor',pot=impulseType==='plantpot';
+    const mug=impulseType==='mug',wrench=impulseType==='wrench';
+    const flask=impulseType==='thermos',donut=impulseType==='donutbox';
+    const folder=impulseType==='folder',clipboard=impulseType==='clipboard';
+    const trophy=impulseType==='trophy',umbrella=impulseType==='umbrella',paperball=impulseType==='paperball',paperSheet=impulseType==='printsheet';
+    const broom=impulseType==='broom',binder=impulseType==='binder',newspaper=impulseType==='newspaper',nameplate=impulseType==='nameplate';
+    const push=broom?4.4:binder?5.2:newspaper?6.6:nameplate?5.0:paperSheet?4.7:paperball?7.2:folder?6.4:clipboard?5.7:trophy?4.0:umbrella?5.2:flask?5.5:donut?5.2:mug?5.9:wrench?6.4:chair?5.3:cart?4.6:bin?6.1:box?4.0:tool?3.8:caseProp?5.6:screen?3.1:pot?4.8:7;
+    try{device._deviceNextAt=now+(broom?1150:binder?800:newspaper?600:nameplate?950:paperSheet?650:paperball?500:folder?700:clipboard?850:trophy?1300:umbrella?1000:flask?950:donut?1000:mug?850:wrench?1050:chair?1300:cart?1600:bin?1000:box?1400:tool?1500:caseProp?950:screen?1600:pot?1100:1250);}catch{return false;}
+    if(!stillLoose()||!desktopAimIntact()||!vrAimIntact())return false;
+    const vx=forward.x*push,vy=broom?.22:binder?.35:newspaper?.55:nameplate?.25:paperSheet?.65:paperball?.6:folder?.4:clipboard?.28:trophy?.18:umbrella?.25:flask?.35:donut?.30:mug?.48:wrench?.22:chair?.25:cart?.20:bin?.40:box?.18:tool?.12:caseProp?.30:screen?.12:pot?.38:.35,vz=forward.z*push;
+    // Record an uncertain impulse BEFORE a fallible velocity setter.
+    uncertainOfficeLooseImpulses.add(device);
+    try{impulseVel.set(vx,vy,vz);}catch{return false;}
+    // A custom velocity setter can silently clamp, replace or partially write.
+    // Do not claim an impulse succeeded unless its exact target and aim remain owned.
+    if(!stillLoose()||!desktopAimIntact()||!vrAimIntact())return false;
+    try{if(impulseVel.x!==vx||impulseVel.y!==vy||impulseVel.z!==vz)return false;}catch{return false;}
+    try{device.grounded=false;}catch{return false;}
+    if(!stillLoose()||!desktopAimIntact()||!vrAimIntact())return false;
+    try{if(device.grounded!==false||impulseVel.x!==vx||impulseVel.y!==vy||impulseVel.z!==vz)return false;}catch{return false;}
+    uncertainOfficeLooseImpulses.delete(device);
+    // Two optional office challenges reward genuine, ownership-checked physics actions.
+    // They do not delay the original four-task completion bonus.
+    if((chair||cart)&&stillLoose()){
+      try{completeOfficeTask(chair?'CHAIR':'CART',scene,selectedMesh.getAbsolutePosition());}catch{}
+    }
+    try{propSpecialSound(impulseType,1);haptic(ctrl,chair?.18:cart?.22:bin?.20:box?.16:tool?.24:caseProp?.19:screen?.23:pot?.17:.26,chair?28:cart?34:bin?32:box?26:tool?35:caseProp?30:screen?34:pot?27:40);}catch{}
+    return true;
+  }
+  if(device.type==='projector'){
+    // A low-cost holographic presentation panel toggles without dynamic lights.
+    if(device._projectorFaulted)return false;
+    let screen=null;
+    try{screen=device.mesh.metadata?.projectorScreen;if(!screen||screen.isDisposed?.()||typeof screen.setEnabled!=='function')return false;}catch{return false;}
+    const next=!device._projectorOn;
+    device._deviceNextAt=now+450;
+    try{screen.setEnabled(next);}catch{
+      device._projectorFaulted=true; // Do not repeat an ambiguous partial toggle.
+      try{screen.setEnabled(!next);}catch{}
+      return false;
+    }
+    device._projectorOn=next;
+    try{propSpecialSound('projector',.7);haptic(ctrl,.12,22);}catch{}
+    return true;
+  }
 
-function updateGrabVelocity(){ for(const [hand,st] of G.handState){ if(!st.grabbing)continue; const p=controllerPos(st.ctrl); if(st.prevPos)st.grabbing._lastHandVel=p.subtract(st.prevPos).scale(60); st.prevPos=p; } }
+  if(device.type==='deskphone'){
+    // 4.9.410: keep the ringing phone and NPC roster/position in one live shift.
+    const proof=officeNpcRosterProof(G.npcs);
+    if(!proof)return false;
+    const active=()=>{try{
+      if(!officeNpcRosterIntact(proof)||!desktopEntryIntact()||
+         device.type!=='deskphone')return false;
+      const p=selectedMesh.getAbsolutePosition();
+      return !!p&&p.x===origin.x&&p.y===origin.y&&p.z===origin.z;
+    }catch{return false;}};
+    if(!active())return false;
+    try{device._deviceNextAt=now+1200;}catch{return false;}
+    if(!active())return false;
+    let alerted=0;
+    for(const n of proof.entries){
+      if(!active())break;
+      try{
+        if(!n||n.dead||n.bossId||!n.root||n.root.isDisposed?.())continue;
+        const p=n.root.position;
+        // CR4.9.510: avoid a temporary numeric array for every alerted NPC.
+        if(!p)continue;
+        const px=p.x,py=p.y,pz=p.z;
+        if(!Number.isFinite(px)||!Number.isFinite(py)||!Number.isFinite(pz))continue;
+        const dx=px-origin.x,dy=py-origin.y,dz=pz-origin.z;
+        if(dx*dx+dy*dy+dz*dz>3.4*3.4)continue;
+        if(!active())break;
+        n.hesitate=Math.max(Number.isFinite(n.hesitate)?n.hesitate:0,.25);
+        if(!active())break;
+        if(n.personality==='coward'){
+          if(!active())break;
+          n.panicT=Math.max(Number.isFinite(n.panicT)?n.panicT:0,.45);
+        }
+        // Only count an NPC response if the exact roster/shift still owns it.
+        if(!active())break;
+        alerted++;
+        if(alerted>=5)break;
+      }catch{if(!active())break;}
+    }
+    try{propSpecialSound('deskphone',1);haptic(ctrl,.13,25);}catch{}
+    // CR4.9.510: a real, still-owned NPC reaction advances PHONE PANIC.
+    if(alerted>0&&active())try{recordOfficePhonePanic(device,scene,origin,now,alerted,proof);}catch{}
+    if(active())try{recordOfficeHotline(device,scene,origin,now);}catch{}
+    if(active())try{recordOfficeSnackDelivery(device,scene,origin,now);}catch{}
+    if(active())try{recordOfficeFaxFrenzy(device,scene,origin,now,0);}catch{}
+    if(active())try{recordOfficeCopyCall(device,scene,origin,now,0);}catch{}
+    if(active())try{recordOfficePhoneCopy(device,scene,origin,now,0);}catch{}
+    return true;
+  }
+  if(device.type==='firstaid'){
+    // 4.9.408: medical kit must not heal across a shift change or ambiguous setter.
+    if(uncertainOfficeFirstAidUses.has(device))return false;
+    const scopeIntact=()=>{try{
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||
+         G.wave!==interactionWave||G.waveTransition||G.ended||
+         device.mesh!==selectedMesh||device.type!=='firstaid'||
+         device.broken||selectedMesh.isDisposed?.()||!desktopEntryIntact())return false;
+      const q=selectedMesh.getAbsolutePosition();
+      return !!q&&q.x===origin.x&&q.y===origin.y&&q.z===origin.z;
+    }catch{return false;}};
+    if(!scopeIntact())return false;
+    let hp,max;
+    try{hp=G.hp;max=G.maxHp;}catch{return false;}
+    if(!Number.isFinite(hp)||!Number.isFinite(max)||hp<0||max<=0||hp>=max||
+       !scopeIntact())return false;
+    const target=Math.min(max,hp+16);
+    try{device._deviceNextAt=now+6500;}catch{return false;}
+    if(!scopeIntact()||G.hp!==hp||G.maxHp!==max)return false;
+    // The health setter may commit then throw. Never replay an ambiguous heal.
+    uncertainOfficeFirstAidUses.add(device);
+    try{G.hp=target;}catch{return false;}
+    if(!scopeIntact()||G.hp!==target||G.maxHp!==max)return false;
+    uncertainOfficeFirstAidUses.delete(device);
+    try{tone(680,.08,'sine',.018,110);haptic(ctrl,.20,32);}catch{}
+    return true;
+  }
+  if(device.type==='stapler'){
+    // A funny stapler pops one tiny, real paper ball. The body budget stays 48.
+    const roster=G.props,proof=officePropRosterProof(roster);
+    if(!proof||uncertainOfficeStaplerShots.has(device))return false;
+    const intact=()=>{try{
+      if(!desktopEntryIntact()||G.state!=='shift'||G.waveToken!==interactionWaveToken||
+         G.wave!==interactionWave||G.waveTransition||G.ended||
+         G.props!==roster||roster.length!==proof.entries.length||
+         device.mesh!==selectedMesh||device.type!=='stapler'||device.broken)return false;
+      for(let k=0;k<proof.entries.length;k++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(k));
+        if(!slot||!('value' in slot)||slot.value!==proof.entries[k])return false;
+      }
+      return G.props===roster&&G.waveToken===interactionWaveToken&&G.wave===interactionWave;
+    }catch{return false;}};
+    let aimNode=null,localZ=1,forward=null;
+    try{
+      aimNode=ctrl?.grip||ctrl?.pointer;
+      if(!aimNode){
+        if(!G.desktop||device.heldBy||device.npcOwner)return false;
+        aimNode=device.mesh;localZ=-1;
+      }
+      aimNode.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,localZ),aimNode.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+    }catch{return false;}
+    const aimIntact=()=>{try{
+      if(!intact()||(localZ===1&&(ctrl?.grip||ctrl?.pointer)!==aimNode))return false;
+      // The dispenser, selected ray and controller must not move mid-activation.
+      const liveOrigin=selectedMesh.getAbsolutePosition();
+      if(!liveOrigin||liveOrigin.x!==origin.x||liveOrigin.y!==origin.y||
+         liveOrigin.z!==origin.z)return false;
+      if(localZ===1){
+        const hand=aimNode.getAbsolutePosition();
+        if(!hand||![hand.x,hand.y,hand.z].every(Number.isFinite)||
+           Math.hypot(hand.x-origin.x,hand.y-origin.y,hand.z-origin.z)>1.2)return false;
+      }
+      aimNode.computeWorldMatrix?.(true);
+      const live=B.Vector3.TransformNormal(new B.Vector3(0,0,localZ),aimNode.getWorldMatrix());
+      const len=Math.hypot(live.x,live.y,live.z);
+      return Number.isFinite(len)&&len>.001&&
+        Math.hypot(live.x/len-forward.x,live.y/len-forward.y,live.z/len-forward.z)<=.045&&intact();
+    }catch{return false;}};
+    if(!aimIntact())return false;
+    const vx=forward.x*4.5,vy=forward.y*4.5+.6,vz=forward.z*4.5;
+    if(![vx,vy,vz].every(Number.isFinite))return false;
+    try{device._deviceNextAt=now+950;}catch{return false;}
+    if(!aimIntact())return false;
+    if(localZ===1){
+      let hand;
+      try{hand=aimNode.getAbsolutePosition();}catch{return false;}
+      if(!hand||![hand.x,hand.y,hand.z].every(Number.isFinite))return false;
+      const reach=Math.hypot(hand.x-origin.x,hand.y-origin.y,hand.z-origin.z);
+      if(!Number.isFinite(reach)||reach>1.2||
+         (reach>.18&&officeDeviceOccluded(hand,origin)))return false;
+    }
+    if(!aimIntact())return false;
+    // Mark before makeProp: a published spawn can throw after its side effects.
+    uncertainOfficeStaplerShots.add(device);
+    try{
+      const shot=makeProp(scene,'paperball',new B.Vector3(
+        origin.x+forward.x*.28,origin.y+forward.y*.28+.10,origin.z+forward.z*.28),
+        {material:'paper',mass:.15,damage:1,size:[.15,.15,.15]});
+      if(!spawnedOfficePropIntact(proof,shot)||!shot?.vel||typeof shot.vel.set!=='function')return false;
+      const v=shot.vel;
+      v.set(vx,vy,vz);
+      if(!spawnedOfficePropIntact(proof,shot)||shot.vel!==v||
+         v.x!==vx||v.y!==vy||v.z!==vz)return false;
+      shot.grounded=false;shot.temporaryT=7;
+      if(!spawnedOfficePropIntact(proof,shot)||shot.grounded!==false||shot.temporaryT!==7)return false;
+    }catch{return false;}
+    uncertainOfficeStaplerShots.delete(device);
+    try{propSpecialSound('stapler',.8);paperShuffleSound();haptic(ctrl,.14,25);}catch{}
+    return true;
+  }
+
+  if(device.type==='tapedispenser'){
+    // Tape a nearby loose floor prop for 3 seconds using the existing
+    // lightweight sticky-physics system. No new bodies or permanent joints.
+    const roster=G.props,proof=officePropRosterProof(roster,257);
+    if(!proof)return false;
+    const intact=()=>{try{
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||
+         G.wave!==interactionWave||G.waveTransition||G.ended||
+         G.props!==roster||roster.length!==proof.entries.length||
+         device.mesh!==selectedMesh||device.type!=='tapedispenser'||
+         device.broken||selectedMesh.isDisposed?.()||!desktopEntryIntact())return false;
+      for(let j=0;j<proof.entries.length;j++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(j));
+        if(!slot||!('value' in slot)||slot.value!==proof.entries[j])return false;
+      }
+      return G.props===roster&&G.waveToken===interactionWaveToken&&
+        G.wave===interactionWave&&G.state==='shift';
+    }catch{return false;}};
+    if(!intact())return false;
+    let best=null,bestDist=.98,bestMesh=null,bestVel=null;
+    for(const p of proof.entries){
+      if(!intact())return false;
+      try{
+        if(!p||p===device||p.broken||p.heldBy||p.npcOwner||
+           !p.grounded||!p.mesh||p.mesh.isDisposed?.()||!p.vel||
+           typeof p.vel.set!=='function'||uncertainOfficeTapeTargets.has(p))continue;
+        const mesh=p.mesh,q=mesh.getAbsolutePosition();
+        if(!intact())return false;
+        if(!q||![q.x,q.y,q.z].every(Number.isFinite)||q.y>.9)continue;
+        const d=Math.hypot(q.x-origin.x,q.y-origin.y,q.z-origin.z);
+        if(!Number.isFinite(d)||d<.18||d>=bestDist)continue;
+        best=p;bestDist=d;bestMesh=mesh;bestVel=p.vel;
+      }catch{if(!intact())return false;}
+    }
+    if(!best||!intact())return false;
+    const targetOwned=()=>{try{
+      return intact()&&best.mesh===bestMesh&&best.vel===bestVel&&
+        !bestMesh.isDisposed?.()&&!best.heldBy&&!best.npcOwner&&
+        !best.broken&&best.grounded===true;
+    }catch{return false;}};
+    if(!targetOwned())return false;
+    // Freeze the target coordinates before wall and cooldown callbacks.
+    let qx,qy,qz;
+    try{
+      const q=bestMesh.getAbsolutePosition();
+      if(!q||![q.x,q.y,q.z].every(Number.isFinite))return false;
+      qx=q.x;qy=q.y;qz=q.z;
+    }catch{return false;}
+    const tapePositionsIntact=()=>{try{
+      if(!targetOwned())return false;
+      const a=selectedMesh.getAbsolutePosition(),b=bestMesh.getAbsolutePosition();
+      if(!a||!b||![a.x,a.y,a.z,b.x,b.y,b.z].every(Number.isFinite)||
+         a.x!==origin.x||a.y!==origin.y||a.z!==origin.z||
+         b.x!==qx||b.y!==qy||b.z!==qz||b.y>.9)return false;
+      const distance=Math.hypot(qx-origin.x,qy-origin.y,qz-origin.z);
+      if(!Number.isFinite(distance)||distance<.18||distance>.98)return false;
+      if(ctrl){
+        const node=ctrl.grip||ctrl.pointer;
+        if(!node)return false;
+        const hand=node.getAbsolutePosition();
+        if(!hand||![hand.x,hand.y,hand.z].every(Number.isFinite))return false;
+        const reach=Math.hypot(hand.x-origin.x,hand.y-origin.y,hand.z-origin.z);
+        if(!Number.isFinite(reach)||reach>1.2||
+           (reach>.18&&officeDeviceOccluded(hand,origin)))return false;
+      }
+      return targetOwned();
+    }catch{return false;}};
+    if(!tapePositionsIntact()||
+       officeDeviceOccluded(origin,{x:qx,y:qy,z:qz})||
+       !tapePositionsIntact())return false;
+    try{device._deviceNextAt=now+1250;}catch{return false;}
+    if(!tapePositionsIntact())return false;
+    // Reserve before any fallible setter; never repeat ambiguous tape writes.
+    uncertainOfficeTapeTargets.add(best);
+    try{
+      bestVel.set(0,0,0);
+      if(!tapePositionsIntact()||bestVel.x!==0||bestVel.y!==0||bestVel.z!==0)return false;
+      best.stickyT=3.2;
+      if(!tapePositionsIntact()||best.stickyT!==3.2||
+         bestVel.x!==0||bestVel.y!==0||bestVel.z!==0)return false;
+    }catch{return false;}
+    uncertainOfficeTapeTargets.delete(best);
+    try{propSpecialSound('tapedispenser',.85);haptic(ctrl,.17,30);}catch{}
+    return true;
+  }
+
+  if(device.type==='rubberduck'){
+    // 4.9.409: a real squeak briefly distracts nearby workers; timid NPCs panic.
+    // No damage, new physics bodies, permanent AI states or extra draw calls.
+    const proof=officeNpcRosterProof(G.npcs);
+    if(!proof)return false;
+    const active=()=>{try{
+      if(!officeNpcRosterIntact(proof)||!desktopEntryIntact()||
+         device.type!=='rubberduck')return false;
+      const q=selectedMesh.getAbsolutePosition();
+      return !!q&&q.x===origin.x&&q.y===origin.y&&q.z===origin.z;
+    }catch{return false;}};
+    if(!active())return false;
+    try{device._deviceNextAt=now+1050;}catch{return false;}
+    if(!active())return false;
+    let startled=0;
+    for(const npc of proof.entries){
+      if(!active())break;
+      try{
+        if(!npc||npc.dead||npc.bossId||!npc.root||npc.root.isDisposed?.())continue;
+        const q=npc.root.position;
+        if(!q||![q.x,q.y,q.z].every(Number.isFinite))continue;
+        const dx=q.x-origin.x,dy=q.y-origin.y,dz=q.z-origin.z;
+        if(dx*dx+dy*dy+dz*dz>2.6*2.6)continue;
+        if(!active())break;
+        npc.hesitate=Math.max(Number.isFinite(npc.hesitate)?npc.hesitate:0,.38);
+        // A custom hesitation setter may swap the roster or shift synchronously.
+        if(!active())break;
+        if(npc.personality==='coward'){
+          if(!active())break;
+          npc.panicT=Math.max(Number.isFinite(npc.panicT)?npc.panicT:0,.65);
+        }
+        startled++;
+        if(startled>=4)break;
+      }catch{if(!active())break;}
+    }
+    try{propSpecialSound('rubberduck',1);haptic(ctrl,.13,25);}catch{}
+    return true;
+  }
+  if(device.type==='calculator'||device.type==='keyboard'){
+    device._deviceNextAt=now+(device.type==='keyboard'?650:450);
+    try{if(device.type==='keyboard')keyboardBurstSound();else propSpecialSound(device.type,1);haptic(ctrl,.12,24);}catch{}
+    return true;
+  }
+  if(device.type==='gluegun'){
+    // 4.9.413: snapshot every own prop slot, aim and ownership before touching
+    // physics. A setter may commit and then throw; never replay an uncertain hit.
+    const roster=G.props,proof=officePropRosterProof(roster,257);
+    if(!proof)return false;
+    const stable=()=>{try{
+      if(!desktopEntryIntact()||G.state!=='shift'||G.waveToken!==interactionWaveToken||
+         G.wave!==interactionWave||G.waveTransition||G.ended||
+         device.mesh!==selectedMesh||device.type!=='gluegun'||device.broken||
+         selectedMesh.isDisposed?.()||G.props!==roster||
+         roster.length!==proof.entries.length)return false;
+      for(let k=0;k<proof.entries.length;k++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(k));
+        if(!slot||!('value' in slot)||slot.value!==proof.entries[k])return false;
+      }
+      return true;
+    }catch{return false;}};
+    let node,forward,hand;
+    try{
+      node=ctrl?.grip||ctrl?.pointer;
+      if(!node)return false;
+      node.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+      hand=node.getAbsolutePosition();
+      if(!hand||![hand.x,hand.y,hand.z].every(Number.isFinite))return false;
+      hand={x:hand.x,y:hand.y,z:hand.z};
+    }catch{return false;}
+    if(!stable())return false;
+    let best=null,bestD=3.6,bestPos=null;
+    for(const p of proof.entries){
+      if(!stable())return false;
+      try{
+        if(!p||p===device||p.type==='camera'||p.heldBy||p.npcOwner||
+           p.broken||p.grounded!==true||!p.mesh||!p.vel||
+           p.mesh.isDisposed?.()||uncertainOfficeGlueTargets.has(p))continue;
+        const q=p.mesh.getAbsolutePosition();
+        if(!stable())return false;
+        if(!q||![q.x,q.y,q.z].every(Number.isFinite)||q.y>.9)continue;
+        const dx=q.x-origin.x,dy=q.y-origin.y,dz=q.z-origin.z;
+        const d=Math.hypot(dx,dy,dz);
+        if(!Number.isFinite(d)||d<.25||d>=bestD||
+           (dx*forward.x+dy*forward.y+dz*forward.z)/d<.65)continue;
+        best=p;bestD=d;bestPos={x:q.x,y:q.y,z:q.z};
+      }catch{if(!stable())return false;}
+    }
+    if(!best||!bestPos||!stable())return false;
+    const targetMesh=best.mesh,velocity=best.vel;
+    const owned=()=>{try{
+      if(!stable()||best.mesh!==targetMesh||best.vel!==velocity||
+         best.heldBy||best.npcOwner||best.broken||best.grounded!==true||
+         targetMesh.isDisposed?.()||uncertainOfficeGlueTargets.has(best)||
+         (ctrl?.grip||ctrl?.pointer)!==node)return false;
+      const a=selectedMesh.getAbsolutePosition(),b=targetMesh.getAbsolutePosition();
+      if(!stable()||!a||!b||
+         a.x!==origin.x||a.y!==origin.y||a.z!==origin.z||
+         b.x!==bestPos.x||b.y!==bestPos.y||b.z!==bestPos.z)return false;
+      const hp=node.getAbsolutePosition();
+      if(!hp||![hp.x,hp.y,hp.z].every(Number.isFinite)||
+         Math.hypot(hp.x-hand.x,hp.y-hand.y,hp.z-hand.z)>.05||
+         Math.hypot(hp.x-origin.x,hp.y-origin.y,hp.z-origin.z)>1.2)return false;
+      const dir=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      const mag=Math.hypot(dir.x,dir.y,dir.z);
+      if(!Number.isFinite(mag)||mag<.001||
+         (dir.x*forward.x+dir.y*forward.y+dir.z*forward.z)/mag<.995)return false;
+      return stable();
+    }catch{return false;}};
+    if(!owned()||officeDeviceOccluded(origin,bestPos)||!owned()||
+       officeDeviceOccluded(hand,origin)||!owned())return false;
+    try{device._deviceNextAt=now+1100;}catch{return false;}
+    if(!owned())return false;
+    uncertainOfficeGlueTargets.add(best);
+    try{
+      velocity.set(0,0,0);
+      if(!stable()||best.vel!==velocity||
+         velocity.x!==0||velocity.y!==0||velocity.z!==0)return false;
+      best.stickyT=3.2;
+      if(!stable()||best.stickyT!==3.2||
+         best.heldBy||best.npcOwner||best.broken)return false;
+      best.grounded=true;
+      if(!stable()||best.grounded!==true||
+         best.heldBy||best.npcOwner||best.broken)return false;
+    }catch{return false;}
+    uncertainOfficeGlueTargets.delete(best);
+    try{propSpecialSound('gluegun',1);haptic(ctrl,.21,32);}catch{}
+    return true;
+  }
+  if(device.type==='boxingglove'){
+    // 4.9.414: preserve full roster/target/aim proof across fallible physics
+    // callbacks. Do not replay an impulse after ambiguous partial writes.
+    const roster=G.props,proof=officePropRosterProof(roster,257);
+    if(!proof)return false;
+    const stable=()=>{try{
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||
+         G.wave!==interactionWave||G.waveTransition||G.ended||
+         G.props!==roster||roster.length!==proof.entries.length||
+         device.mesh!==selectedMesh||device.type!=='boxingglove'||
+         device.broken||selectedMesh.isDisposed?.()||!desktopEntryIntact())return false;
+      for(let k=0;k<proof.entries.length;k++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(k));
+        if(!slot||!('value' in slot)||slot.value!==proof.entries[k])return false;
+      }
+      return true;
+    }catch{return false;}};
+    let node,forward,hand;
+    try{
+      node=ctrl?.grip||ctrl?.pointer;
+      if(!node)return false;
+      node.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+      const hp=node.getAbsolutePosition();
+      if(!hp||![hp.x,hp.y,hp.z].every(Number.isFinite))return false;
+      hand={x:hp.x,y:hp.y,z:hp.z};
+    }catch{return false;}
+    if(!stable())return false;
+    let best=null,bestD=1.85,bestPos=null;
+    for(const p of proof.entries){
+      if(!stable())return false;
+      try{
+        if(!p||p===device||p.heldBy||p.npcOwner||p.broken||
+           !p.mesh||!p.vel||p.mesh.isDisposed?.()||
+           uncertainOfficeGloveTargets.has(p))continue;
+        const q=p.mesh.getAbsolutePosition();
+        if(!stable())return false;
+        if(!q||![q.x,q.y,q.z].every(Number.isFinite))continue;
+        const dx=q.x-origin.x,dy=q.y-origin.y,dz=q.z-origin.z;
+        const d=Math.hypot(dx,dy,dz);
+        if(!Number.isFinite(d)||d<.18||d>=bestD||
+           (dx*forward.x+dy*forward.y+dz*forward.z)/d<.52)continue;
+        best=p;bestD=d;bestPos={x:q.x,y:q.y,z:q.z};
+      }catch{if(!stable())return false;}
+    }
+    if(!best||!bestPos||!stable())return false;
+    const targetMesh=best.mesh,velocity=best.vel;
+    const owned=()=>{try{
+      if(!stable()||best.mesh!==targetMesh||best.vel!==velocity||
+         best.heldBy||best.npcOwner||best.broken||targetMesh.isDisposed?.()||
+         uncertainOfficeGloveTargets.has(best)||
+         (ctrl?.grip||ctrl?.pointer)!==node)return false;
+      const a=selectedMesh.getAbsolutePosition(),b=targetMesh.getAbsolutePosition();
+      if(!stable()||!a||!b||a.x!==origin.x||a.y!==origin.y||
+         a.z!==origin.z||b.x!==bestPos.x||b.y!==bestPos.y||
+         b.z!==bestPos.z)return false;
+      const hp=node.getAbsolutePosition();
+      if(!hp||![hp.x,hp.y,hp.z].every(Number.isFinite)||
+         Math.hypot(hp.x-hand.x,hp.y-hand.y,hp.z-hand.z)>.05||
+         Math.hypot(hp.x-origin.x,hp.y-origin.y,hp.z-origin.z)>1.2)return false;
+      const dir=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      const len=Math.hypot(dir.x,dir.y,dir.z);
+      if(!Number.isFinite(len)||len<.001||
+         (dir.x*forward.x+dir.y*forward.y+dir.z*forward.z)/len<.995)return false;
+      return stable();
+    }catch{return false;}};
+    if(!owned()||officeDeviceOccluded(origin,bestPos)||!owned()||
+       officeDeviceOccluded(hand,origin)||!owned())return false;
+    let power=5.5,vx,vy,vz;
+    try{
+      if(Number.isFinite(best.mass)&&best.mass>0)
+        power=Math.max(2.1,Math.min(7.5,9/(1+best.mass*.13)));
+      vx=Math.max(-10,Math.min(10,velocity.x+forward.x*power));
+      vy=Math.max(-10,Math.min(10,velocity.y+2.2+forward.y*power*.35));
+      vz=Math.max(-10,Math.min(10,velocity.z+forward.z*power));
+    }catch{return false;}
+    if(![vx,vy,vz].every(Number.isFinite)||!owned())return false;
+    try{device._deviceNextAt=now+720;}catch{return false;}
+    if(!owned())return false;
+    uncertainOfficeGloveTargets.add(best);
+    try{
+      velocity.set(vx,vy,vz);
+      if(!stable()||best.vel!==velocity||velocity.x!==vx||
+         velocity.y!==vy||velocity.z!==vz)return false;
+      best.grounded=false;
+      if(!stable()||best.grounded!==false||best.heldBy||
+         best.npcOwner||best.broken)return false;
+    }catch{return false;}
+    uncertainOfficeGloveTargets.delete(best);
+    try{propSpecialSound('boxingglove',1);haptic(ctrl,.28,40);}catch{}
+    return true;
+  }
+  if(device.type==='rubberhammer'){
+    // VR-triggered rubber hammer: short-range cartoon bop; no player punch.
+    const roster=G.props,npcs=G.npcs;
+    if(!Array.isArray(roster)||roster.length>256||!Array.isArray(npcs)||npcs.length>96)return false;
+    let forward=null;
+    try{
+      const node=ctrl?.grip||ctrl?.pointer;
+      if(!node)return false;
+      node.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+    }catch{return false;}
+    const proof=officePropRosterProof(roster,257);
+    if(!proof)return false;
+    const props=proof.entries;
+    const stable=()=>{try{
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||
+         G.wave!==interactionWave||G.waveTransition||G.ended||
+         G.props!==roster||roster.length!==props.length||
+         device.mesh!==selectedMesh||device.type!=='rubberhammer'||
+         device.broken||selectedMesh.isDisposed?.()||!desktopEntryIntact())return false;
+      for(let k=0;k<props.length;k++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(k));
+        if(!slot||!('value' in slot)||slot.value!==props[k])return false;
+      }
+      return true;
+    }catch{return false;}};
+    let best=null,bestI=-1,bestD=1.65,bestPos=null;
+    for(let i=0;i<props.length;i++){
+      if(!stable())return false;
+      const p=props[i];
+      try{
+        if(!p||p===device||p.heldBy||p.npcOwner||p.broken||!p.mesh||!p.vel||p.mesh.isDisposed?.())continue;
+        const q=p.mesh.getAbsolutePosition();
+        if(!stable()||p.heldBy||p.npcOwner||p.broken)return false;
+        if(!q||![q.x,q.y,q.z].every(Number.isFinite))continue;
+        const dx=q.x-origin.x,dy=q.y-origin.y,dz=q.z-origin.z,d=Math.hypot(dx,dy,dz);
+        if(!Number.isFinite(d)||d<.15||d>=bestD)continue;
+        if((dx*forward.x+dy*forward.y+dz*forward.z)/d<.45)continue;
+        best=p;bestI=i;bestD=d;bestPos={x:q.x,y:q.y,z:q.z};
+      }catch{if(!stable())return false;}
+    }
+    if(best&&stable()&&!best.heldBy&&!best.npcOwner&&!best.broken&&
+       !uncertainOfficeHammerProps.has(best)){
+      const mesh=best.mesh,vel=best.vel;
+      const owned=()=>{try{
+        if(!stable()||best.mesh!==mesh||best.vel!==vel||
+           best.heldBy||best.npcOwner||best.broken||
+           mesh.isDisposed?.()||uncertainOfficeHammerProps.has(best))return false;
+        const q=mesh.getAbsolutePosition(),p=selectedMesh.getAbsolutePosition();
+        return !!q&&!!p&&q.x===bestPos.x&&q.y===bestPos.y&&q.z===bestPos.z&&
+           p.x===origin.x&&p.y===origin.y&&p.z===origin.z&&stable();
+      }catch{return false;}};
+      if(!owned()||officeDeviceOccluded(origin,bestPos)||!owned())return false;
+      const power=Math.max(2.5,Math.min(6,11/(1+(Number.isFinite(best.mass)&&best.mass>0?best.mass:3)*.18)));
+      let vx,vy,vz;
+      try{vx=best.vel.x+forward.x*power;vy=best.vel.y+1.9+forward.y*power*.35;vz=best.vel.z+forward.z*power;}catch{return false;}
+      if(![vx,vy,vz].every(Number.isFinite))return false;
+      const tx=Math.max(-10,Math.min(10,vx)),ty=Math.max(-10,Math.min(10,vy)),tz=Math.max(-10,Math.min(10,vz));
+      if(!owned())return false;
+      try{device._deviceNextAt=now+650;}catch{return false;}
+      if(!owned())return false;
+      uncertainOfficeHammerProps.add(best);
+      try{
+        vel.set(tx,ty,tz);
+        if(!stable()||best.vel!==vel||vel.x!==tx||vel.y!==ty||vel.z!==tz)return false;
+        best.grounded=false;
+        if(!stable()||best.grounded!==false||best.heldBy||best.npcOwner||best.broken)return false;
+      }catch{return false;}
+      uncertainOfficeHammerProps.delete(best);
+      try{propSpecialSound('rubberhammer',1);haptic(ctrl,.25,34);}catch{}
+      return true;
+    }
+    // 4.9.416: immutable NPC roster and fail-closed partial setter handling.
+    const npcProof=officeNpcRosterProof(npcs);
+    if(!npcProof||!stable())return false;
+    const npcStable=()=>{try{
+      if(!stable()||!officeNpcRosterIntact(npcProof)||
+         device.mesh!==selectedMesh||device.type!=='rubberhammer')return false;
+      const p=selectedMesh.getAbsolutePosition();
+      return !!p&&p.x===origin.x&&p.y===origin.y&&p.z===origin.z&&
+         stable()&&officeNpcRosterIntact(npcProof);
+    }catch{return false;}};
+    let startled=0;
+    for(const n of npcProof.entries){
+      if(!npcStable())return false;
+      try{
+        if(!n||n.dead||n.bossId||!n.root||n.root.isDisposed?.()||
+           uncertainOfficeHammerNPCs.has(n))continue;
+        const root=n.root,q=root.position;
+        if(!q||![q.x,q.y,q.z].every(Number.isFinite))continue;
+        const px=q.x,py=q.y,pz=q.z;
+        const dx=px-origin.x,dy=py-origin.y,dz=pz-origin.z,d=Math.hypot(dx,dy,dz);
+        if(!Number.isFinite(d)||d<.2||d>1.8||
+           (dx*forward.x+dy*forward.y+dz*forward.z)/d<.4)continue;
+        const owned=()=>{try{
+          if(!npcStable()||n.dead||n.bossId||n.root!==root||
+             root.isDisposed?.()||uncertainOfficeHammerNPCs.has(n))return false;
+          const pos=root.position;
+          return !!pos&&pos.x===px&&pos.y===py&&pos.z===pz&&npcStable();
+        }catch{return false;}};
+        if(!owned()||officeDeviceOccluded(origin,{x:px,y:py,z:pz})||!owned())return false;
+        if(!startled){
+          try{device._deviceNextAt=now+650;}catch{return false;}
+          if(!owned())return false;
+        }
+        uncertainOfficeHammerNPCs.add(n);
+        n.staggerT=Math.max(Number.isFinite(n.staggerT)?n.staggerT:0,.4);
+        if(!npcStable()||n.dead||n.root!==root)return false;
+        if(n.personality==='coward'){
+          n.panicT=Math.max(Number.isFinite(n.panicT)?n.panicT:0,.45);
+          if(!npcStable()||n.dead||n.root!==root)return false;
+        }
+        uncertainOfficeHammerNPCs.delete(n);
+        startled++;
+        if(startled>=2)break;
+      }catch{return false;}
+    }
+    if(!startled)return false;
+    try{propSpecialSound('rubberhammer',1);haptic(ctrl,.20,30);}catch{}
+    return true;
+  }
+  if(device.type==='chaircatapult'){
+    // Launch one real, loose chair. Freeze ALL roster slots before any
+    // Babylon callback and reject same-length replacements or duplicate props.
+    const roster=G.props;
+    if(!Array.isArray(roster)||roster.length>256)return false;
+    let forward=null,chairs=[];
+    try{
+      device.mesh.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+      for(let k=0;k<roster.length;k++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(k));
+        if(!slot||!('value' in slot))return false;
+        chairs.push(slot.value);
+      }
+      if(new Set(chairs).size!==chairs.length)return false;
+    }catch{return false;}
+    const stable=()=>{try{
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||
+         G.wave!==interactionWave||G.waveTransition||G.ended||
+         G.props!==roster||roster.length!==chairs.length||
+         device.mesh!==selectedMesh||device.type!=='chaircatapult'||device.broken)return false;
+      for(let k=0;k<chairs.length;k++){
+        const slot=Object.getOwnPropertyDescriptor(roster,String(k));
+        if(!slot||!('value' in slot)||slot.value!==chairs[k])return false;
+      }
+      return G.state==='shift'&&G.props===roster&&
+        G.waveToken===interactionWaveToken&&G.wave===interactionWave;
+    }catch{return false;}};
+    let best=null,bestD=2.5;
+    for(let k=0;k<chairs.length;k++){
+      if(!stable())return false;
+      const p=chairs[k];
+      try{
+        if(!p||p.type!=='chair'||p.heldBy||p.npcOwner||p.broken||
+           !p.mesh||!p.vel||p.mesh.isDisposed?.())continue;
+        const q=p.mesh.getAbsolutePosition();
+        if(!stable()||p.heldBy||p.npcOwner||p.broken)return false;
+        if(!q||![q.x,q.y,q.z].every(Number.isFinite))continue;
+        const dx=q.x-origin.x,dy=q.y-origin.y,dz=q.z-origin.z,d=Math.hypot(dx,dy,dz);
+        if(!Number.isFinite(d)||d<.15||d>=bestD||
+           (dx*forward.x+dy*forward.y+dz*forward.z)/d<.15)continue;
+        best=p;bestD=d;
+      }catch{if(!stable())return false;}
+    }
+    if(!best||!stable()||uncertainOfficeChairCatapultTargets.has(best))return false;
+    const velocity=best.vel,mesh=best.mesh;
+    const owned=()=>{try{return stable()&&best.vel===velocity&&best.mesh===mesh&&
+      !best.heldBy&&!best.npcOwner&&!best.broken&&
+      mesh.parent==null&&!mesh.isDisposed?.();}catch{return false;}};
+    const vx=forward.x*8,vy=5.8+forward.y*2,vz=forward.z*8;
+    if(![vx,vy,vz].every(Number.isFinite)||!owned())return false;
+    try{device._deviceNextAt=now+2200;}catch{return false;}
+    if(!owned())return false;
+    // A velocity setter can commit and then throw: never replay that chair.
+    uncertainOfficeChairCatapultTargets.add(best);
+    try{velocity.set(vx,vy,vz);}catch{return false;}
+    if(!owned()||velocity.x!==vx||velocity.y!==vy||velocity.z!==vz)return false;
+    try{best.grounded=false;}catch{return false;}
+    if(!owned()||best.grounded!==false||
+       velocity.x!==vx||velocity.y!==vy||velocity.z!==vz)return false;
+    uncertainOfficeChairCatapultTargets.delete(best);
+    try{propSpecialSound('chaircatapult',1);haptic(ctrl,.35,55);}catch{}
+    return true;
+  }
+  if(device.type==='suctioncannon'||device.type==='magnetgun'){
+    // Pull only loose physical props in front of the VR controller. Never move players.
+    const magnet=device.type==='magnetgun',roster=G.props;
+    if(!Array.isArray(roster)||roster.length>256)return false;
+    let forward=null;
+    try{
+      const node=ctrl?.grip||ctrl?.pointer;
+      if(!node)return false;
+      node.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+    }catch{return false;}
+    let snapshot=null;
+    try{snapshot=roster.slice();}catch{return false;}
+    device._deviceNextAt=now+(magnet?850:650); // Reserve before any mesh callbacks.
+    const unchanged=i=>G.state==='shift'&&G.props===roster&&roster.length===snapshot.length&&roster[i]===snapshot[i];
+    let pulled=0,best=null,bestDist=Infinity,bestIndex=-1;
+    for(let i=0;i<snapshot.length&&(magnet||pulled<6);i++){
+      if(!unchanged(i))break;
+      const pr=snapshot[i];
+      try{
+        if(!pr||pr===device||pr.heldBy||pr.npcOwner||pr.broken||!pr.mesh||!pr.vel||pr.mesh.isDisposed?.())continue;
+        if(magnet&&pr.material!=='metal')continue;
+        const p=pr.mesh.getAbsolutePosition();
+        if(!unchanged(i)||pr.heldBy||pr.npcOwner||pr.broken)break;
+        // CR4.9.516: keep gadget target filtering allocation-free.
+        if(!p)continue;
+        const px=p.x,py=p.y,pz=p.z;
+        if(!Number.isFinite(px)||!Number.isFinite(py)||!Number.isFinite(pz))continue;
+        const dx=px-origin.x,dy=py-origin.y,dz=pz-origin.z;
+        const d=Math.hypot(dx,dy,dz),range=magnet?5:3.6;
+        if(!Number.isFinite(d)||d<.65||d>range)continue;
+        if((dx*forward.x+dy*forward.y+dz*forward.z)/d<(magnet?.75:.60))continue;
+        if(magnet){if(d<bestDist){best=pr;bestDist=d;bestIndex=i;}continue;}
+        const weight=Math.max(.3,Math.min(1.2,3/(Number.isFinite(pr.mass)&&pr.mass>0?pr.mass:3)));
+        const force=Math.min(5.5,7/(.6+d))*weight;
+        const vx=pr.vel.x-dx/d*force,vy=pr.vel.y-dy/d*force+.35,vz=pr.vel.z-dz/d*force;
+        // CR4.9.517: validate suction impulse without a throwaway array.
+        if(!Number.isFinite(vx)||!Number.isFinite(vy)||!Number.isFinite(vz))continue;
+        pr.vel.set(Math.max(-9,Math.min(9,vx)),Math.max(-9,Math.min(9,vy)),Math.max(-9,Math.min(9,vz)));
+        pr.grounded=false;pulled++;
+      }catch{}
+    }
+    if(magnet&&best&&unchanged(bestIndex)){
+      try{
+        if(!best.heldBy&&!best.npcOwner&&!best.broken&&!best.mesh.isDisposed?.()){
+          const p=best.mesh.getAbsolutePosition();
+          if(unchanged(bestIndex)&&p&&[p.x,p.y,p.z].every(Number.isFinite)){
+            const dx=p.x-origin.x,dy=p.y-origin.y,dz=p.z-origin.z,d=Math.hypot(dx,dy,dz);
+            if(Number.isFinite(d)&&d>=.65&&d<=5&&(dx*forward.x+dy*forward.y+dz*forward.z)/d>=.75){
+              const weight=Math.max(.35,Math.min(1.2,3/(Number.isFinite(best.mass)&&best.mass>0?best.mass:3)));
+              const force=Math.min(7,10/(.5+d))*weight;
+              const vx=best.vel.x-dx/d*force,vy=best.vel.y-dy/d*force+.45,vz=best.vel.z-dz/d*force;
+              if([vx,vy,vz].every(Number.isFinite)){
+                best.vel.set(Math.max(-10,Math.min(10,vx)),Math.max(-10,Math.min(10,vy)),Math.max(-10,Math.min(10,vz)));
+                best.grounded=false;pulled=1;
+              }
+            }
+          }
+        }
+      }catch{}
+    }
+    try{propSpecialSound(device.type,.9);haptic(ctrl,magnet?.26:.20,magnet?42:32);}catch{}
+    return pulled>0;
+  }
+  if(device.type==='confetticannon'){
+    // Four low-impact paper cards per burst; temporary pieces retire after 7 active seconds.
+    const roster=G.props;
+    if(!Array.isArray(roster)||roster.length>=48)return false;
+    let forward=null;
+    try{
+      const node=ctrl?.grip||ctrl?.pointer;
+      if(node){
+        node.computeWorldMatrix?.(true);
+        forward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      }else if(G.desktop&&!device.heldBy&&!device.npcOwner){
+        // Browser preview: use the fixed cannon's nozzle direction, not a missing VR controller.
+        device.mesh.computeWorldMatrix?.(true);
+        forward=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+      }else return false;
+      const length=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(length)||length<.001)return false;
+      forward.scaleInPlace(1/length);
+    }catch{return false;}
+    device._deviceNextAt=now+1200;
+    let launched=0;
+    const kinds=['confettipink','confettiblue','confettiyellow'];
+    // CR4.9.541: only count fully proven physical confetti cards. Never
+    // continue spawning into a replaced shift or after a partial setter.
+    for(let i=0;i<4&&roster.length<48;i++){
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||
+         G.wave!==interactionWave||G.waveTransition||G.ended||
+         G.props!==roster)break;
+      const proof=officePropRosterProof(roster);
+      if(!proof)break;
+      try{
+        const card=makeProp(scene,kinds[i%3],new B.Vector3(
+          origin.x+forward.x*.43,origin.y+forward.y*.43+.09,
+          origin.z+forward.z*.43),
+          {material:'paper',mass:.08,damage:1,size:[.13,.014,.18]});
+        if(!spawnedOfficePropIntact(proof,card)||!card?.vel||
+           typeof card.vel.set!=='function')break;
+        const v=card.vel;
+        const vx=forward.x*(3.5+i*.28)+(i-1.5)*.65;
+        const vy=forward.y*3.2+1.8+i*.18;
+        const vz=forward.z*(3.5+i*.28);
+        v.set(vx,vy,vz);
+        if(!spawnedOfficePropIntact(proof,card)||card.vel!==v||
+           v.x!==vx||v.y!==vy||v.z!==vz)break;
+        card.grounded=false;card.temporaryT=7;
+        if(!spawnedOfficePropIntact(proof,card)||card.grounded!==false||
+           card.temporaryT!==7)break;
+        launched++;
+      }catch{break;}
+    }
+    if(!launched)return false;
+    // The colorful paper burst distracts nearby coworkers in its forward cone.
+    // Use a fixed, bounded roster and never turn this into damage or a player hit.
+    const npcRoster=G.npcs;
+    if(G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&
+       !G.waveTransition&&!G.ended&&Array.isArray(npcRoster)&&npcRoster.length<=96){
+      let npcs=null;
+      try{
+        npcs=[];
+        for(let i=0;i<npcRoster.length;i++){
+          const slot=Object.getOwnPropertyDescriptor(npcRoster,String(i));
+          if(!slot||!('value' in slot)){npcs=null;break;}
+          npcs.push(slot.value);
+        }
+      }catch{npcs=null;}
+      if(npcs){
+        const stable=i=>{try{
+          if(G.state!=='shift'||G.waveToken!==interactionWaveToken||G.wave!==interactionWave||
+             G.waveTransition||G.ended||G.npcs!==npcRoster||npcRoster.length!==npcs.length)return false;
+          const slot=Object.getOwnPropertyDescriptor(npcRoster,String(i));
+          return !!slot&&('value' in slot)&&slot.value===npcs[i];
+        }catch{return false;}};
+        let startled=0;
+        for(let i=0;i<npcs.length&&startled<6;i++){
+          if(!stable(i))break;
+          const n=npcs[i];
+          try{
+            if(!n||n.dead||n.bossId||!n.root||n.root.isDisposed?.())continue;
+            const p=n.root.position;
+            if(!p||![p.x,p.y,p.z].every(Number.isFinite))continue;
+            const dx=p.x-origin.x,dy=p.y-origin.y,dz=p.z-origin.z;
+            const d2=dx*dx+dy*dy+dz*dz;
+            if(!Number.isFinite(d2)||d2<.1||d2>10.24||
+               dx*forward.x+dy*forward.y+dz*forward.z<.25*Math.sqrt(d2))continue;
+            if(!stable(i))break;
+            n.hesitate=Math.max(Number.isFinite(n.hesitate)?n.hesitate:0,.32);
+            if(n.personality==='coward')n.panicT=Math.max(Number.isFinite(n.panicT)?n.panicT:0,.55);
+            else n.staggerT=Math.max(Number.isFinite(n.staggerT)?n.staggerT:0,.20);
+            startled++;
+          }catch{if(!stable(i))break;}
+        }
+      }
+    }
+    try{propSpecialSound('confetticannon',1);haptic(ctrl,.24,35);}catch{}
+    return true;
+  }
+  if(device.type==='papercannon'){
+    // Controller-aimed, bounded cartoon paperball volley (no bullets or gore).
+    if(G.state!=='shift'||!Array.isArray(G.props)||G.props.length>=48)return false;
+    let direction=null;
+    try{
+      const node=ctrl?.grip||ctrl?.pointer;
+      if(node){
+        node.computeWorldMatrix?.(true);
+        direction=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      }else if(G.desktop&&!device.heldBy&&!device.npcOwner){
+        // Browser preview: use the fixed cannon's nozzle direction, not a missing VR controller.
+        device.mesh.computeWorldMatrix?.(true);
+        direction=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+      }else return false;
+      const len=Math.hypot(direction.x,direction.y,direction.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      direction.scaleInPlace(1/len);
+    }catch{return false;}
+    const roster=G.props;
+    device._deviceNextAt=now+1000; // Reserve before mesh callbacks can reenter.
+    let fired=0;
+    for(let i=0;i<3&&roster.length<48;i++){
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||G.wave!==interactionWave||G.waveTransition||G.ended||G.props!==roster)break;
+      const proof=officePropRosterProof(roster);
+      if(!proof)break;
+      try{
+        const shot=makeProp(scene,'paperball',new B.Vector3(
+          origin.x+direction.x*.52+(i-1)*.08,
+          origin.y+direction.y*.52+.08,
+          origin.z+direction.z*.52),{material:'paper',mass:.25,damage:5,size:[.24,.24,.24]});
+        if(!spawnedOfficePropIntact(proof,shot))break;
+        if(!shot?.vel||typeof shot.vel.set!=='function')break;
+        const v=shot.vel,vx=direction.x*7+(i-1)*.65,vy=direction.y*7+.65,vz=direction.z*7;
+        v.set(vx,vy,vz);
+        if(!spawnedOfficePropIntact(proof,shot)||shot.vel!==v||
+           v.x!==vx||v.y!==vy||v.z!==vz)break;
+        shot.grounded=false;shot.temporaryT=12;
+        if(!spawnedOfficePropIntact(proof,shot)||shot.grounded!==false||shot.temporaryT!==12)break;
+        fired++;
+      }catch{break;}
+    }
+    if(!fired)return false;
+    try{paperShuffleSound();haptic(ctrl,.28,40);}catch{}
+    return true;
+  }
+  if(device.type==='vendingmachine'){
+    // One physical snack per trigger, bounded by the prop cap and cooldown.
+    const roster=G.props;
+    if(!Array.isArray(roster)||roster.length>=48)return false;
+    let forward=null;
+    try{
+      device.mesh.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+      const length=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(length)||length<.001)return false;
+      forward.scaleInPlace(1/length);
+    }catch{return false;}
+    const proof=officePropRosterProof(roster);
+    if(!proof)return false;
+    device._deviceNextAt=now+2400;
+    try{
+      const snack=makeProp(scene,'donutbox',new B.Vector3(origin.x+forward.x*.60,origin.y-.45,origin.z+forward.z*.60),{material:'paper',mass:.7,damage:2,size:[.38,.14,.30]});
+      if(!spawnedOfficePropIntact(proof,snack))return false;
+      if(!snack?.vel||typeof snack.vel.set!=='function')return false;
+      const v=snack.vel,vx=forward.x*2.2,vy=1.4,vz=forward.z*2.2;
+      v.set(vx,vy,vz);
+      if(!spawnedOfficePropIntact(proof,snack)||snack.vel!==v||
+         v.x!==vx||v.y!==vy||v.z!==vz)return false;
+      snack.grounded=false;snack.temporaryT=24;
+      if(!spawnedOfficePropIntact(proof,snack)||
+         snack.grounded!==false||snack.temporaryT!==24)return false;
+    }catch{return false;}
+    try{propSpecialSound('vendingmachine',1);haptic(ctrl,.18,32);}catch{}
+    return true;
+  }
+  if(device.type==='watercooler'){
+    // A nearby cooler dispenses a lightweight physical cup, not endless props.
+    const roster=G.props;
+    if(!Array.isArray(roster)||roster.length>=48)return false;
+    let forward=null;
+    try{
+      device.mesh.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+    }catch{return false;}
+    const proof=officePropRosterProof(roster);
+    if(!proof)return false;
+    device._deviceNextAt=now+1900;
+    try{
+      const cup=makeProp(scene,'mug',new B.Vector3(origin.x+forward.x*.47,origin.y-.24,origin.z+forward.z*.47),{material:'ceramic',mass:.35,damage:1,size:[.2,.25,.2]});
+      if(!spawnedOfficePropIntact(proof,cup))return false;
+      if(!cup?.vel||typeof cup.vel.set!=='function')return false;
+      const v=cup.vel,vx=forward.x*1.5,vy=1.1,vz=forward.z*1.5;
+      v.set(vx,vy,vz);
+      if(!spawnedOfficePropIntact(proof,cup)||cup.vel!==v||
+         v.x!==vx||v.y!==vy||v.z!==vz)return false;
+      cup.grounded=false;cup.temporaryT=22;
+      if(!spawnedOfficePropIntact(proof,cup)||
+         cup.grounded!==false||cup.temporaryT!==22)return false;
+    }catch{return false;}
+    try{propSpecialSound('watercooler',1);haptic(ctrl,.14,28);}catch{}
+    return true;
+  }
+  if(device.type==='coffeepot'){
+    // Pour one lightweight, temporary physical mug from the coffee pot.
+    const roster=G.props;
+    if(!Array.isArray(roster)||roster.length>=48)return false;
+    let forward=null;
+    try{
+      device.mesh.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+    }catch{return false;}
+    const proof=officePropRosterProof(roster);
+    if(!proof)return false;
+    device._deviceNextAt=now+2100;
+    try{
+      const mug=makeProp(scene,'mug',new B.Vector3(origin.x+forward.x*.34,origin.y-.12,origin.z+forward.z*.34),{material:'ceramic',mass:.35,damage:1,size:[.2,.25,.2]});
+      if(!spawnedOfficePropIntact(proof,mug))return false;
+      if(!mug?.vel||typeof mug.vel.set!=='function')return false;
+      const v=mug.vel,vx=forward.x*1.1,vy=1.05,vz=forward.z*1.1;
+      v.set(vx,vy,vz);
+      if(!spawnedOfficePropIntact(proof,mug)||mug.vel!==v||
+         v.x!==vx||v.y!==vy||v.z!==vz)return false;
+      mug.grounded=false;mug.temporaryT=22;
+      if(!spawnedOfficePropIntact(proof,mug)||
+         mug.grounded!==false||mug.temporaryT!==22)return false;
+    }catch{return false;}
+    try{dishClinkSound();haptic(ctrl,.14,28);}catch{}
+    return true;
+  }
+  if(device.type==='microwave'){
+    // An office microwave pops out one harmless snack box per activation.
+    if(G.state!=='shift'||!Array.isArray(G.props)||G.props.length>=48)return false;
+    let forward=null;
+    try{
+      device.mesh.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+      const len=Math.hypot(forward.x,forward.y,forward.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      forward.scaleInPlace(1/len);
+    }catch{return false;}
+    const roster=G.props;
+    const proof=officePropRosterProof(roster);
+    if(!proof)return false;
+    device._deviceNextAt=now+2200; // Reserve before any spawning callbacks.
+    try{
+      const snack=makeProp(scene,'donutbox',new B.Vector3(
+        origin.x+forward.x*.57,origin.y+forward.y*.57+.12,origin.z+forward.z*.57),
+        {material:'paper',mass:.7,damage:3,size:[.35,.18,.30]});
+      if(!spawnedOfficePropIntact(proof,snack))return false;
+      if(!snack?.vel||typeof snack.vel.set!=='function')return false;
+      const v=snack.vel,vx=forward.x*2.8,vy=forward.y*2.8+1.1,vz=forward.z*2.8;
+      v.set(vx,vy,vz);
+      if(!spawnedOfficePropIntact(proof,snack)||snack.vel!==v||
+         v.x!==vx||v.y!==vy||v.z!==vz)return false;
+      snack.grounded=false;snack.temporaryT=24;
+      if(!spawnedOfficePropIntact(proof,snack)||
+         snack.grounded!==false||snack.temporaryT!==24)return false;
+      // Advance only after the new physical snack has passed spawn proof.
+      try{recordOfficeSnackRush(device,scene,origin,now,snack);}catch{}
+      if(G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended)
+        try{recordOfficeSnackDelivery(device,scene,origin,now,snack);}catch{}
+      if(G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended)
+        try{recordOfficeLunchBell(device,scene,origin,now,snack);}catch{}
+    }catch{return false;}
+    try{propSpecialSound('microwave',1);haptic(ctrl,.2,30);}catch{}
+    return true;
+  }
+
+  if(device.type==='deskbell'){
+    // 4.9.411: no stale coworker writes after reentrant roster/shift changes.
+    const proof=officeNpcRosterProof(G.npcs);
+    if(!proof)return false;
+    const active=()=>{try{
+      if(!officeNpcRosterIntact(proof)||!desktopEntryIntact()||
+         device.type!=='deskbell')return false;
+      const p=selectedMesh.getAbsolutePosition();
+      return !!p&&p.x===origin.x&&p.y===origin.y&&p.z===origin.z;
+    }catch{return false;}};
+    if(!active())return false;
+    try{device._deviceNextAt=now+850;}catch{return false;}
+    if(!active())return false;
+    let startled=0;
+    for(const npc of proof.entries){
+      if(!active())break;
+      try{
+        if(!npc||npc.dead||npc.bossId||!npc.root||npc.root.isDisposed?.())continue;
+        const p=npc.root.position;
+        // CR4.9.516: avoid allocating a temporary coordinate array per bell NPC.
+        if(!p)continue;
+        const px=p.x,py=p.y,pz=p.z;
+        if(!Number.isFinite(px)||!Number.isFinite(py)||!Number.isFinite(pz))continue;
+        const dx=px-origin.x,dy=py-origin.y,dz=pz-origin.z;
+        if(dx*dx+dy*dy+dz*dz>3.1*3.1)continue;
+        if(!active())break;
+        npc.staggerT=Math.max(Number.isFinite(npc.staggerT)?npc.staggerT:0,.5);
+        if(!active())break;
+        if(npc.personality==='coward'){
+          if(!active())break;
+          npc.panicT=Math.max(Number.isFinite(npc.panicT)?npc.panicT:0,.3);
+        }
+        startled++;
+        if(startled>=8)break;
+      }catch{if(!active())break;}
+    }
+    try{propSpecialSound('deskbell',1);haptic(ctrl,.15,22);}catch{}
+    // Count only a completed, still-owned bell interaction (not button spam).
+    if(active())try{recordOfficeBellBlitz(device,scene,origin,now);}catch{}
+    if(active())try{recordOfficeHotline(device,scene,origin,now);}catch{}
+    if(active())try{recordOfficePaperAlert(device,scene,origin,now,0);}catch{}
+    if(active())try{recordOfficeLunchBell(device,scene,origin,now);}catch{}
+    if(active())try{recordOfficeCopyBell(device,scene,origin,now,0);}catch{}
+    return true;
+  }
+  if(device.type==='photocopier'){
+    // Two physical copies, bounded by the live prop budget and active-time cleanup.
+    const roster=G.props;
+    if(!Array.isArray(roster)||roster.length>=48)return false;
+    let direction=null;
+    try{
+      device.mesh.computeWorldMatrix?.(true);
+      direction=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+      const len=Math.hypot(direction.x,direction.y,direction.z);
+      if(!Number.isFinite(len)||len<.001)return false;
+      direction.scaleInPlace(1/len);
+    }catch{return false;}
+    device._deviceNextAt=now+1800;
+    let copies=0;
+    for(let i=0;i<2&&roster.length<48;i++){
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||G.wave!==interactionWave||G.waveTransition||G.ended||G.props!==roster)break;
+      const proof=officePropRosterProof(roster);
+      if(!proof)break;
+      try{
+        const page=makeProp(scene,'printsheet',new B.Vector3(
+          origin.x+direction.x*.55+(i-.5)*.13,
+          origin.y-.12+i*.04,
+          origin.z+direction.z*.55),
+          {material:'paper',mass:.12,damage:1,size:[.25,.012,.33]});
+        if(!spawnedOfficePropIntact(proof,page))break;
+        if(!page?.vel||typeof page.vel.set!=='function')break;
+        const v=page.vel,vx=direction.x*(1.5+i*.35),vy=1.0+i*.22,vz=direction.z*(1.5+i*.35);
+        v.set(vx,vy,vz);
+        if(!spawnedOfficePropIntact(proof,page)||page.vel!==v||
+           v.x!==vx||v.y!==vy||v.z!==vz)break;
+        page.grounded=false;page.temporaryT=16;
+        if(!spawnedOfficePropIntact(proof,page)||page.grounded!==false||page.temporaryT!==16)break;
+        copies++;
+      }catch{break;}
+    }
+    if(!copies)return false;
+    if(copies>=2&&G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended)
+      try{recordOfficeCopyRelay(device,scene,origin,now,copies);}catch{}
+    if(copies>=2&&G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended)
+      try{recordOfficeCopyBell(device,scene,origin,now,copies);}catch{}
+    if(copies>=2&&G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended)
+      try{recordOfficeCopyCall(device,scene,origin,now,copies);}catch{}
+    if(copies>=2&&G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.ended)
+      try{recordOfficePhoneCopy(device,scene,origin,now,copies);}catch{}
+    if(copies>=2&&G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended){
+      try{completeOfficeTask('COPY',scene,origin);}catch{}
+    }
+    try{printerCycleSound();haptic(ctrl,.19,32);}catch{}
+    return true;
+  }
+  if(device.type==='printer'){
+    // Bounded physical sheets, not unlimited meshes from repeated trigger presses.
+    if(G.state!=='shift'||!Array.isArray(G.props)||G.props.length>=48)return false;
+    const roster=G.props;
+    device._deviceNextAt=now+1400; // Reserve before makeProp callbacks can reenter.
+    let printed=0;
+    for(let i=0;i<3&&roster.length<48;i++){
+      if(G.state!=='shift'||G.waveToken!==interactionWaveToken||G.wave!==interactionWave||G.waveTransition||G.ended||G.props!==roster)break;
+      const proof=officePropRosterProof(roster);
+      if(!proof)break;
+      try{
+        const sheet=makeProp(scene,'printsheet',
+          new B.Vector3(origin.x+(i-1)*.09,origin.y+.18,origin.z+.32),
+          {material:'paper',mass:.12,damage:1,size:[.25,.012,.33]});
+        if(!spawnedOfficePropIntact(proof,sheet))break;
+        if(sheet?.vel?.set){
+          const v=sheet.vel,vx=(i-1)*.7,vy=1.1+i*.15,vz=1.6+i*.25;
+          v.set(vx,vy,vz);
+          if(!spawnedOfficePropIntact(proof,sheet)||sheet.vel!==v||
+             v.x!==vx||v.y!==vy||v.z!==vz)break;
+          sheet.grounded=false;sheet.temporaryT=18;
+          if(!spawnedOfficePropIntact(proof,sheet)||sheet.grounded!==false||sheet.temporaryT!==18)break;
+          printed++;
+        }
+      }catch{break;}
+    }
+    if(!printed)return false;
+    // Only validated, physically spawned sheets advance the printer combo.
+    try{recordOfficePrintStorm(device,scene,origin,now,printed);}catch{}
+    if(G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended)
+      try{recordOfficePaperAlert(device,scene,origin,now,printed);}catch{}
+    if(G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended)
+      try{recordOfficeFaxFrenzy(device,scene,origin,now,printed);}catch{}
+    if(printed>=2&&G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended)
+      try{recordOfficeCopyRelay(device,scene,origin,now,printed);}catch{}
+    if(printed>=2&&G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended){
+      try{completeOfficeTask('COPY',scene,origin);}catch{}
+    }
+    try{printerCycleSound();}catch{}
+    try{haptic(ctrl,.22,35);}catch{}
+    return true;
+  }
+  // Hand-held fan: a short cone of air pushes nearby loose props, never held props.
+  let node=null,forward=null,props=null,roster=null;
+  try{
+    node=ctrl?.grip||ctrl?.pointer;
+    if(!Array.isArray(G.props)||G.props.length>256)return false;
+    if(node){
+      node.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+    }else if(G.desktop&&!device.heldBy&&!device.npcOwner){
+      // A desktop player activates a fixed fan from its own nozzle direction.
+      // Do not silently allow remote use of a held or NPC-owned appliance.
+      device.mesh.computeWorldMatrix?.(true);
+      forward=B.Vector3.TransformNormal(new B.Vector3(0,0,-1),device.mesh.getWorldMatrix());
+    }else return false;
+    if(!forward||![forward.x,forward.y,forward.z].every(Number.isFinite))return false;
+    const len=Math.hypot(forward.x,forward.y,forward.z);
+    if(!Number.isFinite(len)||len<.001)return false;
+    forward.scaleInPlace(1/len);roster=G.props;props=roster.slice();
+  }catch{return false;}
+  device._deviceNextAt=now+550; // Reserve before prop callbacks can reenter.
+  // One immutable identity snapshot per blast; repeated checks allocate no sets.
+  // Duplicate identities must never receive two blasts.
+  const fanUniqueProps=new Set(props);
+  if(fanUniqueProps.size!==props.length)return false;
+  const fanRosterIntact=()=>{try{
+    if(G.state!=='shift'||G.waveToken!==interactionWaveToken||G.wave!==interactionWave||
+       G.waveTransition||G.ended||G.props!==roster||roster.length!==props.length||
+       device.mesh!==selectedMesh||device.broken||selectedMesh.isDisposed?.())return false;
+    for(let j=0;j<props.length;j++){
+      const slot=Object.getOwnPropertyDescriptor(roster,String(j));
+      if(!slot||!('value' in slot)||slot.value!==props[j])return false;
+    }
+    return true;
+  }catch{return false;}};
+  if(!fanRosterIntact())return false;
+  let pushed=0;
+  for(let i=0;i<props.length&&pushed<(device.type==='aircannon'?8:12);i++){
+    if(!fanRosterIntact())break;
+    const pr=props[i];
+    try{
+      if(!pr||pr===device||pr.heldBy||pr.npcOwner||pr.broken||!pr.mesh||pr.mesh.isDisposed?.()||!pr.vel)continue;
+      const mesh=pr.mesh,velocity=pr.vel;
+      if(typeof velocity.set!=='function')continue;
+      const p=mesh.getAbsolutePosition();
+      if(!p||![p.x,p.y,p.z].every(Number.isFinite)||!fanRosterIntact()||
+         pr.mesh!==mesh||pr.vel!==velocity||pr.heldBy||pr.npcOwner||pr.broken||mesh.isDisposed?.())break;
+      const dx=p.x-origin.x,dy=p.y-origin.y,dz=p.z-origin.z;
+      const d=Math.hypot(dx,dy,dz);
+      if(!Number.isFinite(d)||d<.12||d>(device.type==='aircannon'?3.6:2.8))continue;
+      const dot=(dx*forward.x+dy*forward.y+dz*forward.z)/d;
+      if(dot<(device.type==='aircannon'?.7:.55))continue;
+      const air=device.type==='aircannon';
+      // Light paper catches more air; heavy furniture barely moves.
+      // Bounded scalar factor: no new meshes, allocations or extra raycasts.
+      const mass=Number.isFinite(pr.mass)&&pr.mass>0?pr.mass:2;
+      const massFactor=Math.max(.24,Math.min(1.5,Math.sqrt(1.2/mass)));
+      const force=Math.min(air?8:5,(air?7:4)/(.55+d)*massFactor);
+      const vx=velocity.x+forward.x*force,vy=velocity.y+forward.y*force*.55+(air?1.5:1.0),vz=velocity.z+forward.z*force;
+      if(![vx,vy,vz].every(Number.isFinite))continue;
+      const limit=air?12:9;
+      const nx=Math.max(-limit,Math.min(limit,vx));
+      const ny=Math.max(-limit,Math.min(limit,vy));
+      const nz=Math.max(-limit,Math.min(limit,vz));
+      velocity.set(nx,ny,nz);
+      // Setter callbacks may clamp, throw after a partial write or steal ownership.
+      // Stop this blast rather than applying more impulses after ambiguous state.
+      if(!fanRosterIntact()||pr.mesh!==mesh||pr.vel!==velocity||
+         pr.heldBy||pr.npcOwner||pr.broken||mesh.isDisposed?.()||
+         velocity.x!==nx||velocity.y!==ny||velocity.z!==nz)break;
+      pr.grounded=false;
+      if(!fanRosterIntact()||pr.mesh!==mesh||pr.vel!==velocity||
+         pr.heldBy||pr.npcOwner||pr.broken||pr.grounded!==false)break;
+      pushed++;
+    }catch{break;}
+  }
+  // Both fans and air cannons startle coworkers. The small fan is gentler; neither deals damage.
+  // Snapshot once, cap NPC work, and abort if a callback changes the active roster.
+  let startled=0,fanNpcProof=null;
+  if((device.type==='aircannon'||device.type==='fan')&&G.state==='shift'){
+    const rosterN=G.npcs;
+    const proof=officeNpcRosterProof(rosterN);
+    fanNpcProof=proof;
+    if(proof){
+      const npcs=proof.entries;
+      for(let i=0;i<npcs.length&&startled<(device.type==='aircannon'?6:3);i++){
+        if(!officeNpcRosterIntact(proof))break;
+        const n=npcs[i];
+        try{
+          if(!n||n.dead||n.bossId||!n.root||n.root.isDisposed?.())continue;
+          const p=n.root.position;
+          if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z))continue;
+          const dx=p.x-origin.x,dy=p.y-origin.y,dz=p.z-origin.z;
+          const dist=Math.hypot(dx,dy,dz);
+          if(!Number.isFinite(dist)||dist<.1||dist>(device.type==='aircannon'?3.6:2.1))continue;
+          if((dx*forward.x+dy*forward.y+dz*forward.z)/dist<(device.type==='aircannon'?.7:.78))continue;
+          if(!officeNpcRosterIntact(proof))break;
+          n.staggerT=Math.max(Number.isFinite(n.staggerT)?n.staggerT:0,device.type==='aircannon'?.35:.16);
+          if(n.personality==='coward')n.panicT=Math.max(Number.isFinite(n.panicT)?n.panicT:0,device.type==='aircannon'?.5:.18);
+          if(!officeNpcRosterIntact(proof))break;
+          startled++;
+        }catch{}
+      }
+    }
+  }
+  // An optional NPC challenge uses actual staggered coworkers, not button presses.
+  // Revalidate the NPC roster and wave after all fallible stagger callbacks.
+  completeOfficeFanClub(startled,fanNpcProof,interactionWaveToken,interactionWave,scene,origin);
+  if(pushed>=2&&G.state==='shift'&&G.waveToken===interactionWaveToken&&G.wave===interactionWave&&!G.waveTransition&&!G.ended){
+    try{completeOfficeTask('BREEZE',scene,origin);}catch{}
+  }
+  try{propSpecialSound(device.type==='aircannon'?'aircannon':'fan',.8);haptic(ctrl,device.type==='aircannon'?.32:.15,device.type==='aircannon'?55:25);}catch{}
+  return pushed>0||startled>0;
+}
+// Nearby fixed machines respond to a VR trigger without needing to lift them.
+// A bounded, fail-closed snapshot prevents stale prop ownership after callbacks.
+// CR4.9.324: VR quick-use now covers five existing handheld chaos gadgets.
+// Controller aim, 1.2m reach, wall occlusion and prop ownership guards remain mandatory.
+const NEARBY_OFFICE_DEVICE_TYPES=new Set(['bowlingball','cart','chair','trashcan','storagebox','briefcase','toolbox','monitor','plantpot','mug','wrench','thermos','donutbox','folder','clipboard','trophy','umbrella','paperball','printsheet','broom','binder','newspaper','nameplate','photocopier','chaircatapult','printer','fan','aircannon','papercannon','confetticannon','suctioncannon','magnetgun','gluegun','boxingglove','rubberhammer','deskbell','microwave','vendingmachine','watercooler','projector','coffeepot','keyboard','calculator','deskphone','rubberduck','stapler','tapedispenser','firstaid']);
+// Only evaluate fixed wall/door blockers when a VR player presses trigger.
+// A short ray-AABB slab test prevents activating a machine through a wall.
+// Unknown geometry fails closed rather than silently allowing a remote press.
+// CR4.9.541: reuse depth-isolated ray proof arrays without retaining mesh references.
+const officeRayProofPool=[];
+let officeRayProofDepth=0;
+function officeDeviceOccluded(hand,target){
+  const blockers=G.blockers;
+  // Freeze the ray endpoints: world-matrix callbacks must not redirect a trigger mid-check.
+  const rayStart={x:hand?.x,y:hand?.y,z:hand?.z};
+  const rayEnd={x:target?.x,y:target?.y,z:target?.z};
+  // CR4.9.488: avoid allocating an endpoint array for every VR wall ray.
+  if(!Number.isFinite(rayStart.x)||!Number.isFinite(rayStart.y)||
+     !Number.isFinite(rayStart.z)||!Number.isFinite(rayEnd.x)||
+     !Number.isFinite(rayEnd.y)||!Number.isFinite(rayEnd.z))return true;
+  if(!Array.isArray(blockers)||blockers.length>512)return true;
+  const dx=rayEnd.x-rayStart.x,dy=rayEnd.y-rayStart.y,dz=rayEnd.z-rayStart.z;
+  const distance=Math.hypot(dx,dy,dz);
+  if(!Number.isFinite(distance)||distance<.12)return true;
+  const direction={x:dx/distance,y:dy/distance,z:dz/distance};
+  // CR4.9.505: conservative segment AABB broadphase before slab division.
+  // It can skip distant walls, never a wall overlapping the full hand-target ray.
+  const segMinX=Math.min(rayStart.x,rayEnd.x),segMaxX=Math.max(rayStart.x,rayEnd.x);
+  const segMinY=Math.min(rayStart.y,rayEnd.y),segMaxY=Math.max(rayStart.y,rayEnd.y);
+  const segMinZ=Math.min(rayStart.z,rayEnd.z),segMaxZ=Math.max(rayStart.z,rayEnd.z);
+  // Preserve wall checks even when the hand is very close to the machine.
+  const from=Math.min(.15,distance*.15),to=distance-Math.min(.20,distance*.15);
+  if(to<=from)return false;
+  // Recursive Babylon callbacks get separate scratch arrays; excess nesting fails closed.
+  if(officeRayProofDepth>=8)return true;
+  const proofDepth=officeRayProofDepth++;
+  const scratch=officeRayProofPool[proofDepth]||
+    (officeRayProofPool[proofDepth]=[[],[],[]]);
+  const snapshot=scratch[0],geometryProofs=scratch[1],disposedProofs=scratch[2];
+  snapshot.length=0;geometryProofs.length=0;disposedProofs.length=0;
+  try{
+    for(let i=0;i<blockers.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot))return true;
+      snapshot.push(slot.value);
+    }
+    for(let i=0;i<snapshot.length;i++){
+      if(G.blockers!==blockers||blockers.length!==snapshot.length)return true;
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==snapshot[i])return true;
+      const entry=snapshot[i];
+      if(!entry||!entry.mesh)return true;
+      const mesh=entry.mesh;
+      if(mesh.isDisposed?.()){
+        disposedProofs.push({entry,mesh});
+        continue;
+      }
+      mesh.computeWorldMatrix?.(true);
+      const bounds=mesh.getBoundingInfo()?.boundingBox;
+      if(!bounds?.minimumWorld||!bounds?.maximumWorld)return true;
+      const rawPad=entry.pad??0;
+      if(!Number.isFinite(rawPad)||rawPad<0)return true;
+      const pad=Math.min(1,rawPad)*.2+.015;
+      // A later blocker callback may mutate an earlier blocker's bounds in place.
+      // Record scalar bounds and padding; object identity alone is insufficient.
+      const proof={entry,mesh,pad,minRef:bounds.minimumWorld,maxRef:bounds.maximumWorld,
+        loX:bounds.minimumWorld.x,loY:bounds.minimumWorld.y,
+        loZ:bounds.minimumWorld.z,hiX:bounds.maximumWorld.x,hiY:bounds.maximumWorld.y,
+        hiZ:bounds.maximumWorld.z};
+      // CR4.9.496: invalid wall padding fails closed; read each pad getter once.
+      // CR4.9.493: eliminate transient numeric arrays in frequent XR LOS checks.
+      if(!Number.isFinite(proof.loX)||!Number.isFinite(proof.loY)||
+         !Number.isFinite(proof.loZ)||!Number.isFinite(proof.hiX)||
+         !Number.isFinite(proof.hiY)||!Number.isFinite(proof.hiZ)||
+         proof.loX>proof.hiX||proof.loY>proof.hiY||proof.loZ>proof.hiZ)return true;
+      geometryProofs.push(proof);
+      if(proof.hiX+pad<segMinX||proof.loX-pad>segMaxX||
+         proof.hiY+pad<segMinY||proof.loY-pad>segMaxY||
+         proof.hiZ+pad<segMinZ||proof.loZ-pad>segMaxZ)continue;
+      let near=from,far=to,hit=true;
+      for(let axis=0;axis<3;axis++){
+        // Test the immutable scalar proof, not bounds a callback can mutate in place.
+        const lo=(axis===0?proof.loX:axis===1?proof.loY:proof.loZ)-pad;
+        const hi=(axis===0?proof.hiX:axis===1?proof.hiY:proof.hiZ)+pad;
+        const origin=axis===0?rayStart.x:axis===1?rayStart.y:rayStart.z;
+        const speed=axis===0?direction.x:axis===1?direction.y:direction.z;
+        if(!Number.isFinite(lo)||!Number.isFinite(hi)||
+           !Number.isFinite(origin)||!Number.isFinite(speed))return true;
+        if(Math.abs(speed)<1e-8){
+          if(origin<lo||origin>hi){hit=false;break;}
+          continue;
+        }
+        let a=(lo-origin)/speed,b=(hi-origin)/speed;
+        if(a>b){const swap=a;a=b;b=swap;}
+        near=Math.max(near,a);far=Math.min(far,b);
+        if(near>far){hit=false;break;}
+      }
+      if(hit&&near<=to&&far>=from)return true;
+    }
+    if(G.blockers!==blockers||blockers.length!==snapshot.length)return true;
+    for(let i=0;i<snapshot.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==snapshot[i])return true;
+    }
+    for(const proof of disposedProofs){
+      if(G.blockers!==blockers||blockers.length!==snapshot.length||
+         proof.entry.mesh!==proof.mesh||!proof.mesh.isDisposed?.())return true;
+    }
+    // A blocker can change shape without changing the roster or mesh reference.
+    // Fail closed if any world-space bound, padding, mesh or live state changed.
+    for(const proof of geometryProofs){
+      if(G.blockers!==blockers||blockers.length!==snapshot.length)return true;
+      if(proof.entry.mesh!==proof.mesh||proof.mesh.isDisposed?.())return true;
+      proof.mesh.computeWorldMatrix?.(true);
+      const box=proof.mesh.getBoundingInfo()?.boundingBox;
+      if(!box?.minimumWorld||!box?.maximumWorld)return true;
+      const rawPad=proof.entry.pad??0;
+      if(!Number.isFinite(rawPad)||rawPad<0)return true;
+      const pad=Math.min(1,rawPad)*.2+.015;
+      if(pad!==proof.pad||box.minimumWorld!==proof.minRef||box.maximumWorld!==proof.maxRef||
+         box.minimumWorld.x!==proof.loX||box.minimumWorld.y!==proof.loY||
+         box.minimumWorld.z!==proof.loZ||box.maximumWorld.x!==proof.hiX||
+         box.maximumWorld.y!==proof.hiY||box.maximumWorld.z!==proof.hiZ)return true;
+    }
+    // Final callback-free geometry proof: verifying a later mesh may have
+    // mutated an earlier bounding vector IN PLACE after its own readback.
+    for(const proof of geometryProofs){
+      const mn=proof.minRef,mx=proof.maxRef;
+      if(mn.x!==proof.loX||mn.y!==proof.loY||mn.z!==proof.loZ||
+         mx.x!==proof.hiX||mx.y!==proof.hiY||mx.z!==proof.hiZ)return true;
+    }
+    if(G.blockers!==blockers||blockers.length!==snapshot.length)return true;
+    for(let i=0;i<snapshot.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==snapshot[i])return true;
+    }
+    if(hand.x!==rayStart.x||hand.y!==rayStart.y||hand.z!==rayStart.z||
+       target.x!==rayEnd.x||target.y!==rayEnd.y||target.z!==rayEnd.z)return true;
+    return false;
+  }catch{return true;}
+  finally{
+    snapshot.length=0;geometryProofs.length=0;disposedProofs.length=0;
+    officeRayProofDepth=proofDepth;
+  }
+}
+let nearbyOfficeDeviceActivationInFlight=false;
+function activateNearbyOfficeDevice(scene,ctrl){
+  if(nearbyOfficeDeviceActivationInFlight)return false;
+  nearbyOfficeDeviceActivationInFlight=true;
+  try{
+  // CR4.9.491: geometry callbacks can disconnect XR while a device ray is
+  // being evaluated. Require live controller ownership at entry and commit.
+  if(G.state!=='shift'||!xrGrabControllerLive(ctrl?.inputSource?.handedness,ctrl))return false;
+  let node=null,hand=null,forward=null;
+  try{
+    node=ctrl?.grip||ctrl?.pointer;
+    if(!node)return false;
+    node.computeWorldMatrix?.(true);
+    hand=node.getAbsolutePosition();
+    forward=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+    const length=Math.hypot(forward.x,forward.y,forward.z);
+    if(!Number.isFinite(length)||length<.001||!hand||![hand.x,hand.y,hand.z].every(Number.isFinite))return false;
+    forward.scaleInPlace(1/length);
+  }catch{return false;}
+  // Freeze controller pose: callbacks during ray tests must not retarget a press.
+  let handStart=null,aimStart=null;
+  try{
+    handStart={x:hand.x,y:hand.y,z:hand.z};
+    aimStart={x:forward.x,y:forward.y,z:forward.z};
+  }catch{return false;}
+  if(![handStart.x,handStart.y,handStart.z,aimStart.x,aimStart.y,aimStart.z].every(Number.isFinite))return false;
+  const poseIntact=()=>{
+    try{
+      if((ctrl?.grip||ctrl?.pointer)!==node||
+         hand.x!==handStart.x||hand.y!==handStart.y||hand.z!==handStart.z)return false;
+      node.computeWorldMatrix?.(true);
+      const p=node.getAbsolutePosition();
+      const v=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix());
+      const len=Math.hypot(v.x,v.y,v.z);
+      return !!p&&len>=.001&&Number.isFinite(len)&&
+        p.x===handStart.x&&p.y===handStart.y&&p.z===handStart.z&&
+        Math.abs(v.x/len-aimStart.x)<.0001&&
+        Math.abs(v.y/len-aimStart.y)<.0001&&
+        Math.abs(v.z/len-aimStart.z)<.0001;
+    }catch{return false;}
+  };
+  const roster=G.props,shiftToken=G.waveToken,shiftWave=G.wave;
+  let snapshot=null;
+  try{
+    if(!Array.isArray(roster)||roster.length>256)return false;
+    snapshot=[];
+    for(let i=0;i<roster.length;i++){
+      // Reading a numeric accessor can run arbitrary game callbacks. Fail closed.
+      const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+      if(!slot||!('value' in slot))return false;
+      snapshot.push(slot.value);
+    }
+  }catch{return false;}
+  const scopeOK=()=>{try{return xrGrabControllerLive(ctrl?.inputSource?.handedness,ctrl)&&
+    G.state==='shift'&&G.waveToken===shiftToken&&G.wave===shiftWave&&
+    !G.waveTransition&&!G.ended&&G.props===roster&&roster.length===snapshot.length;}catch{return false;}};
+  const slotOK=i=>{try{
+    if(!scopeOK())return false;
+    const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+    return !!slot&&('value' in slot)&&slot.value===snapshot[i]&&scopeOK();
+  }catch{return false;}};
+  const unchanged=()=>{
+    if(!scopeOK())return false;
+    for(let i=0;i<snapshot.length;i++)if(!slotOK(i))return false;
+    return scopeOK();
+  };
+  let best=null,bestD2=1.2*1.2;
+  for(let i=0;i<snapshot.length;i++){
+    if(!slotOK(i))return false;
+    const pr=snapshot[i];
+    try{
+      if(!pr||!NEARBY_OFFICE_DEVICE_TYPES.has(pr.type)||pr.heldBy||pr.npcOwner||pr.broken||!pr.mesh||pr.mesh.isDisposed?.())continue;
+      const p=pr.mesh.getAbsolutePosition();
+      if(!slotOK(i)||pr.heldBy||pr.npcOwner||pr.broken)return false;
+      if(!p||![p.x,p.y,p.z].every(Number.isFinite))continue;
+      const dx=p.x-handStart.x,dy=p.y-handStart.y,dz=p.z-handStart.z,d2=dx*dx+dy*dy+dz*dz;
+      if(!Number.isFinite(d2)||d2<.08*.08||d2>=bestD2)continue;
+      if((dx*aimStart.x+dy*aimStart.y+dz*aimStart.z)/Math.sqrt(d2)<.22)continue;
+      best=pr;bestD2=d2;
+    }catch{if(!slotOK(i))return false;}
+  }
+  if(!best||!unchanged()||best.heldBy||best.npcOwner||best.broken)return false;
+  // Never activate an ambiguous prop that appears twice in the live roster.
+  if(snapshot.indexOf(best)!==snapshot.lastIndexOf(best))return false;
+  // Freeze the selected mesh and position across the blocker callbacks.
+  // A moved or replaced device must never be activated using an obsolete ray.
+  const selectedMesh=best.mesh;
+  let target=null;
+  try{
+    const p=selectedMesh.getAbsolutePosition();
+    target={x:p.x,y:p.y,z:p.z};
+  }catch{return false;}
+  if(![target.x,target.y,target.z].every(Number.isFinite))return false;
+  // Recheck reach and aiming after a mesh getter can move the selected device.
+  const dx=target.x-handStart.x,dy=target.y-handStart.y,dz=target.z-handStart.z;
+  const d2=dx*dx+dy*dy+dz*dz;
+  if(!Number.isFinite(d2)||d2<.08*.08||d2>=1.2*1.2||
+     (dx*aimStart.x+dy*aimStart.y+dz*aimStart.z)/Math.sqrt(d2)<.22||
+     !poseIntact()||officeDeviceOccluded(handStart,target))return false;
+  // Blocker callbacks and mesh getters may have changed position or ownership.
+  if(!unchanged()||!poseIntact()||best.heldBy||best.npcOwner||best.broken)return false;
+  let finalPosition=null;
+  try{
+    if(best.mesh!==selectedMesh||selectedMesh.isDisposed?.())return false;
+    finalPosition=selectedMesh.getAbsolutePosition();
+  }catch{return false;}
+  if(!finalPosition||finalPosition.x!==target.x||finalPosition.y!==target.y||
+     finalPosition.z!==target.z||!unchanged()||!poseIntact())return false;
+  return activateHeldOfficeDevice(scene,ctrl,best);
+  }finally{nearbyOfficeDeviceActivationInFlight=false;}
+}
+// CR4.9.349: a trigger callback may synchronously dispatch another trigger.
+// Reserve one interaction until the current press unwinds (including errors).
+let xrTriggerInteractionBusy=false;
+function triggerInteract(scene,ctrl){
+  if(xrTriggerInteractionBusy)return;
+  // CR4.9.489: stale or disconnected XR triggers must not operate held props,
+  // nearby devices, hub buttons or score events after a controller swap.
+  let triggerHanded=null;
+  try{triggerHanded=ctrl?.inputSource?.handedness;}catch{return;}
+  if(!xrGrabControllerLive(triggerHanded,ctrl))return;
+  xrTriggerInteractionBusy=true;
+  try{ if(G.state==='shift'){const handed=ctrl.inputSource?.handedness||'none';const st=G.handState.get(handed);if(st?.grabbing&&(st.grabbing.type==='printer'||st.grabbing.type==='photocopier'||st.grabbing.type==='aircannon'||st.grabbing.type==='fan'||st.grabbing.type==='deskbell'||st.grabbing.type==='papercannon'||st.grabbing.type==='microwave'||st.grabbing.type==='suctioncannon'||st.grabbing.type==='magnetgun'||st.grabbing.type==='vendingmachine'||st.grabbing.type==='confetticannon'||st.grabbing.type==='watercooler'||st.grabbing.type==='rubberduck'||st.grabbing.type==='deskphone'||st.grabbing.type==='projector'||st.grabbing.type==='coffeepot'||st.grabbing.type==='keyboard'||st.grabbing.type==='calculator'||st.grabbing.type==='stapler'||st.grabbing.type==='tapedispenser'||st.grabbing.type==='firstaid'||st.grabbing.type==='rubberhammer'||st.grabbing.type==='boxingglove'||st.grabbing.type==='chaircatapult'||st.grabbing.type==='gluegun')){activateHeldOfficeDevice(scene,ctrl,st.grabbing);return;}if(st?.grabbing?.type==='camera'){addScore(65,'SNAPSHOT');tone(720,.04,'square',.03,-180);haptic(ctrl,.25,25);toast('OFFICE CAM • SNAPSHOT',700);return;}if(st?.grabbing)return;activateNearbyOfficeDevice(scene,ctrl);return;} if(G.state!=='hub')return; const node=ctrl.pointer||ctrl.grip; if(!node)return; const origin=node.getAbsolutePosition(); const fwd=B.Vector3.TransformNormal(new B.Vector3(0,0,1),node.getWorldMatrix()).normalize(); const picked=pickHubInteractive(scene,origin,fwd,8); if(picked){const md=picked.metadata;pressHubButton(picked,ctrl,()=>{if(md.interact==='mode')startShift(scene,md.mode||'LEVELS');else if(md.interact==='station')stationAction(md.station);});return;} const p=origin; let best=null,bd=1.6; for(const mm of scene.meshes){if(mm.metadata?.interact){const d=B.Vector3.Distance(p,mm.getAbsolutePosition());if(d<bd){best=mm;bd=d;}}} if(best){const md=best.metadata;pressHubButton(best,ctrl,()=>{if(md.interact==='mode')startShift(scene,md.mode||'LEVELS');else stationAction(md.station);});} }finally{xrTriggerInteractionBusy=false;}
+}
+// CR4.9.449: XR/controller/mesh getters may synchronously dispatch a second
+// grab callback before the first has published hand/prop ownership.
+// Serialize complete local grab transactions; normal later grips still work.
+let xrGrabTransactionActive=false;
+// CR4.9.486: WebXR sessions without a readable inputSources roster are
+// UNKNOWN, not evidence of a live controller. Verify the native source, hand,
+// and session again after iterating the potentially changing live roster.
+// CR4.9.528: a successful parent change is not proof of the local grip pose.
+// Babylon setters may silently ignore one coordinate or partially commit.
+function xrGripLocalPositionMatches(mesh){
+  try{
+    const p=mesh?.position;
+    return !!p&&p.x===0&&p.y===-.03&&p.z===.06;
+  }catch{return false;}
+}
+function xrGrabControllerLive(handed,ctrl){
+  try{
+    if((handed!=='left'&&handed!=='right')||!ctrl||
+       G.handState.get(handed)?.ctrl!==ctrl)return false;
+    const manager=G.xr?.baseExperience?.sessionManager;
+    if(!manager?.inXRSession)return false;
+    const session=manager.session,sources=session?.inputSources;
+    const source=ctrl.inputSource;
+    if(!sources||!source||source.handedness!==handed)return false;
+    let found=false;
+    for(const item of sources){if(item===source){found=true;break;}}
+    return found&&manager.inXRSession&&manager.session===session&&
+      session.inputSources===sources&&ctrl.inputSource===source&&
+      source.handedness===handed&&G.handState.get(handed)?.ctrl===ctrl;
+  }catch{return false;}
+}
+function tryGrab(scene,handed,ctrl){
+  if(xrGrabTransactionActive)return;
+  xrGrabTransactionActive=true;
+  try{
+  if(G.state!=='shift'||G.waveTransition||G.ended||
+     (handed!=='left'&&handed!=='right')||
+     !xrGrabControllerLive(handed,ctrl))return;
+  const shiftToken=G.waveToken,shiftWave=G.wave;
+  const st=G.handState.get(handed);if(!st||st.grabbing||st.ctrl!==ctrl)return;
+  let p=null;try{p=controllerPos(ctrl);}catch{return;}
+  if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z))return;
+  // Fixed prop snapshot: XR callbacks must not expand or replace the candidate list.
+  const props=G.props;let candidates;
+  try{
+    if(!Array.isArray(props)||props.length>256)return;
+    candidates=[];
+    for(let i=0;i<props.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(props,String(i));
+      if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value'))return;
+      candidates.push(slot.value);
+    }
+    // Ambiguous duplicate identities cannot safely transfer ownership.
+    if(new Set(candidates).size!==candidates.length)return;
+  }catch{return;}
+  // A world/mesh callback may disconnect the XR controller without changing
+  // the props roster. Never attach a prop to an obsolete hand or shift.
+  const handIntact=()=>{try{
+    return G.state==='shift'&&G.waveToken===shiftToken&&G.wave===shiftWave&&
+      !G.waveTransition&&!G.ended&&G.handState.get(handed)===st&&
+      st.ctrl===ctrl&&!st.grabbing&&xrGrabControllerLive(handed,ctrl);
+  }catch{return false;}};
+  const rosterIntact=()=>{try{
+    if(!handIntact()||G.props!==props||props.length!==candidates.length)return false;
+    for(let i=0;i<candidates.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(props,String(i));
+      if(!slot||!Object.prototype.hasOwnProperty.call(slot,'value')||
+         slot.value!==candidates[i])return false;
+    }
+    return handIntact()&&G.props===props&&props.length===candidates.length;
+  }catch{return false;}};
+  let best=null,bdSquared=.58*.58;
+  for(const pr of candidates){
+    try{
+      if(!pr||pendingXRPropDetaches.has(pr)||(pr.heldBy&&(pr.heldBy===handed||G.handState.get(pr.heldBy)?.grabbing!==pr))||pr.npcOwner||pr.broken||!pr.mesh||pr.mesh.isDisposed?.()||
+         !pr.vel||typeof pr.vel.set!=='function')continue;
+      const world=pr.mesh.getAbsolutePosition();
+      if(!world||!Number.isFinite(world.x)||!Number.isFinite(world.y)||
+         !Number.isFinite(world.z))continue;
+      const dx=p.x-world.x,dy=p.y-world.y,dz=p.z-world.z;
+      const dSquared=dx*dx+dy*dy+dz*dz;
+      if(Number.isFinite(dSquared)&&dSquared<bdSquared){bdSquared=dSquared;best=pr;}
+    }catch{}
+  }
+  if(!best||pendingXRPropDetaches.has(best)||!rosterIntact())return;
+  let node=null;try{node=ctrl?.grip||ctrl?.pointer;}catch{return;}
+  if(!node||!rosterIntact())return;
+  // A candidate may move while Babylon resolves world transforms. Revalidate
+  // both controller reach and the selected mesh immediately before grabbing.
+  const selectedMesh=best.mesh;
+  let freshPos=null,freshHand=null;
+  try{
+    if(!selectedMesh||selectedMesh.isDisposed?.())return;
+    freshPos=selectedMesh.getAbsolutePosition();
+    freshHand=controllerPos(ctrl);
+  }catch{return;}
+  // CR4.9.488: VR grab proximity is a frequent path; validate scalars in place.
+  if(!freshPos||!freshHand||
+     !Number.isFinite(freshPos.x)||!Number.isFinite(freshPos.y)||
+     !Number.isFinite(freshPos.z)||!Number.isFinite(freshHand.x)||
+     !Number.isFinite(freshHand.y)||!Number.isFinite(freshHand.z)||
+     Math.hypot(freshHand.x-p.x,freshHand.y-p.y,freshHand.z-p.z)>.08||
+     Math.hypot(freshPos.x-freshHand.x,freshPos.y-freshHand.y,
+       freshPos.z-freshHand.z)>.58||best.mesh!==selectedMesh||!rosterIntact())return;
+  // A grip cannot pass through an office wall. Freeze both endpoints because
+  // Babylon blocker callbacks may move the controller or selected prop.
+  const gripHand={x:freshHand.x,y:freshHand.y,z:freshHand.z};
+  const gripTarget={x:freshPos.x,y:freshPos.y,z:freshPos.z};
+  const gripGap=Math.hypot(gripHand.x-gripTarget.x,gripHand.y-gripTarget.y,
+    gripHand.z-gripTarget.z);
+  if(!Number.isFinite(gripGap)||gripGap>.58)return;
+  try{if(gripGap>.12&&officeDeviceOccluded(gripHand,gripTarget))return;}
+  catch{return;}
+  // Re-read after the fallible geometry test. A stale LOS proof must not
+  // attach a prop moved behind a wall by the raycast callbacks.
+  let verifiedHand=null,verifiedTarget=null;
+  try{verifiedHand=controllerPos(ctrl);verifiedTarget=selectedMesh.getAbsolutePosition();}
+  catch{return;}
+  if(!verifiedHand||!verifiedTarget||
+     !Number.isFinite(verifiedHand.x)||!Number.isFinite(verifiedHand.y)||
+     !Number.isFinite(verifiedHand.z)||!Number.isFinite(verifiedTarget.x)||
+     !Number.isFinite(verifiedTarget.y)||!Number.isFinite(verifiedTarget.z)||
+     Math.hypot(verifiedHand.x-gripHand.x,verifiedHand.y-gripHand.y,
+       verifiedHand.z-gripHand.z)>.025||
+     Math.hypot(verifiedTarget.x-gripTarget.x,verifiedTarget.y-gripTarget.y,
+       verifiedTarget.z-gripTarget.z)>.025||
+     best.mesh!==selectedMesh||!rosterIntact())return;
+  // A second controller may assist a prop already owned by the other hand.
+  // Do not reparent it or steal ownership: the primary controller remains authoritative.
+  if(best.heldBy){
+    const primaryHand=best.heldBy,primary=G.handState.get(primaryHand);
+    if(primaryHand===handed||!primary||primary.assisting||primary.grabbing!==best||
+       !primary.ctrl||!xrGrabControllerLive(primaryHand,primary.ctrl))return;
+    // Fail closed if callbacks move the primary controller or reparent its prop.
+    let q=null,primaryNode=null,secondNow=null,primaryNow=null,nextPrev=null,midpoint=null;
+    try{
+      q=controllerPos(primary.ctrl);
+      primaryNode=primary.ctrl.grip||primary.ctrl.pointer;
+      if(!q||!Number.isFinite(q.x)||!Number.isFinite(q.y)||
+         !Number.isFinite(q.z)||!primaryNode||
+         Math.hypot(p.x-q.x,p.y-q.y,p.z-q.z)>.9||
+         selectedMesh.parent!==primaryNode||!rosterIntact()||best.heldBy!==primaryHand)return;
+      secondNow=controllerPos(ctrl);primaryNow=controllerPos(primary.ctrl);
+      if(!secondNow||!primaryNow||
+         !Number.isFinite(secondNow.x)||!Number.isFinite(secondNow.y)||
+         !Number.isFinite(secondNow.z)||!Number.isFinite(primaryNow.x)||
+         !Number.isFinite(primaryNow.y)||!Number.isFinite(primaryNow.z)||
+         Math.hypot(secondNow.x-p.x,secondNow.y-p.y,secondNow.z-p.z)>.025||
+         Math.hypot(primaryNow.x-q.x,primaryNow.y-q.y,primaryNow.z-q.z)>.025||
+         !rosterIntact()||best.mesh!==selectedMesh||
+         selectedMesh.parent!==primaryNode||best.heldBy!==primaryHand||
+         primary.grabbing!==best)return;
+      nextPrev=p.clone();
+      midpoint=new B.Vector3((p.x+q.x)/2,(p.y+q.y)/2,(p.z+q.z)/2);
+    }catch{return;}
+    let oldPrimaryPrev=null,oldHandVel=null;
+    try{oldPrimaryPrev=primary.prevPos;oldHandVel=best._lastHandVel;}catch{return;}
+    try{
+      st.grabbing=best;st.assisting=true;st.prevPos=nextPrev;
+      primary.prevPos=midpoint;best._lastHandVel=null;
+      if(G.state!=='shift'||G.waveToken!==shiftToken||G.wave!==shiftWave||
+         G.waveTransition||G.ended||G.props!==props||
+         G.handState.get(handed)!==st||G.handState.get(primaryHand)!==primary||
+         st.ctrl!==ctrl||st.grabbing!==best||st.assisting!==true||
+         primary.grabbing!==best||primary.assisting||best.heldBy!==primaryHand||
+         !xrGrabControllerLive(primaryHand,primary.ctrl)||
+         best.mesh!==selectedMesh||selectedMesh.parent!==primaryNode)
+        throw Error('two-hand assist ownership changed');
+    }catch{
+      // A setter may commit and throw: restore each piece independently.
+      try{if(st.grabbing===best)st.grabbing=null;}catch{}
+      try{st.assisting=false;}catch{}
+      try{st.prevPos=null;}catch{}
+      try{primary.prevPos=oldPrimaryPrev;}catch{}
+      try{best._lastHandVel=oldHandVel;}catch{}
+      return;
+    }
+    try{syncBatGrabVisibility();}catch{}
+    try{setHandGrabPose(handed,true);}catch{}
+    try{haptic(ctrl,.2,25);}catch{}
+    return;
+  }
+  let oldParent=null,oldPos=null,oldVel=null,prevPos=null,oldGrounded=null,oldLastHandVel=null,oldHandPrev=null;
+  try{
+    oldGrounded=best.grounded;oldLastHandVel=best._lastHandVel;oldHandPrev=st.prevPos;
+    oldParent=best.mesh.parent;
+    oldPos=best.mesh.position?.clone?.()||null;
+    oldVel=best.vel.clone?.()||null;
+    prevPos=p.clone();
+    if(!prevPos||!Number.isFinite(prevPos.x)||!Number.isFinite(prevPos.y)||
+       !Number.isFinite(prevPos.z))return;
+    best.mesh.setParent(node);best.mesh.position=new B.Vector3(0,-.03,.06);
+    if(best.mesh.parent!==node||!xrGripLocalPositionMatches(best.mesh))
+      throw Error('grab local pose mismatch');
+    best.vel.set(0,0,0);
+    const liveHand=controllerPos(ctrl);
+    if(!liveHand||Math.hypot(liveHand.x-p.x,liveHand.y-p.y,liveHand.z-p.z)>.08||
+       best.mesh!==selectedMesh||!rosterIntact()||best.heldBy||
+       best.npcOwner||best.broken||pendingXRPropDetaches.has(best))throw new Error('grab ownership changed');
+  }catch{
+    // A parent setter may commit then throw. Attempt each rollback independently:
+    // a failed reparent must not suppress position or velocity restoration.
+    try{best.mesh.setParent(oldParent||null);}catch{}
+    try{if(oldPos)best.mesh.position=oldPos;}catch{}
+    try{if(oldVel)best.vel.set(oldVel.x,oldVel.y,oldVel.z);}catch{}
+    // Failed grab rollback can also commit-then-throw. If the prop remains
+    // on this grip, reserve it for detach retries rather than free physics.
+    try{if(best.mesh===selectedMesh&&selectedMesh.parent===node)
+      quarantineXRPropDetach(best,selectedMesh,node);}catch{}
+    return;
+  }
+  // Final grip state is a transaction too: property setters can commit then throw.
+  // Never leave a half-owned prop parented to an XR controller.
+  try{
+    best.heldBy=handed;best.grounded=false;
+    best._lastHandVel=B.Vector3.Zero();st.grabbing=best;st.assisting=false;st.prevPos=prevPos;
+    if(G.state!=='shift'||G.waveToken!==shiftToken||G.wave!==shiftWave||
+       G.waveTransition||G.ended||G.handState.get(handed)!==st||
+       st.ctrl!==ctrl||!xrGrabControllerLive(handed,ctrl)||
+       st.grabbing!==best||st.assisting||
+       best.heldBy!==handed||best.mesh!==selectedMesh||
+       selectedMesh.parent!==node||!xrGripLocalPositionMatches(selectedMesh)||
+       best.grounded!==false||
+       best.npcOwner||best.broken||pendingXRPropDetaches.has(best)||G.props!==props||
+       props.length!==candidates.length)
+      throw Error('final XR grab state changed');
+    for(let i=0;i<candidates.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(props,String(i));
+      if(!slot||!('value' in slot)||slot.value!==candidates[i])
+        throw Error('final XR prop roster changed');
+    }
+  }catch{
+    try{if(st.grabbing===best)st.grabbing=null;}catch{}
+    try{st.assisting=false;}catch{}
+    try{st.prevPos=oldHandPrev;}catch{}
+    try{if(best.heldBy===handed)best.heldBy=null;}catch{}
+    try{best.grounded=oldGrounded;}catch{}
+    try{best._lastHandVel=oldLastHandVel;}catch{}
+    try{selectedMesh.setParent(oldParent||null);}catch{}
+    try{if(oldPos)selectedMesh.position=oldPos;}catch{}
+    try{if(oldVel)best.vel.set(oldVel.x,oldVel.y,oldVel.z);}catch{}
+    try{if(best.mesh===selectedMesh&&selectedMesh.parent===node)
+      quarantineXRPropDetach(best,selectedMesh,node);}catch{}
+    return;
+  }
+  // Audio and UI callbacks must not unwind an already-verified grip.
+  try{syncBatGrabVisibility();}catch{}
+  try{setHandGrabPose(handed,true);}catch{}
+  try{grabSound(best.material);}catch{}
+  try{if(['deskphone','stapler','deskbell','mug','coffeepot','toolbox','wrench','rubberduck'].includes(best.type))
+    propSpecialSound(best.type,.8);}catch{}
+  try{haptic(ctrl,.25,28);}catch{}
+  }finally{xrGrabTransactionActive=false;}
+}
+// Recenter the prop when an assisting controller leaves the two-hand grip.
+function recenterPrimaryHeldProp(pr,hand){
+  try{
+    const st=G.handState.get(hand);
+    if(!st||st.assisting||st.grabbing!==pr||pr.heldBy!==hand||!st.ctrl||
+       !xrGrabControllerLive(hand,st.ctrl)||!pr.mesh||pr.mesh.isDisposed?.())return false;
+    const node=st.ctrl.grip||st.ctrl.pointer;
+    if(!node||pr.mesh.parent!==node)return false;
+    const p=controllerPos(st.ctrl);
+    if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z))return false;
+    const heldMesh=pr.mesh;
+    // Position setters can commit then throw; validate the actual recenter.
+    try{heldMesh.position.copyFrom(new B.Vector3(0,-.03,.06));}catch{}
+    const local=heldMesh.position;
+    if(!local||local.x!==0||local.y!==-.03||local.z!==.06||
+       pr.mesh!==heldMesh||heldMesh.parent!==node||pr.heldBy!==hand||
+       G.handState.get(hand)!==st||st.grabbing!==pr||st.assisting||
+       (st.ctrl?.grip||st.ctrl?.pointer)!==node||
+       !xrGrabControllerLive(hand,st.ctrl)){
+      pr._lastHandVel=null;return false;
+    }
+    st.prevPos=p.clone();pr._lastHandVel=null;return true;
+  }catch{try{pr._lastHandVel=null;}catch{}return false;}
+}
+// A failed XR detach must not make a still-parented prop fall under free physics.
+const pendingXRPropDetaches=new Map();
+const xrDetachReservationInFlight=new WeakSet();
+let retryingXRPropDetaches=false;
+// CR4.9.343: failed XR parenting operations must never expose a still-attached
+// prop to the free-physics loop. Quarantine only a verified live mesh/parent.
+// CR4.9.474: reserve recovery before fallible setters and reject reentrant
+// detach attempts. A foreign parent remains passive, never detached by us.
+function quarantineXRPropDetach(pr,mesh,grip,passive=false){
+  if(!pr||(typeof pr!=='object'&&typeof pr!=='function')||xrDetachReservationInFlight.has(pr))return false;
+  xrDetachReservationInFlight.add(pr);
+  try{
+    if(!mesh||!grip||pr.mesh!==mesh||mesh.isDisposed?.()||mesh.parent!==grip)return false;
+    const owner=pr.heldBy;
+    if(owner!=null&&owner!=='xr-detach-pending'){
+      if((owner!=='left'&&owner!=='right')||G.handState.get(owner)?.grabbing===pr)return false;
+    }
+    const job={mesh,grip,attempts:0,passive:passive===true};
+    pendingXRPropDetaches.set(pr,job);
+    try{pr.heldBy='xr-detach-pending';}catch{}
+    let held;
+    try{held=pr.heldBy;}catch{return false;} // Preserve ambiguous job.
+    if(held!=='xr-detach-pending'){
+      // Keep the private reservation when a setter rejects the sentinel.
+      return false;
+    }
+    if(pr.mesh!==mesh||mesh.parent!==grip)return false;
+    try{pr._lastHandVel=null;}catch{}
+    try{pr.vel?.set?.(0,0,0);}catch{}
+    return pendingXRPropDetaches.get(pr)===job;
+  }catch{return false;}
+  finally{xrDetachReservationInFlight.delete(pr);}
+}
+function retryXRPropDetaches(){
+  if(retryingXRPropDetaches||!pendingXRPropDetaches.size)return;
+  retryingXRPropDetaches=true;
+  try{
+    for(const [pr,job] of pendingXRPropDetaches){
+      if(xrDetachReservationInFlight.has(pr))continue;
+      try{
+        if(pr.mesh!==job.mesh||job.mesh.isDisposed?.()){
+          if(pr.heldBy==='xr-detach-pending')try{pr.heldBy=null;}catch{}
+          pendingXRPropDetaches.delete(pr);continue;
+        }
+        const owner=pr.heldBy,parent=job.mesh.parent;
+        if(owner==='left'||owner==='right'){
+          const st=G.handState.get(owner),node=st?.ctrl?.grip||st?.ctrl?.pointer;
+          if(st?.grabbing===pr&&node===parent){
+            pendingXRPropDetaches.delete(pr);continue;
+          }
+        }
+        if(parent==null){
+          // Clear a stale owner only when its hand no longer claims the prop.
+          if(owner==='xr-detach-pending'||
+             ((owner==='left'||owner==='right')&&G.handState.get(owner)?.grabbing!==pr))
+            try{pr.heldBy=null;}catch{}
+          if(pr.heldBy==null&&pendingXRPropDetaches.get(pr)===job)
+            pendingXRPropDetaches.delete(pr);
+          continue;
+        }
+        // Null public owner is possible after a rejected sentinel setter.
+        if(owner!=null&&owner!=='xr-detach-pending'){
+          job.attempts=Math.min(90,job.attempts+1);continue;
+        }
+        if(parent!==job.grip){
+          job.attempts=Math.min(90,job.attempts+1);continue;
+        }
+        if(job.passive===true||job.attempts>=90)continue;
+        job.attempts++;
+        try{job.mesh.setParent(null);}catch{}
+        if(pr.mesh===job.mesh&&job.mesh.parent==null&&
+           (pr.heldBy==null||pr.heldBy==='xr-detach-pending')){
+          if(pr.heldBy==='xr-detach-pending')try{pr.heldBy=null;}catch{}
+          if(pr.heldBy==null&&pendingXRPropDetaches.get(pr)===job)
+            pendingXRPropDetaches.delete(pr);
+        }
+      }catch{job.attempts=Math.min(90,job.attempts+1);}
+    }
+  }finally{retryingXRPropDetaches=false;}
+}
+function releaseGrab(handed,ctrl,dropOnly=false){ const st=G.handState.get(handed); if(!st?.grabbing||st.ctrl!==ctrl)return; const pr=st.grabbing;
+  if(st.assisting){
+    st.grabbing=null;st.assisting=false;st.prevPos=null;
+    const primary=G.handState.get(pr.heldBy);
+    if(primary?.grabbing===pr){
+      if(!recenterPrimaryHeldProp(pr,pr.heldBy)){
+        try{primary.prevPos=controllerPos(primary.ctrl);}catch{primary.prevPos=null;}
+        pr._lastHandVel=null;
+      }
+    }
+    try{syncBatGrabVisibility();}catch{}
+    try{setHandGrabPose(handed,false);}catch{}
+    return;
+  }
+  // A stale hand must never detach an object now owned by another controller.
+  if(pr.heldBy!==handed){st.grabbing=null;st.assisting=false;st.prevPos=null;try{setHandGrabPose(handed,false);}catch{}return;}
+  // Transfer the held prop to the assisting hand without dropping it or throwing it.
+  const otherHand=handed==='left'?'right':'left',other=G.handState.get(otherHand);
+  if(other?.assisting&&other.grabbing===pr&&other.ctrl&&
+     xrGrabControllerLive(otherHand,other.ctrl)){
+    let transferMesh=null,oldParent=null,oldPosition=null;
+    try{
+      const node=other.ctrl.grip||other.ctrl.pointer;
+      const p=controllerPos(other.ctrl);
+      if(!node||!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||!Number.isFinite(p.z)||!pr.mesh||pr.mesh.isDisposed?.())throw Error('assist unavailable');
+      transferMesh=pr.mesh;
+      oldParent=transferMesh.parent;
+      oldPosition=transferMesh.position?.clone?.()||null;
+      const nextPrev=p.clone();
+      // Reparenting or assigning local position may commit and then throw.
+      // Keep the primary owner until the transfer is independently verified.
+      transferMesh.setParent(node);transferMesh.position=new B.Vector3(0,-.03,.06);
+      if(!xrGripLocalPositionMatches(transferMesh)||pr.mesh!==transferMesh||transferMesh.parent!==node||pr.heldBy!==handed||
+         st.grabbing!==pr||other.grabbing!==pr||!other.assisting||
+         G.handState.get(handed)!==st||G.handState.get(otherHand)!==other||
+         (other.ctrl.grip||other.ctrl.pointer)!==node||
+         !xrGrabControllerLive(otherHand,other.ctrl))throw Error('assist ownership changed');
+      pr.heldBy=otherHand;pr._lastHandVel=null;
+      other.assisting=false;other.prevPos=nextPrev;
+      st.grabbing=null;st.assisting=false;st.prevPos=null;
+      // CR4.9.522: reject a transfer whose controller disconnected during setters.
+      if(!xrGrabControllerLive(otherHand,other.ctrl)||pr.heldBy!==otherHand||
+         other.grabbing!==pr||other.assisting||st.grabbing!==null||
+         pr.mesh!==transferMesh||transferMesh.parent!==node||
+         !xrGripLocalPositionMatches(transferMesh))
+        throw Error('assist transfer lost ownership');
+      // Cosmetic callbacks must not roll back a completed hand transfer.
+      try{syncBatGrabVisibility();}catch{}
+      try{setHandGrabPose(handed,false);}catch{}
+      return;
+    }catch{
+      // A failed transfer must not leave the mesh on the assisting hand.
+      // Restore parent and local position independently, even after a throw.
+      if(transferMesh){
+        try{transferMesh.setParent(oldParent||null);}catch{}
+        try{if(oldPosition)transferMesh.position=oldPosition;}catch{}
+      }
+      other.grabbing=null;other.assisting=false;other.prevPos=null;
+      // CR4.9.531: a transfer may commit the primary hand clear and THEN
+      // throw. Reconcile owner and primary hand independently, otherwise
+      // the old hand may detach a prop that it no longer owns.
+      try{
+        if(pr.heldBy===otherHand&&other.grabbing!==pr&&
+           G.handState.get(handed)===st&&G.handState.get(otherHand)===other)
+          pr.heldBy=handed;
+      }catch{}
+      try{if(pr.heldBy===handed&&st.grabbing!==pr)st.grabbing=pr;}catch{}
+      dropOnly=true; // No stale velocity after any failed handoff.
+      try{setHandGrabPose(otherHand,false);}catch{}
+    }
+  }
+  // Never detach a prop that a failed handoff left with a different owner.
+  // If ownership is ambiguous, quarantine the exact parent without
+  // detaching a foreign controller's grip.
+  if(pr.heldBy!==handed||st.grabbing!==pr){
+    try{
+      const mesh=pr.mesh,parent=mesh?.parent,node=ctrl?.grip||ctrl?.pointer;
+      if(mesh&&parent&&other?.grabbing!==pr)
+        quarantineXRPropDetach(pr,mesh,parent,parent!==node);
+    }catch{}
+    return;
+  }
+  // CR4.9.529: a disconnected/stale XR source may still carry an old
+  // hand velocity. It can be detached safely but must never launch the prop.
+  // CR4.9.554: never launch a stale prop after a wave transition or game over.
+  if(!dropOnly){try{
+    if(G.state!=='shift'||G.waveTransition||G.ended||
+       !xrGrabControllerLive(handed,ctrl))dropOnly=true;
+  }catch{dropOnly=true;}}
+  // Never throw a corrupt, stale, or nonfinite tracked hand velocity.
+  let v=B.Vector3.Zero();
+  if(!dropOnly){
+    try{
+      const candidate=pr._lastHandVel?.clone?.();
+      if(candidate&&Number.isFinite(candidate.x)&&Number.isFinite(candidate.y)&&Number.isFinite(candidate.z)){
+        const speed=candidate.length();
+        if(Number.isFinite(speed)){
+          v=candidate;
+          if(speed>11)v.normalize().scaleInPlace(11);
+        }
+      }
+    }catch{}
+  }
+  // CR4.9.481: reserve a still-parented mesh BEFORE any fallible owner/hand
+  // setter. A setter that commits then throws must not expose free physics.
+  let releaseReservation=null;
+  try{
+    const liveMesh=pr.mesh;
+    if(liveMesh&&!liveMesh.isDisposed?.()){
+      const grip=ctrl?.grip||ctrl?.pointer,parent=liveMesh.parent;
+      if(parent!=null){
+        if(!grip||pendingXRPropDetaches.has(pr))return;
+        releaseReservation={mesh:liveMesh,grip:parent,attempts:0,passive:parent!==grip};
+        pendingXRPropDetaches.set(pr,releaseReservation);
+      }
+    }
+  }catch{return;}
+  try{
+    pr.heldBy=null;pr._lastHandVel=null;st.grabbing=null;st.assisting=false;st.prevPos=null;
+  }catch{return;} // Reservation survives ambiguous partial release.
+
+  // Detach even if a cosmetic callback throws after ownership was cleared.
+  try{syncBatGrabVisibility();}catch{}
+  try{setHandGrabPose(handed,false);}catch{}
+  let meshLive=false;try{meshLive=!!pr.mesh&&!pr.mesh.isDisposed?.();}catch{}
+  if(!meshLive)return;
+  // A Babylon parent setter may detach successfully and then throw. Verify
+  // the resulting parent instead of losing an otherwise valid throw velocity.
+  const releaseMesh=pr.mesh;
+  let expectedGrip=null,oldParent=null;
+  try{
+    expectedGrip=ctrl?.grip||ctrl?.pointer;
+    oldParent=releaseMesh.parent;
+  }catch{return;}
+  // Do not detach a prop reparented to a foreign controller or NPC.
+  if(oldParent!=null&&oldParent!==expectedGrip){
+    if(!releaseReservation)quarantineXRPropDetach(pr,releaseMesh,oldParent,true);
+    return;
+  }
+  let detached=oldParent==null;
+  if(!detached)try{releaseMesh.setParent(null);}catch{}
+  try{
+    detached=releaseMesh.parent==null&&pr.mesh===releaseMesh&&
+      !releaseMesh.isDisposed?.()&&pr.heldBy==null&&st.grabbing==null&&
+      G.handState.get(handed)===st&&
+      G.handState.get(otherHand)?.grabbing!==pr;
+  }catch{detached=false;}
+  if(!detached){
+    // Keep a still-parented prop out of free physics until detach succeeds.
+    try{
+      if(pr.mesh===releaseMesh&&releaseMesh.parent===expectedGrip&&pr.heldBy==null&&
+         !pendingXRPropDetaches.has(pr)){
+        quarantineXRPropDetach(pr,releaseMesh,expectedGrip);
+      }
+    }catch{}
+    return;
+  }
+  // Only a verified detach can retire this release's private reservation.
+  if(releaseReservation&&pendingXRPropDetaches.get(pr)===releaseReservation)
+    pendingXRPropDetaches.delete(pr);
+  // Weight-aware throws: ordinary 2 kg props keep their old velocity;
+  // heavy furniture travels less far from the same hand motion.
+  let mass=2;
+  try{const candidate=pr.mass;if(Number.isFinite(candidate)&&candidate>0)mass=Math.min(64,candidate);}catch{}
+  const throwScale=.9/Math.sqrt(Math.max(1,mass/2));
+  // CR4.9.554: a custom velocity setter may commit and throw. Confirm the
+  // detached prop received the exact finite velocity before using it.
+  let releaseSpeed=0,velocityPublished=false;
+  try{
+    const nextVelocity=v.scale(throwScale);
+    if(!Number.isFinite(nextVelocity.x)||!Number.isFinite(nextVelocity.y)||
+       !Number.isFinite(nextVelocity.z))throw Error('invalid throw velocity');
+    try{pr.vel=nextVelocity;}catch{}
+    const actual=pr.vel;
+    releaseSpeed=actual?.length?.();
+    velocityPublished=actual===nextVelocity&&Number.isFinite(releaseSpeed);
+  }catch{}
+  if(!velocityPublished){
+    // CR4.9.558: if a custom prop velocity setter rejects replacement,
+    // clear the existing Babylon vector in place before retrying zero.
+    // Otherwise a detached prop can keep its pre-grab launch velocity.
+    try{pr.vel?.set?.(0,0,0);}catch{}
+    try{pr.vel=B.Vector3.Zero();}catch{}
+    return; // No sound or extra impulse from an ambiguous velocity write.
+  }
+  try{releaseSound(pr.material,releaseSpeed);}catch{}
+  if(!dropOnly&&releaseSpeed>2.4)try{propSpecialSound(pr.type,releaseSpeed);}catch{}
+}
+
+function updateGrabVelocity(){
+  // CR4.9.521: scalar finite checks avoid short-lived XYZ arrays on XR frames.
+  retryXRPropDetaches();
+  // XR controllers may run at 72/90/120 Hz: calculate throw velocity from real frame time.
+  // Discard missing, implausibly short or paused-frame samples rather than inventing speed.
+  let frameMs=0;try{frameMs=engine.getDeltaTime();}catch{}
+  const frameDt=Number.isFinite(frameMs)&&frameMs>=4&&frameMs<=100?frameMs/1000:0;
+  for(const [hand,st] of G.handState){
+    if(!st?.grabbing)continue;
+    const pr=st.grabbing;
+    let meshLive=false;
+    try{meshLive=!!pr.mesh&&!pr.mesh.isDisposed?.();}catch{}
+    if(st.assisting){
+      // CR4.9.518: a disconnected assisting hand must never steer a prop.
+      // Also verify the primary XR source and the actual mesh parent.
+      let primary=null,assistLive=false;
+      try{
+        primary=G.handState.get(pr.heldBy);
+        const primaryNode=primary?.ctrl?.grip||primary?.ctrl?.pointer;
+        assistLive=!!st.ctrl&&meshLive&&!!primary&&!primary.assisting&&
+          primary.grabbing===pr&&!!primaryNode&&pr.mesh.parent===primaryNode&&
+          xrGrabControllerLive(hand,st.ctrl)&&
+          xrGrabControllerLive(pr.heldBy,primary.ctrl);
+      }catch{}
+      if(!assistLive){
+        st.grabbing=null;st.assisting=false;st.prevPos=null;
+        recenterPrimaryHeldProp(pr,pr.heldBy);
+        try{syncBatGrabVisibility();}catch{}try{setHandGrabPose(hand,false);}catch{}
+      }
+      continue;
+    }
+    if(!st.ctrl||!xrGrabControllerLive(hand,st.ctrl)||!meshLive||pr.heldBy!==hand){
+      if(pr.heldBy===hand){
+        // CR4.9.482: reserve the parent before fallible owner writes.
+        let lostMesh=null,lostGrip=null,reservation=null;
+        if(meshLive){
+          try{
+            lostMesh=pr.mesh;lostGrip=lostMesh.parent;
+            if(lostGrip!=null&&!pendingXRPropDetaches.has(pr)){
+              const expected=st.ctrl?.grip||st.ctrl?.pointer;
+              reservation={mesh:lostMesh,grip:lostGrip,attempts:0,
+                passive:!!expected&&lostGrip!==expected};
+              pendingXRPropDetaches.set(pr,reservation);
+            }
+          }catch{continue;} // Never clear an unreserved attached prop.
+        }
+        try{pr.heldBy=null;}catch{}
+        try{pr._lastHandVel=null;}catch{}
+        if(lostMesh){
+          if(lostGrip!=null&&reservation?.passive!==true)
+            try{lostMesh.setParent(null);}catch{}
+          try{pr.vel?.set?.(0,0,0);}catch{}
+          try{
+            if(reservation&&lostMesh.parent==null&&pr.heldBy==null&&
+               pendingXRPropDetaches.get(pr)===reservation)
+              pendingXRPropDetaches.delete(pr);
+          }catch{}
+        }
+      }
+      st.grabbing=null;st.prevPos=null;try{syncBatGrabVisibility();}catch{}try{setHandGrabPose(hand,false);}catch{}continue;
+    }
+    // Never sample throw velocity from a mesh no longer attached to this hand.
+    // An external callback may reparent a prop without updating heldBy.
+    let currentGrip=null,gripStillOwned=false;
+    try{
+      currentGrip=st.ctrl.grip||st.ctrl.pointer;
+      gripStillOwned=!!currentGrip&&pr.mesh.parent===currentGrip&&
+        G.handState.get(hand)===st&&st.grabbing===pr&&pr.heldBy===hand;
+    }catch{}
+    if(!gripStillOwned){
+      // CR4.9.520: a foreign mesh parent invalidates the local XR claim.
+      // Clear the stale hand, but never detach a mesh owned by another system.
+      let orphanMesh=null,orphanParent=null,stillClaimed=false;
+      try{
+        orphanMesh=pr.mesh;orphanParent=orphanMesh?.parent;
+        stillClaimed=G.handState.get(hand)===st&&st.grabbing===pr&&
+          pr.heldBy===hand;
+      }catch{}
+      try{pr._lastHandVel=null;}catch{}
+      try{st.prevPos=null;}catch{}
+      if(stillClaimed){
+        try{st.grabbing=null;}catch{}
+        try{st.assisting=false;}catch{}
+        try{
+          if(st.grabbing!==pr&&pr.heldBy===hand&&pr.mesh===orphanMesh){
+            if(orphanParent!=null&&orphanMesh.parent===orphanParent)
+              quarantineXRPropDetach(pr,orphanMesh,orphanParent,true);
+            else if(orphanMesh.parent==null)pr.heldBy=null;
+          }
+        }catch{}
+        try{syncBatGrabVisibility();}catch{}
+        try{setHandGrabPose(hand,false);}catch{}
+      }
+      continue;
+    }
+    let p=null;
+    try{p=controllerPos(st.ctrl);}catch{}
+    if(!p||!Number.isFinite(p.x)||!Number.isFinite(p.y)||
+       !Number.isFinite(p.z)){
+      pr._lastHandVel=null;st.prevPos=null;continue;
+    }
+    // CR4.9.519: controllerPos/world-matrix getters can revoke this hand,
+    // disconnect its XR source or reparent the mesh during the sample.
+    // Never publish velocity from that stale controller position.
+    let positionStillOwned=false;
+    try{
+      positionStillOwned=G.handState.get(hand)===st&&st.grabbing===pr&&
+        pr.heldBy===hand&&pr.mesh.parent===currentGrip&&
+        (st.ctrl?.grip||st.ctrl?.pointer)===currentGrip&&
+        xrGrabControllerLive(hand,st.ctrl);
+    }catch{}
+    if(!positionStillOwned){
+      try{
+        if(pr.heldBy===hand&&st.grabbing!==pr&&pr.mesh?.parent===currentGrip)
+          quarantineXRPropDetach(pr,pr.mesh,currentGrip);
+        else if(pr.heldBy===hand&&st.grabbing===pr){
+          pr._lastHandVel=null;st.prevPos=null;
+        }
+      }catch{}
+      continue;
+    }
+    // During two-handed carrying, the object follows the controller midpoint.
+    // Transform world midpoint into the primary grip's local space.
+    const otherHand=hand==='left'?'right':'left',assist=G.handState.get(otherHand);
+    let detachedAssist=false;
+    // CR4.9.473: failed two-hand tracking must recover even when UI/haptics throw.
+    if(assist?.assisting&&assist.grabbing===pr){
+      let q=null;try{q=controllerPos(assist.ctrl);}catch{}
+      const valid=!!q&&Number.isFinite(q.x)&&Number.isFinite(q.y)&&Number.isFinite(q.z)&&B.Vector3.Distance(p,q)<=1.2;
+      if(valid){
+        try{
+          const heldMesh=pr.mesh,node=heldMesh.parent;
+          const primaryNode=st.ctrl?.grip||st.ctrl?.pointer;
+          if(!node||node!==primaryNode||node.isDisposed?.())throw Error('missing or stale grip');
+          node.computeWorldMatrix?.(true);
+          const midpoint=new B.Vector3((p.x+q.x)/2,(p.y+q.y)/2,(p.z+q.z)/2);
+          const local=B.Vector3.TransformCoordinates(midpoint,B.Matrix.Invert(node.getWorldMatrix()));
+          if(!local||!Number.isFinite(local.x)||!Number.isFinite(local.y)||!Number.isFinite(local.z))throw Error('bad transform');
+          local.y-=.03;local.z+=.06;
+          // Babylon setters may apply the local position and THEN throw.
+          // Accept only a verified write with unchanged hand/mesh ownership.
+          try{heldMesh.position.copyFrom(local);}catch{}
+          const actual=heldMesh.position;
+          if(!actual||Math.abs(actual.x-local.x)>1e-5||
+             Math.abs(actual.y-local.y)>1e-5||Math.abs(actual.z-local.z)>1e-5||
+             pr.mesh!==heldMesh||heldMesh.parent!==node||pr.heldBy!==hand||
+             st.grabbing!==pr||G.handState.get(hand)!==st||
+             G.handState.get(otherHand)!==assist||!assist.assisting||
+             assist.grabbing!==pr||(st.ctrl?.grip||st.ctrl?.pointer)!==node||
+             // CR4.9.524: midpoint setters may end the XR session after writing.
+             !xrGrabControllerLive(hand,st.ctrl)||
+             !xrGrabControllerLive(otherHand,assist.ctrl))
+            throw Error('two-hand midpoint not safely applied');
+          p=midpoint;
+        }catch{
+          assist.grabbing=null;assist.assisting=false;assist.prevPos=null;
+          st.prevPos=null;pr._lastHandVel=null;recenterPrimaryHeldProp(pr,hand);detachedAssist=true;try{setHandGrabPose(otherHand,false);}catch{}try{syncBatGrabVisibility();}catch{}
+        }
+      }else{
+        assist.grabbing=null;assist.assisting=false;assist.prevPos=null;
+        st.prevPos=null;pr._lastHandVel=null;recenterPrimaryHeldProp(pr,hand);detachedAssist=true;try{setHandGrabPose(otherHand,false);}catch{}try{syncBatGrabVisibility();}catch{}
+      }
+    }
+    if(detachedAssist){pr._lastHandVel=null;continue;}
+    if(st.prevPos){
+      try{
+        if(!frameDt||!Number.isFinite(st.prevPos.x)||!Number.isFinite(st.prevPos.y)||!Number.isFinite(st.prevPos.z))pr._lastHandVel=null;
+        else{
+          // Avoid two short-lived Vector3 objects on every XR frame: compute
+          // velocity components first, and allocate only the accepted sample.
+          const invDt=1/frameDt;
+          const vx=(p.x-st.prevPos.x)*invDt,vy=(p.y-st.prevPos.y)*invDt,vz=(p.z-st.prevPos.z)*invDt;
+          const speedSq=vx*vx+vy*vy+vz*vz;
+          // Reject impossible XR tracking teleports rather than launching props at the throw cap.
+          if(Number.isFinite(vx)&&Number.isFinite(vy)&&Number.isFinite(vz)&&speedSq<=400){
+            // Keep the per-prop velocity vector across healthy XR samples.
+            const last=pr._lastHandVel;
+            if(last instanceof B.Vector3)last.set(vx,vy,vz);
+            else pr._lastHandVel=new B.Vector3(vx,vy,vz);
+          }else pr._lastHandVel=null;
+        }
+      }catch{pr._lastHandVel=null;}
+    }else pr._lastHandVel=null;
+    // CR4.9.554: a tracking/mesh callback can revoke ownership while the
+    // velocity sample is calculated. Discard it before a later trigger release.
+    let sampleStillOwned=false;
+    try{
+      sampleStillOwned=G.state==='shift'&&!G.waveTransition&&!G.ended&&
+        G.handState.get(hand)===st&&st.grabbing===pr&&!st.assisting&&
+        pr.heldBy===hand&&pr.mesh?.parent===currentGrip&&
+        (st.ctrl?.grip||st.ctrl?.pointer)===currentGrip&&
+        xrGrabControllerLive(hand,st.ctrl);
+    }catch{}
+    if(!sampleStillOwned){
+      try{pr._lastHandVel=null;}catch{}
+      try{st.prevPos=null;}catch{}
+      continue;
+    }
+    try{st.prevPos=p;}catch{
+      try{pr._lastHandVel=null;}catch{}
+      try{st.prevPos=null;}catch{}
+    }
+  }
+}
 sceneTickGrabHack();
 function sceneTickGrabHack(){ engine.onBeginFrameObservable.add(updateGrabVelocity); }
 
@@ -11250,41 +22047,631 @@ function runSelfChecks(){
 function gauntletSelfCheck(){
   const issues=[];const ids=(arr)=>arr.map(x=>x.id);
   for(const [name,arr] of Object.entries({bats:CATALOG.bats,skins:CATALOG.skins,maps:CATALOG.maps})){const a=ids(arr);if(new Set(a).size!==a.length)issues.push(name+' duplicate id');if(!arr.length)issues.push(name+' empty');}
-  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY==='undefined'||FIRE_PARTICLE_CAPACITY>5000)issues.push('fire particle budget too high');if(typeof FIRE_SMALL_FLAME_COUNT==='undefined'||FIRE_SMALL_FLAME_COUNT!==50)issues.push('small flame count is not 50');if(typeof FIRE_VISUAL_VERSION==='undefined'||!String(FIRE_VISUAL_VERSION).includes('LAYERED-FLAME'))issues.push('layered fire rebuild missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');if((G.hubButtons||[]).some(b=>![1,-1].includes(b.metadata?.faceSign)))issues.push('hub button face direction missing');if((G.hubButtons||[]).some(b=>{const f=b.metadata?.faceSign||0,r=b.metadata?.buttonRoot;return !r||Math.sign(r.position.z)!==f||Math.sign(b.position.z)!==f;}))issues.push('hub button visual layers reversed/hidden');if(typeof GAUNTLET_FUSION_VERSION==='undefined'||!String(GAUNTLET_FUSION_VERSION).includes('GAUNTLET-KAAL'))issues.push('gauntlet kaal overhaul missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<16)issues.push('specialist agent roster too small');if(typeof GAUNTLET_CRITIC_ROSTER==='undefined'||GAUNTLET_CRITIC_ROSTER.length!==GAUNTLET_AGENT_ROSTER.length)issues.push('paired critic roster mismatch');if(typeof runKaalAuditAndFill!=='function'||typeof addFusionHubPass!=='function'||typeof addFusionArenaPass!=='function')issues.push('kaal audit/fusion passes missing');if(typeof KAAL_AUDIT_SAMPLES==='undefined'||KAAL_AUDIT_SAMPLES<1000)issues.push('kaal audit samples below 1000');if(typeof addCuratedHubOverhaul!=='function'||typeof addCuratedArenaOverhaul!=='function')issues.push('curated design overhaul missing');if(!G.gauntletFusion?.curatedMode)issues.push('curated mode disabled');if(typeof KENNEY_INTERFACE_SFX==='undefined'||Object.keys(KENNEY_INTERFACE_SFX).length<16)issues.push('interface SFX palette too small');if(typeof KENNEY_INTERFACE_LICENSE==='undefined'||KENNEY_INTERFACE_LICENSE!=='CC0-1.0')issues.push('interface SFX license metadata missing');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||!KAYKIT_MODEL_CATALOG.space||KAYKIT_MODEL_CATALOG.space.length<30)issues.push('space model pack missing');if(typeof npcHitProbe!=='function')issues.push('per-mesh NPC hitbox probe missing');if(typeof GAUNTLET_AGENT_ROSTER==='undefined'||GAUNTLET_AGENT_ROSTER.length<36)issues.push('curated specialist roster too small');if(typeof GAUNTLET_META_AGENT_ROSTER==='undefined'||GAUNTLET_META_AGENT_ROSTER.length<10)issues.push('meta-agent factory roster too small');if(typeof GAUNTLET_META_CRITIC_ROSTER==='undefined'||GAUNTLET_META_CRITIC_ROSTER.length!==GAUNTLET_META_AGENT_ROSTER.length)issues.push('meta-agent critic mismatch');if(typeof runAgentFactory!=='function'||typeof validateGeneratedAgent!=='function'||typeof makeGeneratedAgent!=='function')issues.push('agent factory functions missing');if((G.gauntletFusion?.dynamicAgents||[]).some(a=>!a.critic||a.critic.id!==a.id+'_CRITIC'))issues.push('generated agent missing paired critic');if(typeof GAUNTLET_MAIN_LOOP_PASSES==='undefined'||GAUNTLET_MAIN_LOOP_PASSES!==1)issues.push('plain Gauntlet command must equal one complete-game main loop');if(typeof GAUNTLET_AGENT_PASS_BUDGET==='undefined'||GAUNTLET_AGENT_PASS_BUDGET!==5000)issues.push('agent pass budget is not 5000');if(typeof GAUNTLET_CRITIC_PASS_BUDGET==='undefined'||GAUNTLET_CRITIC_PASS_BUDGET!==5000)issues.push('critic pass budget is not 5000');if(typeof GAUNTLET_TESTER_ROSTER==='undefined'||GAUNTLET_TESTER_ROSTER.length<12)issues.push('tester roster too small');if(typeof inspectSceneQuality!=='function'||typeof runHubClutterPlacementCleanup!=='function'||typeof runGauntlet5000Audit!=='function')issues.push('autonomous quality director missing');if(typeof runStrictPlacementDirector!=='function'||typeof scoreObjectPlacement!=='function'||typeof calculateRoomQuality!=='function')issues.push('strict per-object/room placement director missing');if(typeof GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED==='undefined'||GAUNTLET_RENDERED_PLAYTHROUGHS_REQUESTED!==1)issues.push('complete-game render review target missing');if(typeof runVisualBlackoutGuard!=='function')issues.push('visual blackout guard missing');if(typeof runGauntlet50SceneReview!=='function')issues.push('50x scene review missing');if(GAUNTLET_TESTER_ROSTER.length<20)issues.push('strict tester roster too small');
-  if(typeof remoteKayKitModel!=='function'||typeof cloneRemoteTemplateInto!=='function'||typeof loadKenneyTemplate!=='function'||typeof setRemoteDecorReduced!=='function')issues.push('critical remote model runtime bridge missing');if(typeof RUNTIME_QA_DIAGNOSTICS==='undefined'||RUNTIME_QA_DIAGNOSTICS!==false)issues.push('runtime QA diagnostics must be off in production');if(typeof PLATFORM_PROFILE==='undefined')issues.push('platform profile missing');if(typeof hostMultiplayer!=='function'||typeof joinMultiplayer!=='function'||typeof networkTick!=='function'||MULTIPLAYER_PROFILE.transport!=='PeerJS/WebRTC P2P')issues.push('real P2P multiplayer transport missing');if(typeof updateFlatMovement!=='function'||typeof flatInteract!=='function'||typeof flatAttack!=='function')issues.push('PC/flat input layer missing');if(typeof setupTouchControls!=='function')issues.push('mobile touch layer missing');if(typeof pollFlatGamepad!=='function')issues.push('gamepad/console input layer missing');if(PLATFORM_PROFILE.mobile&&REMOTE_MAX_ACTIVE>2)issues.push('mobile remote concurrency too high');const badUnlock=[...(G.meta.unlockedBats||[]).filter(id=>!CATALOG.bats.some(x=>x.id===id)),...(G.meta.unlockedSkins||[]).filter(id=>!CATALOG.skins.some(x=>x.id===id)),...(G.meta.unlockedMaps||[]).filter(id=>!CATALOG.maps.some(x=>x.id===id))];if(badUnlock.length)issues.push('stale unlock ids');
+  if(!CATALOG.bats.find(x=>x.id===G.meta.selectedBat))issues.push('selected bat missing');if(!CATALOG.skins.find(x=>x.id===G.meta.selectedSkin))issues.push('selected skin missing');if(!CATALOG.maps.find(x=>x.id===G.meta.selectedMap))issues.push('selected map missing');if((CATALOG.props||[]).length<30)issues.push('prop variety too low');if(!CATALOG.bats.every(x=>x.name&&x.ability&&x.color))issues.push('bat definition incomplete');if(typeof FIRE_PARTICLE_CAPACITY!=='undefined'&&FIRE_PARTICLE_CAPACITY!==100000)issues.push('fire capacity is not exactly 100000');if(typeof KAYKIT_MODEL_CATALOG==='undefined'||Object.values(KAYKIT_MODEL_CATALOG).flat().length<100)issues.push('remote model catalog too small');if(typeof KAYKIT_LICENSE==='undefined'||KAYKIT_LICENSE!=='CC0-1.0')issues.push('remote asset license metadata missing');if(typeof REMOTE_MAX_ACTIVE==='undefined'||REMOTE_MAX_ACTIVE>4)issues.push('remote load concurrency too high');if(typeof AUDIO_VOICE_SOFT_CAP==='undefined'||AUDIO_VOICE_SOFT_CAP>32)issues.push('audio voice cap missing/high');if((CATALOG.props||[]).length<40)issues.push('gauntlet prop catalog below 40');if(typeof addDenseHubPass!=='function'||typeof addDenseArenaPass!=='function')issues.push('dense world pass missing');if(typeof addUltraDenseHubPass!=='function'||typeof addUltraDenseArenaPass!=='function')issues.push('ultra dense kaal pass missing');if(typeof KENNEY_FURNITURE_CATALOG==='undefined'||KENNEY_FURNITURE_CATALOG.length<30)issues.push('Kenney CC0 catalog missing/small');if(typeof KENNEY_LICENSE==='undefined'||KENNEY_LICENSE!=='CC0-1.0')issues.push('Kenney model license metadata missing');if(typeof KENNEY_SFX==='undefined'||Object.keys(KENNEY_SFX).length<15)issues.push('Kenney SFX catalog missing/small');if(typeof KENNEY_SFX_LICENSE==='undefined'||KENNEY_SFX_LICENSE!=='CC0-1.0')issues.push('Kenney SFX license metadata missing');
+  const badUnlock=[...(G.meta.unlockedBats||[]).filter(id=>!CATALOG.bats.some(x=>x.id===id)),...(G.meta.unlockedSkins||[]).filter(id=>!CATALOG.skins.some(x=>x.id===id)),...(G.meta.unlockedMaps||[]).filter(id=>!CATALOG.maps.some(x=>x.id===id))];if(badUnlock.length)issues.push('stale unlock ids');
   console[issues.length?'warn':'info']('GAUNTLET SELF CHECK',issues.length?issues:`OK • ${CATALOG.maps.length} maps • ${CATALOG.bats.length} bats • ${CATALOG.skins.length} skins • ${CATALOG.props.length} prop models`);return issues;
 }
 
-
-function assertCriticalRuntimeDependencies(){
-  const missing=[];
-  if(typeof remoteKayKitModel!=='function')missing.push('remoteKayKitModel');
-  if(typeof cloneRemoteTemplateInto!=='function')missing.push('cloneRemoteTemplateInto');
-  if(typeof setRemoteDecorReduced!=='function')missing.push('setRemoteDecorReduced');
-  if(typeof loadKenneyTemplate!=='function')missing.push('loadKenneyTemplate');
-  if(typeof remoteKenneyModel!=='function')missing.push('remoteKenneyModel');
-  if(typeof buildHub!=='function')missing.push('buildHub');
-  if(missing.length)throw new Error('CRITICAL STARTUP DEPENDENCY MISSING: '+missing.join(', '));
-  return true;
-}
-assertCriticalRuntimeDependencies();
-const scene=makeScene();setupMultiplayerUI(scene);
+const scene=makeScene();
 gauntletSelfCheck();
 runSelfChecks();
 window.scene=scene;
 
-let hubBuiltForSession=false;
-function ensureHubBuilt(){
-  if(hubBuiltForSession&&G.state==='hub')return;
-  ui.status.textContent='Building lobby…';
-  buildHub(scene);hubBuiltForSession=true;
-}
-ui.enter.onclick=async()=>{ try{G.desktop=false;setTouchUIVisible(false);const r=document.getElementById('reticle');if(r)r.style.display='none';const ap=document.getElementById('actionPrompt');if(ap)ap.style.opacity='0';if(audio)await audio.resume();ensureHubBuilt();const xr=await setupXR(scene);ui.boot.style.display='none';await xr.baseExperience.enterXRAsync('immersive-vr','local-floor');}catch(e){console.error(e);ui.boot.style.display='flex';ui.hud.style.display='none';setTouchUIVisible(false);ui.status.textContent='VR START ERROR • '+(e?.message||'WebXR unavailable here')+' • Use Desktop Preview on phones/PC.';} };
-ui.preview.onclick=()=>{try{G.desktop=true;ensureHubBuilt();ui.boot.style.display='none';ui.hud.style.display='flex';setTouchUIVisible(true);const r=document.getElementById('reticle');if(r)r.style.display='block';refreshPlayerCosmetics();}catch(e){console.error(e);ui.status.textContent='LOBBY ERROR • '+(e?.message||e);ui.boot.style.display='flex';setTouchUIVisible(false);}};
+ui.enter.onclick=async()=>{ try{if(audio)await audio.resume(); const xr=await setupXR(scene); await xr.baseExperience.enterXRAsync('immersive-vr','local-floor');}catch(e){console.error(e);ui.status.textContent='WebXR could not start here. Use HTTPS in a compatible headset browser.';} };
 
-window.addEventListener('keydown',e=>{if(!G.desktop)return;G.flatKeys.add(e.code);if(e.repeat)return;if(e.code==='KeyE'){if(G.state==='hub')flatInteract(scene);else flatGrabOrThrow(scene);}if(e.code==='Space'||e.code==='KeyF')flatAttack(scene);if(e.code==='KeyG'&&G.state==='shift')flatGrabOrThrow(scene);if(e.code==='KeyR'){if(G.state==='hub')buildHub(scene);else buildHub(scene);}if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SURVIVAL');if((e.code==='Digit2'||e.code==='Enter')&&G.state==='hub')startShift(scene,'LEVELS');});window.addEventListener('keyup',e=>G.flatKeys.delete(e.code));canvas.addEventListener('pointerdown',e=>{if(!G.desktop||PLATFORM_PROFILE.touch)return;if(e.button===0){if(G.state==='hub')flatInteract(scene);else flatAttack(scene);}else if(e.button===2)flatGrabOrThrow(scene);});canvas.addEventListener('contextmenu',e=>e.preventDefault());setupTouchControls(scene);
+const desktopKeys=new Set(),desktopTouch={x:0,y:0};
+let desktopControlsReady=false;
+function desktopMeleeBlocked(origin,direction,distance){
+  // Reborn 4.9.318: a ray may only pass when the *entire* blocker snapshot
+  // remains stable across Babylon callbacks. Never trust a partially read wall.
+  if(!Number.isFinite(distance)||distance<0||!origin||!direction)return true;
+  const ray={ox:origin.x,oy:origin.y,oz:origin.z,dx:direction.x,dy:direction.y,dz:direction.z};
+  if(!Object.values(ray).every(Number.isFinite))return true;
+  const start=.35,end=distance-.3;
+  if(end<=start)return false;
+  const blockers=G.blockers;
+  if(!Array.isArray(blockers)||blockers.length>512)return true;
+  try{
+    const snapshot=[];
+    for(let i=0;i<blockers.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot))return true;
+      snapshot.push(slot.value);
+    }
+    const sameScope=()=>G.blockers===blockers&&blockers.length===snapshot.length;
+    const sameRoster=()=>{
+      if(!sameScope())return false;
+      for(let i=0;i<snapshot.length;i++){
+        const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+        if(!slot||!('value' in slot)||slot.value!==snapshot[i])return false;
+      }
+      return sameScope();
+    };
+    const sameRay=()=>origin.x===ray.ox&&origin.y===ray.oy&&origin.z===ray.oz&&
+      direction.x===ray.dx&&direction.y===ray.dy&&direction.z===ray.dz;
+    const proofs=[];
+    for(let i=0;i<snapshot.length;i++){
+      if(!sameScope()||!sameRay())return true;
+      const slot=Object.getOwnPropertyDescriptor(blockers,String(i));
+      if(!slot||!('value' in slot)||slot.value!==snapshot[i])return true;
+      const entry=snapshot[i],mesh=entry?.mesh;
+      if(!mesh)return true;
+      if(mesh.isDisposed?.()){
+        proofs.push({entry,mesh,disposed:true});
+        continue;
+      }
+      mesh.computeWorldMatrix?.(true);
+      const box=mesh.getBoundingInfo()?.boundingBox;
+      const rawPad=entry.pad==null?0:entry.pad;
+      if(!Number.isFinite(rawPad)||!box?.minimumWorld||!box?.maximumWorld)return true;
+      const pad=Math.max(0,Math.min(1,rawPad))*.35+.05;
+      const lo=box.minimumWorld,hi=box.maximumWorld;
+      const proof={entry,mesh,disposed:false,pad,
+        loX:lo.x,loY:lo.y,loZ:lo.z,hiX:hi.x,hiY:hi.y,hiZ:hi.z};
+      if(![proof.loX,proof.loY,proof.loZ,proof.hiX,proof.hiY,proof.hiZ].every(Number.isFinite)||
+         proof.loX>proof.hiX||proof.loY>proof.hiY||proof.loZ>proof.hiZ)return true;
+      proofs.push(proof);
+      let near=start,far=end,hit=true;
+      for(const axis of ['x','y','z']){
+        const min=lo[axis]-pad,max=hi[axis]+pad;
+        const speed=ray['d'+axis],offset=ray['o'+axis];
+        if(Math.abs(speed)<1e-8){
+          if(offset<min||offset>max){hit=false;break;}
+          continue;
+        }
+        let a=(min-offset)/speed,b=(max-offset)/speed;
+        if(a>b){const t=a;a=b;b=t;}
+        near=Math.max(near,a);far=Math.min(far,b);
+        if(near>far){hit=false;break;}
+      }
+      if(hit&&near<=end&&far>=start)return true;
+    }
+    if(!sameRoster()||!sameRay())return true;
+    for(const proof of proofs){
+      if(!sameScope()||!sameRay()||proof.entry.mesh!==proof.mesh)return true;
+      const disposed=!!proof.mesh.isDisposed?.();
+      if(disposed!==proof.disposed)return true;
+      if(disposed)continue;
+      proof.mesh.computeWorldMatrix?.(true);
+      const box=proof.mesh.getBoundingInfo()?.boundingBox;
+      const rawPad=proof.entry.pad==null?0:proof.entry.pad;
+      if(!Number.isFinite(rawPad)||!box?.minimumWorld||!box?.maximumWorld)return true;
+      const pad=Math.max(0,Math.min(1,rawPad))*.35+.05;
+      if(pad!==proof.pad||box.minimumWorld.x!==proof.loX||box.minimumWorld.y!==proof.loY||
+         box.minimumWorld.z!==proof.loZ||box.maximumWorld.x!==proof.hiX||
+         box.maximumWorld.y!==proof.hiY||box.maximumWorld.z!==proof.hiZ)return true;
+    }
+    return !sameRoster()||!sameRay();
+  }catch{return true;}
+}
+// Reborn 4.9.305: browser players can use office appliances with the same
+// live, cooldown-limited device actions as VR players (no virtual grip needed).
+const DESKTOP_OFFICE_DEVICE_TYPES=new Set([
+  'vendingmachine','printer','photocopier','microwave','deskbell','watercooler','fan','aircannon',
+  'projector','coffeepot','keyboard','calculator','deskphone','rubberduck',
+  'stapler','tapedispenser','firstaid','chaircatapult','papercannon','confetticannon',
+  'bowlingball','cart','chair','trashcan','storagebox','briefcase','toolbox','monitor','plantpot','mug','wrench','thermos','donutbox','folder','clipboard','trophy','umbrella','paperball','printsheet','broom','binder','newspaper','nameplate'
+]);
+let desktopOfficeInteractionBusy=false;
+function activateDesktopOfficeDevice(scene,ray){
+  if(desktopOfficeInteractionBusy)return false;
+  desktopOfficeInteractionBusy=true;
+  try{
+  if(!G.desktop||G.state!=='shift'||!scene||!ray)return false;
+  const roster=G.props,cameraRef=scene.activeCamera,shiftToken=G.waveToken,shiftWave=G.wave;
+  if(!cameraRef||!Array.isArray(roster)||roster.length>256)return false;
+  // Raycast callbacks may mutate camera vectors or replace the ray object.
+  // Keep a scalar snapshot and reject stale picks before activating anything.
+  let rayOrigin=null,rayDir=null;
+  try{
+    const o=ray.origin,v=ray.direction;
+    if(!o||!v||![o.x,o.y,o.z,v.x,v.y,v.z].every(Number.isFinite))return false;
+    const len=Math.hypot(v.x,v.y,v.z);
+    if(!Number.isFinite(len)||len<.001)return false;
+    rayOrigin={x:o.x,y:o.y,z:o.z};
+    rayDir={x:v.x,y:v.y,z:v.z};
+  }catch{return false;}
+  const rayIntact=()=>{try{
+    const o=ray.origin,v=ray.direction;
+    return !!o&&!!v&&o.x===rayOrigin.x&&o.y===rayOrigin.y&&o.z===rayOrigin.z&&
+      v.x===rayDir.x&&v.y===rayDir.y&&v.z===rayDir.z;
+  }catch{return false;}};
+  // A scene raycast can invoke callbacks that replace entries without changing
+  // the roster length. Freeze each own data slot and validate it after picking.
+  let expected;
+  const frozenDevices=new Map();
+  try{
+    expected=[];
+    for(let i=0;i<roster.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+      if(!slot||!('value' in slot))return false;
+      expected.push(slot.value);
+      // Capture eligible device positions BEFORE pickWithRay invokes scene
+      // callbacks. A picked device moved by a callback must not activate.
+      const candidate=slot.value;
+      if(candidate&&DESKTOP_OFFICE_DEVICE_TYPES.has(candidate.type)&&candidate.mesh){
+        const mesh=candidate.mesh;
+        if(mesh.isDisposed?.())continue;
+        const p=mesh.getAbsolutePosition();
+        if(!p||![p.x,p.y,p.z].every(Number.isFinite))return false;
+        frozenDevices.set(candidate,{mesh,x:p.x,y:p.y,z:p.z});
+      }
+    }
+  }catch{return false;}
+  const intact=()=>{try{
+    if(!G.desktop||G.state!=='shift'||G.waveToken!==shiftToken||G.wave!==shiftWave||
+       G.waveTransition||G.ended||scene.activeCamera!==cameraRef||
+       G.props!==roster||roster.length!==expected.length)return false;
+    for(let i=0;i<expected.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+      if(!slot||!('value' in slot)||slot.value!==expected[i])return false;
+    }
+    return G.state==='shift'&&G.props===roster&&roster.length===expected.length;
+  }catch{return false;}};
+  let hit=null;
+  try{
+    const length=Math.hypot(rayDir.x,rayDir.y,rayDir.z);
+    const cast=new B.Ray(new B.Vector3(rayOrigin.x,rayOrigin.y,rayOrigin.z),
+      new B.Vector3(rayDir.x/length,rayDir.y/length,rayDir.z/length),2.5);
+    hit=scene.pickWithRay(cast,m=>{
+      if(!m||m.isPickable===false||m.isVisible===false||m.isEnabled?.()===false)return false;
+      for(let p=m,i=0;p&&i<10;p=p.parent,i++)if(p===G.batMesh||p===G.handVisuals?.left||p===G.handVisuals?.right)return false;
+      return true;
+    },false);
+  }catch{return false;}
+  if(!rayIntact()||!intact()||!hit?.hit||!hit.pickedMesh||!Number.isFinite(hit.distance)||
+     hit.distance<0||hit.distance>2.5)return false;
+  const pickedMesh=hit.pickedMesh,hitDistance=hit.distance;
+  let root=pickedMesh;
+  for(let i=0;root&&i<10&&root.metadata?.kind!=='prop';i++)root=root.parent;
+  if(root?.metadata?.kind!=='prop'||!intact())return false;
+  let device=null;
+  try{
+    for(const candidate of expected){
+      if(candidate?.mesh===root){device=candidate;break;}
+    }
+    // Reject duplicate identities even when every roster slot remains unchanged.
+    if(expected.indexOf(device)!==expected.lastIndexOf(device))return false;
+    const frozen=frozenDevices.get(device);
+    if(!frozen||frozen.mesh!==device.mesh)return false;
+    if(!device||!DESKTOP_OFFICE_DEVICE_TYPES.has(device.type)||device.heldBy||
+       device.npcOwner||device.broken||!device.mesh||device.mesh.isDisposed?.())return false;
+  }catch{return false;}
+  if(!intact()||device.heldBy||device.npcOwner||device.broken)return false;
+  // Metadata and position getters can invoke callbacks; the picked device,
+  // ray, hit and prop roster must still describe the same interaction.
+  let selectedMesh=null,selectedPosition=null;
+  try{
+    selectedMesh=device.mesh;
+    const p=selectedMesh.getAbsolutePosition();
+    if(!p||![p.x,p.y,p.z].every(Number.isFinite))return false;
+    const frozen=frozenDevices.get(device);
+    if(!frozen||frozen.mesh!==selectedMesh||
+       p.x!==frozen.x||p.y!==frozen.y||p.z!==frozen.z)return false;
+    selectedPosition={x:p.x,y:p.y,z:p.z};
+    const q=selectedMesh.getAbsolutePosition();
+    if(!q||q.x!==selectedPosition.x||q.y!==selectedPosition.y||q.z!==selectedPosition.z)return false;
+    if(selectedMesh.isDisposed?.()||device.mesh!==selectedMesh||device.heldBy||device.npcOwner||device.broken||
+       hit.pickedMesh!==pickedMesh||hit.distance!==hitDistance||
+       !G.desktop||!rayIntact()||!intact())return false;
+  }catch{return false;}
+  // Non-pickable walls still block office interactions; revalidate after callbacks.
+  if(officeDeviceOccluded(rayOrigin,selectedPosition)||!intact()||!rayIntact())return false;
+  try{
+    const p=selectedMesh.getAbsolutePosition();
+    if(!p||p.x!==selectedPosition.x||p.y!==selectedPosition.y||p.z!==selectedPosition.z||
+       device.mesh!==selectedMesh||selectedMesh.isDisposed?.()||device.heldBy||
+       device.npcOwner||device.broken||hit.pickedMesh!==pickedMesh||hit.distance!==hitDistance||
+       !intact()||!rayIntact())return false;
+  }catch{return false;}
+  return activateHeldOfficeDevice(scene,null,device,ray);
+  }finally{desktopOfficeInteractionBusy=false;}
+}
+let desktopActionBusy=false;
+// CR4.9.570: guarded, non-reentrant prop recovery with Quest confirmation haptics.
+// Available on desktop (T) and Quest (right thumbstick click). The original
+// spawn position is captured when the prop is created, not guessed on reset.
+// CR4.9.602 gameplay: recover loose office machinery as well as furniture.
+// Keep the durability classification unchanged: fragile printers stay fragile.
+// CR4.9.607 gameplay: lost and toppled sandbox gadgets can be recovered too.
+// Keep broken/held/remote-owned items excluded by the transaction guards below.
+const RESETTABLE_OFFICE_PROP_TYPES=new Set([...STURDY_PROP_TYPES,
+  'printer','photocopier','fan','aircannon','projector','microwave',
+  'watercooler','gluegun','papercannon','suctioncannon','magnetgun','confetticannon',
+  // CR4.9.609 sandbox: restore displaced desk tech, stationery and coffee props.
+  // Broken, held and NPC-owned items remain excluded by the reset transaction.
+  'monitor','laptop','keyboard','deskphone','calculator','plantpot',
+  'desklamp','mug','coffeepot','donutbox',
+  // CR4.9.615 sandbox: recover displaced loose tools, desk clutter and
+  // playful gadgets; held, broken and occluded props remain protected.
+  'boxingglove','rubberhammer','folder','stapler','trashcan','clipboard',
+  'cone','briefcase','wrench','rubberduck','thermos','trophy','headset',
+  'umbrella','deskbell','tapedispenser','firstaid','scissors','binder',
+  'newspaper','mouse','harddrive','router','nameplate']);
+const resetOfficePropQuarantine=new WeakSet();
+let resetOfficePropBusy=false;
+function resetNearestLooseOfficeProp(origin,rescue=false){
+  if(resetOfficePropBusy)return false;
+  resetOfficePropBusy=true;
+  try{
+    if(G.state!=='shift'||G.waveTransition||G.ended||
+       !origin||!Number.isFinite(origin.x)||!Number.isFinite(origin.y)||
+       !Number.isFinite(origin.z))return false;
+    const props=G.props,token=G.waveToken,wave=G.wave;
+    const resetOrigin={x:origin.x,y:origin.y,z:origin.z};
+    if(!Number.isFinite(resetOrigin.x)||!Number.isFinite(resetOrigin.y)||
+       !Number.isFinite(resetOrigin.z))return false;
+    if(!Array.isArray(props)||props.length>256)return false;
+    const expected=[];
+    for(let i=0;i<props.length;i++){
+      const slot=Object.getOwnPropertyDescriptor(props,String(i));
+      if(!slot||!('value' in slot))return false;
+      expected.push(slot.value);
+    }
+    if(new Set(expected).size!==expected.length)return false;
+    const stable=()=>{
+      try{
+        if(G.state!=='shift'||G.waveTransition||G.ended||
+           G.waveToken!==token||G.wave!==wave||
+           G.props!==props||props.length!==expected.length)return false;
+        for(let i=0;i<expected.length;i++){
+          const slot=Object.getOwnPropertyDescriptor(props,String(i));
+          if(!slot||!('value' in slot)||slot.value!==expected[i])return false;
+        }
+        return true;
+      }catch{return false;}
+    };
+    let best=null,bestHome=null,bestMesh=null,bestAt=null,bestPosition=null,
+        bestRotation=null,bestRotRef=null,bestUprightOnly=false,
+        bestD=rescue?Infinity:2.5*2.5;
+    for(const p of expected){
+      if(!stable())return false;
+      if(!p||resetOfficePropQuarantine.has(p)||!RESETTABLE_OFFICE_PROP_TYPES.has(p.type)||p.heldBy||p.npcOwner||
+         p.broken||pendingXRPropDetaches.has(p))continue;
+      const mesh=p.mesh,at=mesh?.position;
+      const homeX=p.homeX,homeY=p.homeY,homeZ=p.homeZ;
+      if(!at||mesh.isDisposed?.()||
+         !Number.isFinite(at.x)||!Number.isFinite(at.y)||!Number.isFinite(at.z)||
+         !Number.isFinite(homeX)||!Number.isFinite(homeY)||
+         !Number.isFinite(homeZ))continue;
+      // CR4.9.630: squared displacement avoids sqrt for every prop on manual reset.
+      const dispX=at.x-homeX,dispY=at.y-homeY,dispZ=at.z-homeZ;
+      const displacedSq=dispX*dispX+dispY*dispY+dispZ*dispZ;
+      // CR4.9.577 gameplay: T/right-thumbstick also rights a nearby
+      // toppled chair, cart or other sturdy prop without needing to move it.
+      // Yaw alone is not a fall; avoid resetting intentionally rotated furniture.
+      const rot=mesh.rotation;
+      const toppled=rot&&Number.isFinite(rot.x)&&Number.isFinite(rot.z)&&
+        (Math.abs(rot.x)>.6||Math.abs(rot.z)>.6);
+      if(!(displacedSq>.2025||toppled))continue;
+      // Explicit desktop Shift+T rescues a lost prop from outside the map.
+      // Ordinary T and Quest thumbstick click still reset only nearby props.
+      if(rescue&&!(at.y<-.7||at.y>7||Math.abs(at.x)>7.2||Math.abs(at.z)>7.2))continue;
+      const dx=at.x-resetOrigin.x,dy=at.y-resetOrigin.y,dz=at.z-resetOrigin.z;
+      const d=dx*dx+dy*dy+dz*dz;
+      if(Number.isFinite(d)&&d<bestD){
+        // CR4.9.591 gameplay: if the closest fallen chair is behind a wall,
+        // keep looking for a visible one instead of failing the entire reset.
+        // Freeze the candidate BEFORE ray callbacks and reject stale picks.
+        const candidateAt={x:at.x,y:at.y,z:at.z};
+        if(!rescue&&d>.0144){
+          let occluded=true;
+          try{occluded=officeDeviceOccluded(resetOrigin,candidateAt);}catch{return false;}
+          if(!stable()||p.mesh!==mesh||mesh.position!==at||
+             at.x!==candidateAt.x||at.y!==candidateAt.y||at.z!==candidateAt.z||
+             p.heldBy||p.npcOwner||p.broken||mesh.isDisposed?.())return false;
+          if(occluded)continue;
+        }
+        // CR4.9.597: the LOS callback may alter a home anchor or queue a
+        // detach without moving the mesh. Reject that stale candidate even
+        // on rescue/very-close reset paths before selecting it.
+        if(!stable()||p.mesh!==mesh||mesh.position!==at||
+           at.x!==candidateAt.x||at.y!==candidateAt.y||at.z!==candidateAt.z||
+           p.homeX!==homeX||p.homeY!==homeY||p.homeZ!==homeZ||
+           p.heldBy||p.npcOwner||p.broken||
+           pendingXRPropDetaches.has(p)||mesh.isDisposed?.())return false;
+        bestD=d;best=p;bestHome={x:homeX,y:homeY,z:homeZ};bestMesh=mesh;
+        bestAt=at;bestPosition=candidateAt;
+        bestRotRef=rot;bestRotation=rot?{x:rot.x,y:rot.y,z:rot.z}:null;
+        bestUprightOnly=!!(toppled&&displacedSq<=.2025);
+      }
+    }
+    if(!best||!stable())return false;
+    // CR4.9.583 gameplay: when merely righting a nearby tipped object,
+    // preserve its current floor-plan placement rather than teleporting it
+    // back to its spawn. The original home anchor remains independently
+    // frozen for integrity checks; only the upright target uses current X/Z.
+    const resetTarget=bestUprightOnly?
+      {x:bestPosition.x,y:bestHome.y,z:bestPosition.z}:bestHome;
+    const homeIntact=()=>{try{
+      return best.mesh===bestMesh&&best.homeX===bestHome.x&&
+        best.homeY===bestHome.y&&best.homeZ===bestHome.z&&
+        !bestMesh.isDisposed?.();
+    }catch{return false;}};
+    // CR4.9.574: do not reset a prop that moved between proximity selection
+    // and destination collision proof (NPC throws and physics callbacks).
+    const selectionIntact=()=>{try{
+      return best.mesh===bestMesh&&bestMesh.position===bestAt&&
+        bestAt.x===bestPosition.x&&bestAt.y===bestPosition.y&&
+        bestAt.z===bestPosition.z&&bestMesh.rotation===bestRotRef&&
+        (!bestRotation||(bestRotRef.x===bestRotation.x&&
+         bestRotRef.y===bestRotation.y&&bestRotRef.z===bestRotation.z));
+    }catch{return false;}};
+    // CR4.9.588: nearby manual resets cannot reach furniture through walls.
+    // Remote lost-prop rescue is a separate recovery action; zero-length rays
+    // are not valid LOS proofs, so skip only when the hand is within 12cm.
+    if(!rescue&&bestD>.0144&&officeDeviceOccluded(resetOrigin,bestPosition))return false;
+    if(!homeIntact()||!selectionIntact()||
+       isBlockedPoint(resetTarget.x,resetTarget.y,resetTarget.z,.12)||
+       !stable()||!homeIntact()||!selectionIntact())return false;
+    if(best.heldBy||best.npcOwner||best.broken||
+       pendingXRPropDetaches.has(best)||best.mesh.isDisposed?.())return false;
+    const at=best.mesh.position,v=best.vel,a=best.ang,r=best.mesh.rotation;
+    // CR4.9.573: collision/physics callbacks must not swap the vector targets
+    // while the recovery transaction writes to its captured objects.
+    const vectorsIntact=()=>{try{return best.mesh===bestMesh&&
+      bestMesh.position===at&&bestMesh.rotation===r&&best.vel===v&&best.ang===a;
+    }catch{return false;}};
+    // Only writable own scalar slots: no partial vector setter side effects.
+    const writable=v=>!!v&&['x','y','z'].every(k=>{
+      const d=Object.getOwnPropertyDescriptor(v,k);
+      return !!d&&'value' in d&&d.writable&&Number.isFinite(d.value);
+    });
+    if(!writable(at)||!writable(v)||!writable(a)||!writable(r)||
+       !stable()||!homeIntact()||!vectorsIntact()||!selectionIntact())return false;
+    // Babylon vectors can be proxied: even a writable own data slot can
+    // commit a coordinate and THEN throw. Roll back and quarantine any
+    // ambiguous reset instead of reporting success or retrying it later.
+    const groundSlot=Object.getOwnPropertyDescriptor(best,'grounded');
+    if(!groundSlot||!('value' in groundSlot)||!groundSlot.writable)return false;
+    const oldGrounded=groundSlot.value;
+    const original=[at.x,at.y,at.z,v.x,v.y,v.z,a.x,a.y,a.z,r.x,r.y,r.z];
+    try{
+      at.x=resetTarget.x;at.y=resetTarget.y;at.z=resetTarget.z;
+      v.x=0;v.y=0;v.z=0;a.x=0;a.y=0;a.z=0;
+      // CR4.9.581 gameplay: right a toppled nearby prop without changing
+      // its facing direction; displaced/lost props retain the home yaw reset.
+      r.x=0;r.y=bestUprightOnly?bestRotation.y:0;r.z=0;best.grounded=true;
+      // Re-prove the destination after fallible vector setters; a blocker may
+      // have moved into the spawn position while the reset was committing.
+      // CR4.9.592: a wall can move into the reach corridor during a
+      // fallible reset setter; re-prove visibility before reporting success.
+      // Remote lost-prop rescue deliberately has no local reach requirement.
+      if(isBlockedPoint(resetTarget.x,resetTarget.y,resetTarget.z,.12)||
+         (!rescue&&bestD>.0144&&officeDeviceOccluded(resetOrigin,bestPosition))||
+         !homeIntact()||!vectorsIntact()||best.heldBy||best.npcOwner||best.broken||
+         pendingXRPropDetaches.has(best))throw Error('reset destination changed');
+      if(best.grounded!==true||at.x!==resetTarget.x||at.y!==resetTarget.y||at.z!==resetTarget.z||
+         v.x!==0||v.y!==0||v.z!==0||a.x!==0||a.y!==0||a.z!==0||
+         r.x!==0||r.y!==(bestUprightOnly?bestRotation.y:0)||r.z!==0||
+         !stable()||!homeIntact()||
+         !vectorsIntact())throw Error('ambiguous prop reset');
+    }catch{
+      resetOfficePropQuarantine.add(best);
+      // CR4.9.572: one hostile rollback setter must not prevent restoration
+      // of the remaining velocity, rotation and grounded fields. Each attempt
+      // is isolated; this identity stays quarantined after ambiguous writes.
+      const targets=[at,at,at,v,v,v,a,a,a,r,r,r];
+      const keys=['x','y','z','x','y','z','x','y','z','x','y','z'];
+      for(let i=0;i<original.length;i++){
+        try{targets[i][keys[i]]=original[i];}catch{}
+      }
+      try{best.grounded=oldGrounded;}catch{}
+      return false;
+    }
+    try{toast(rescue?'LOST OFFICE PROP RECOVERED':'OFFICE PROP RESET',900);}catch{}
+    // CR4.9.625 gameplay: a short, gentle success chirp confirms recovery
+    // without depending on the HUD or requiring a second audio voice.
+    // Never play on blocked, held, broken or ambiguous reset attempts.
+    try{tone(rescue?430:560,.075,'triangle',.025,rescue?160:220);}catch{}
+    return true;
+  }catch{return false;}
+  finally{resetOfficePropBusy=false;}
+}
+
+function desktopAction(scene){
+ if(desktopActionBusy)return false;
+ desktopActionBusy=true;
+ try{
+ if(!G.desktop||!scene.activeCamera)return false;
+ const ray=scene.activeCamera.getForwardRay(8);
+ if(G.state==='hub'){
+  const picked=pickHubInteractive(scene,ray.origin,ray.direction,8);
+  if(!picked){toast('LOOK AT A BUTTON AND CLICK OR PRESS E',950);return false;}
+  const md=picked.metadata||{};
+  pressHubButton(picked,null,()=>{
+   if(md.interact==='mode')startShift(scene,md.mode||'LEVELS');
+   else if(md.interact==='station')stationAction(md.station);
+  });return true;
+ }
+ if(G.state==='shift'&&activateDesktopOfficeDevice(scene,ray))return true;
+ if(G.state!=='shift'||G.bat.broken)return false;
+ const now=combatTimeMs();if(now-(G.desktopLastHit||0)<360)return false;
+ G.desktopLastHit=now;whooshSound(.85);
+ // Reborn 4.9.319: scene callbacks may change the camera, NPC roster or
+ // target while wall checks run. A stale ray must never damage a new NPC.
+ const roster=G.npcs,shiftToken=G.waveToken,shiftWave=G.wave,cameraRef=scene.activeCamera;
+ if(!Array.isArray(roster)||roster.length>96)return false;
+ let origin=null,direction=null,expected=null;
+ try{
+   if(!ray?.origin||!ray?.direction)return false;
+   const o=ray.origin,d=ray.direction;
+   if(![o.x,o.y,o.z,d.x,d.y,d.z].every(Number.isFinite))return false;
+   const length=Math.hypot(d.x,d.y,d.z);
+   if(!Number.isFinite(length)||Math.abs(length-1)>.01)return false;
+   origin=new B.Vector3(o.x,o.y,o.z);
+   direction=new B.Vector3(d.x,d.y,d.z);
+   expected=[];
+   for(let i=0;i<roster.length;i++){
+     const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+     if(!slot||!('value' in slot))return false;
+     expected.push(slot.value);
+   }
+ }catch{return false;}
+ const rayIntact=()=>{try{
+   const o=ray.origin,d=ray.direction;
+   return !!o&&!!d&&o.x===origin.x&&o.y===origin.y&&o.z===origin.z&&
+     d.x===direction.x&&d.y===direction.y&&d.z===direction.z;
+ }catch{return false;}};
+ const scopeOK=()=>{try{return G.desktop===true&&G.state==='shift'&&
+   !G.waveTransition&&!G.bat?.broken&&scene.activeCamera===cameraRef&&
+   G.npcs===roster&&G.waveToken===shiftToken&&G.wave===shiftWave&&
+   roster.length===expected.length&&rayIntact();}catch{return false;}};
+ const slotOK=i=>{try{
+   if(!scopeOK())return false;
+   const slot=Object.getOwnPropertyDescriptor(roster,String(i));
+   return !!slot&&('value' in slot)&&slot.value===expected[i]&&scopeOK();
+ }catch{return false;}};
+ const rosterIntact=()=>{
+   if(!scopeOK())return false;
+   for(let i=0;i<expected.length;i++)if(!slotOK(i))return false;
+   return scopeOK();
+ };
+ let best=null,bestRoot=null,bestPosition=null,dist=3.5;
+ for(let i=0;i<expected.length;i++){
+   if(!slotOK(i))return false;
+   const n=expected[i];
+   try{
+     if(!n||n.dead||!n.root||n.root.isDisposed?.()||!n.root.position)continue;
+     const root=n.root,p=root.position;
+     if(![p.x,p.y,p.z].every(Number.isFinite))continue;
+     const frozen={x:p.x,y:p.y,z:p.z};
+     const center=new B.Vector3(frozen.x,frozen.y+1.12,frozen.z),to=center.subtract(origin);
+     const t=B.Vector3.Dot(to,direction);
+     if(!Number.isFinite(t)||t<.2||t>dist)continue;
+     const point=origin.add(direction.scale(t));
+     if(B.Vector3.DistanceSquared(center,point)>(n.type==='boss'?.95:.72)**2)continue;
+     if(desktopMeleeBlocked(origin,direction,t))continue;
+     if(!slotOK(i)||n.dead||n.root!==root||root.isDisposed?.()||
+        root.position.x!==frozen.x||root.position.y!==frozen.y||
+        root.position.z!==frozen.z)return false;
+     best=n;bestRoot=root;bestPosition=frozen;dist=t;
+   }catch{return false;}
+ }
+ if(!best||!rosterIntact()||best.dead||best.root!==bestRoot||
+    bestRoot.isDisposed?.()||!bestRoot.position||
+    bestRoot.position.x!==bestPosition.x||bestRoot.position.y!==bestPosition.y||
+    bestRoot.position.z!==bestPosition.z)return false;
+ const point=origin.add(direction.scale(dist)),dir=direction.clone();dir.y=0;
+ if(dir.lengthSquared()<.001)dir.set(0,0,1);dir.normalize();
+ if(!rosterIntact()||best.dead||best.root!==bestRoot||
+    bestRoot.position.x!==bestPosition.x||bestRoot.position.y!==bestPosition.y||
+    bestRoot.position.z!==bestPosition.z)return false;
+ best.lastBatHit=now;best.hit(24*G.upgrade.power,dir.clone(),'bat',point);
+ applyCombatAbility(best,dir.clone());spawnAbilityFX(scene,point,selectedBatDef().ability);
+ spawnHitFX(scene,point,.9);bodyHitSound(.85);abilityHitSound(selectedBatDef().ability,.85);
+ return true;
+ }finally{desktopActionBusy=false;}
+}
+function installDesktopControls(scene){
+ if(desktopControlsReady)return;desktopControlsReady=true;
+ const cam=scene.activeCamera,keyboard=cam?.inputs?.attached?.keyboard;
+ if(keyboard)cam.inputs.remove(keyboard);
+ const style=document.createElement('style');
+ style.textContent=`#desktopCrosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:18px;height:18px;pointer-events:none;z-index:60;opacity:.85}#desktopCrosshair:before,#desktopCrosshair:after{content:'';position:absolute;background:white;box-shadow:0 1px 3px black;border-radius:2px}#desktopCrosshair:before{width:18px;height:2px;top:8px}#desktopCrosshair:after{height:18px;width:2px;left:8px}#desktopHelp{position:fixed;left:14px;bottom:12px;z-index:61;padding:9px 12px;border:1px solid #ffffff66;border-radius:10px;background:#09101cde;font:700 12px system-ui;color:white;pointer-events:none}#desktopMove,#desktopAttack{display:none}@media(pointer:coarse){#desktopHelp{left:50%;transform:translateX(-50%);bottom:10px;font-size:10px;white-space:nowrap}#desktopMove{display:block;position:fixed;left:16px;bottom:70px;width:126px;height:126px;border:3px solid #ffd35d;border-radius:50%;background:#151d35ba;z-index:70;touch-action:none}#desktopMove:after{content:'MOVE';position:absolute;left:39px;top:52px;font:bold 13px system-ui;color:#fffb}#desktopAttack{display:block;position:fixed;right:20px;bottom:94px;width:86px;height:86px;border:3px solid #ffdb7a;border-radius:50%;background:#ed5b42;color:white;font:bold 19px system-ui;z-index:70;touch-action:none}#desktopCrosshair{opacity:.7}}`;
+ document.head.appendChild(style);
+ const cross=document.createElement('div');cross.id='desktopCrosshair';cross.setAttribute('aria-hidden','true');document.body.appendChild(cross);
+ const help=document.createElement('div');help.id='desktopHelp';help.textContent='WASD/ARROWS: MOVE • DRAG: LOOK • CLICK/SPACE/E: HIT/USE • T: RESET NEARBY PROP • 1/2: START • R: LOBBY';document.body.appendChild(help);
+ const joy=document.createElement('div');joy.id='desktopMove';joy.setAttribute('aria-label','Touch movement joystick');document.body.appendChild(joy);
+ const hit=document.createElement('button');hit.id='desktopAttack';hit.textContent='HIT';hit.setAttribute('aria-label','Hit or select');document.body.appendChild(hit);
+ let active=null;
+ const move=e=>{const r=joy.getBoundingClientRect(),x=(e.clientX-r.left-r.width/2)/(r.width*.4),y=(e.clientY-r.top-r.height/2)/(r.height*.4),l=Math.max(1,Math.hypot(x,y));desktopTouch.x=x/l;desktopTouch.y=y/l;};
+ joy.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();active=e.pointerId;joy.setPointerCapture(active);move(e);});
+ joy.addEventListener('pointermove',e=>{if(e.pointerId===active){e.preventDefault();move(e);}});
+ const stop=e=>{if(e.pointerId===active){active=null;desktopTouch.x=desktopTouch.y=0;}};
+ joy.addEventListener('pointerup',stop);joy.addEventListener('pointercancel',stop);joy.addEventListener('lostpointercapture',()=>{active=null;desktopTouch.x=desktopTouch.y=0;});
+ hit.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();desktopAction(scene);});
+ // A mouse drag rotates the preview camera; only a short stationary click attacks.
+ let desktopPointerDown=null;
+ canvas.addEventListener('pointerdown',e=>{
+   if(G.desktop&&e.button===0&&e.pointerType!=='touch')desktopPointerDown={id:e.pointerId,x:e.clientX,y:e.clientY,at:performance.now(),dragged:false};
+ });
+ canvas.addEventListener('pointermove',e=>{
+   const p=desktopPointerDown;
+   if(p&&e.pointerId===p.id&&Math.hypot(e.clientX-p.x,e.clientY-p.y)>8)p.dragged=true;
+ });
+ canvas.addEventListener('pointerup',e=>{
+   const p=desktopPointerDown;desktopPointerDown=null;
+   if(!p||e.pointerId!==p.id||!G.desktop||e.pointerType==='touch'||p.dragged)return;
+   if(Math.hypot(e.clientX-p.x,e.clientY-p.y)<=8&&performance.now()-p.at<=450)desktopAction(scene);
+ });
+ canvas.addEventListener('pointercancel',()=>{desktopPointerDown=null;});
+ window.addEventListener('pointerup',()=>{desktopPointerDown=null;});
+ window.addEventListener('keyup',e=>desktopKeys.delete(e.code));window.addEventListener('blur',()=>{desktopPointerDown=null;desktopKeys.clear();desktopTouch.x=desktopTouch.y=0;G.desktopMoveMagnitude=0;});
+ window.CrazyOfficeDesktopQA=()=>({enabled:G.desktop,controlsInstalled:desktopControlsReady,keys:[...desktopKeys],touch:{...desktopTouch},state:G.state,webglVersion:engine.webGLVersion,meshes:scene.meshes.length});
+}
+ui.preview.onclick=()=>{G.desktop=true;ui.boot.style.display='none';ui.hud.style.display='flex';buildHub(scene);refreshPlayerCosmetics();installDesktopControls(scene);};
+window.addEventListener('keydown',e=>{
+ if(!G.desktop)return;
+ if(['KeyW','KeyA','KeyS','KeyD','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space','KeyE','KeyT'].includes(e.code))e.preventDefault();
+ desktopKeys.add(e.code);if(e.repeat)return;
+ if(e.code==='KeyR')buildHub(scene);
+ else if(e.code==='KeyT'&&G.state==='shift')resetNearestLooseOfficeProp(scene.activeCamera?.position,!!e.shiftKey);
+ else if(e.code==='Digit1'&&G.state==='hub')startShift(scene,'SURVIVAL');
+ else if((e.code==='Digit2'||e.code==='Enter')&&G.state==='hub')startShift(scene,'LEVELS');
+ else if(e.code==='Space'||e.code==='KeyE')desktopAction(scene);
+});
+
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Reborn 5.8 ready • PLAY GAME • multiplayer optional';
+ui.status.textContent='Reborn 4.9 ready • distinctive coworker outfits, performance and impact fixes';
+// Screenshot collector for an external *real-browser* critic runner.
+// Deliberately stages scenes inside the existing game rather than creating mockup images.
+const qaLiveNpc=n=>!!(n&&!n.dead&&n.root&&!n.root.isDisposed?.()&&n.root.position&&Number.isFinite(n.root.position.x)&&Number.isFinite(n.root.position.y)&&Number.isFinite(n.root.position.z));
+window.CrazyOfficeVisualQA={
+  version:'4.9',
+  categories:['lobby-overview','fireplace-closeup','fireplace-side-angle','cosmetics','map-open-plan','map-meeting','map-ceo','npc-closeup','boss-closeup','combat','hud'],
+  stage(category){
+    if(!this.categories.includes(category)){this.lastStageError='Unknown QA screenshot category';return {ok:false,error:this.lastStageError};}
+    if(!scene.activeCamera){this.lastStageError='No active render camera';return {ok:false,error:this.lastStageError};}
+    if(!G.desktop){this.lastStageError='Select Desktop Preview before staging QA screenshots';return {ok:false,error:this.lastStageError};}
+    // The active camera may change while the game switches between hub and arena.
+    let aimed=false;const look=(position,target)=>{const cam=scene.activeCamera;if(!cam?.position?.copyFrom||typeof cam.setTarget!=='function')return false;cam.position.copyFrom(new B.Vector3(...position));cam.setTarget(new B.Vector3(...target));aimed=true;return true;};
+    const hub=new Set(['lobby-overview','fireplace-closeup','fireplace-side-angle','cosmetics']);
+    if(hub.has(category)){
+      if(G.state!=='hub')buildHub(scene);
+      if(category==='lobby-overview')look([-2.8,1.95,-4.10],[1.1,1.35,1.00]);
+      if(category==='fireplace-closeup')look([2.50,1.19,1.89],[2.55,.85,4.12]);
+      if(category==='fireplace-side-angle')look([4.12,1.38,2.25],[2.55,.81,4.12]);
+      if(category==='cosmetics')look([6.45,1.9,-.68],[8.7,1.59,.15]);
+    }else{
+      const maps={'map-open-plan':'FLOOR 13','map-meeting':'CONFERENCE','map-ceo':'PENTHOUSE'};
+      const selected=maps[category]||'FLOOR 13';
+      if(G.state!=='shift'||G.meta.selectedMap!==selected){
+        // startShift assumes the previous shift has already been torn down.
+        // Switching QA maps directly between shifts would stack props, NPCs and arena meshes.
+        if(G.state==='shift')buildHub(scene);
+        G.meta.selectedMap=selected;
+        startShift(scene,'SURVIVAL');
+      }
+      if(G.state!=='shift'){
+        this.lastStageError='QA did not enter shift after map transition';
+        return {ok:false,error:this.lastStageError};
+      }
+      if(category.startsWith('map-'))look([-3.65,2.95,-4.98],[0,1.25,.9]);
+      else if(category==='npc-closeup'){
+        const n=G.npcs.find(n=>qaLiveNpc(n)&&n.type!=='boss');
+        if(!n)return {ok:false,error:'No living NPC available for a real close-up'};
+        const p=n.root.position;look([p.x-1.65,1.8,p.z-1.30],[p.x,1.15,p.z]);
+      }else if(category==='boss-closeup'){
+        if(!G.boss||G.boss.dead){G.bossSpawned=false;spawnBoss(scene);}
+        if(!qaLiveNpc(G.boss))return {ok:false,error:'Boss failed to spawn with a valid 3D root'};
+        const p=G.boss.root.position;look([p.x-2.10,1.82,p.z-2.9],[p.x,1.15,p.z]);
+      }else if(category==='combat'){
+        const n=G.npcs.find(n=>qaLiveNpc(n)&&n.type!=='boss');
+        if(!n)return {ok:false,error:'No living NPC available for a combat test'};
+        const p=n.root.position;look([p.x-2.15,1.85,p.z-2.35],[p.x,1.17,p.z]);
+        n.hit(Math.min(9,n.hp*.08),new B.Vector3(0,0,-1),'bat',p.add(new B.Vector3(0,1.1,0)));
+      }
+      else if(category==='hud')look([-2.6,1.9,-4.8],[0,1.45,0]);
+      else return {ok:false,error:'Unknown QA screenshot category'};
+    }
+    if(!aimed||!scene.activeCamera?.position?.copyFrom||typeof scene.activeCamera?.setTarget!=='function'){this.lastStageError='QA camera could not be aimed after staging';return {ok:false,error:this.lastStageError};}
+    this.lastStageError=null;this.lastStagedCategory=category;this.lastStagedMap=G.meta.selectedMap;this.lastStagedAt=performance.now();
+    return {ok:true,category,map:G.meta.selectedMap,version:'4.9',npcsAlive:G.npcs.filter(qaLiveNpc).length,boss:!!(G.boss&&!G.boss.dead),warning:'Current real game camera view; not a synthetic reference image'};
+  },
+  evidence(){return {version:'4.9',lastStageError:this.lastStageError||null,lastStagedCategory:this.lastStagedCategory||null,lastStagedMap:this.lastStagedMap||null,lastStagedAt:this.lastStagedAt||null,frameId:scene.getFrameId?.()??null,cameraName:scene.activeCamera?.name??null,renderWidth:engine.getRenderWidth?.()??null,renderHeight:engine.getRenderHeight?.()??null,fps:Math.round(engine.getFps()),sceneMeshes:scene.meshes.length,activeMeshes:scene.getActiveMeshes?.().length??null,sceneMaterials:scene.materials.length,sceneTextures:scene.textures.length,activeParticles:scene.getActiveParticles?.()??null,fire:G.fireVisualEvidence||null,appState:G.state,npcsAlive:G.npcs.filter(qaLiveNpc).length,bossType:G.boss?.bossId||null};}
+};
+window.CrazyOfficeCriticEvidence=()=>({version:'4.9',visualIdentityOutfits:true,healthbarUpdateRateHz:5,breakableProps:G.props.filter(p=>p.integrity<10000).length,liveDebris:G.debrisBudget||0,staggeredCoworkers:G.npcs.filter(n=>qaLiveNpc(n)&&n.staggerT>0).length,bossType:G.boss?.bossId||null,bossWeakPointOpen:!!(G.boss?.weakOpenT>0),state:G.state,map:G.meta.selectedMap,npcsAlive:G.npcs.filter(qaLiveNpc).length,props:G.props.length,interactiveTargets:G.officeTargets?2:0,missions:(G.officeTasks||[]).map(x=>({id:x.id,done:x.done})),meshes:scene.meshes.length,materials:scene.materials.length,remoteModels:{loaded:G.remoteModels?.loaded||0,fallbacks:G.remoteModels?.fallbacks||0},fps:Math.round(engine.getFps()),gpuFireAvailable:!!(B.GPUParticleSystem&&B.GPUParticleSystem.IsSupported),vrActive:!!G.xr?.baseExperience?.sessionManager?.inXRSession});
 window.__CRAZY_OFFICE_READY=true; window.dispatchEvent(new Event('crazy-office-ready'));
 updateHUD();
