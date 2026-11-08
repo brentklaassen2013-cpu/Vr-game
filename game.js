@@ -17022,10 +17022,29 @@ function updateJoystickMovement(scene,dt){
       return [Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
     }catch{return null;}
   };
-  const leftAxes=readLiveStick('left',G.left);
+  // Native input sources are authoritative for movement. Babylon can delay
+  // motion-controller initialization, leaving G.left/right unset while the
+  // Quest thumbstick already supplies valid gamepad axes.
+  const nativeStick=hand=>{
+    try{
+      const manager=G.xr?.baseExperience?.sessionManager,session=manager?.session;
+      if(!manager?.inXRSession||!session?.inputSources)return null;
+      for(const source of session.inputSources){
+        if(source?.handedness!==hand)continue;
+        const axes=source.gamepad?.axes;
+        if(!axes||axes.length<2)continue;
+        const offset=axes.length>=4?2:0,x=axes[offset],y=axes[offset+1];
+        if(!Number.isFinite(x)||!Number.isFinite(y))continue;
+        if(manager.session!==session||!manager.inXRSession)return null;
+        return [Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
+      }
+    }catch{}
+    return null;
+  };
+  const leftAxes=readLiveStick('left',G.left)||nativeStick('left');
   if(leftAxes){G.joystick.x=leftAxes[0];G.joystick.y=leftAxes[1];}
   else{try{G.joystick?.set?.(0,0);}catch{} G.vrSprint=false;}
-  const rightAxes=readLiveStick('right',G.right);
+  const rightAxes=readLiveStick('right',G.right)||nativeStick('right');
   if(rightAxes)G.turnAxis=rightAxes[0];
   else G.turnAxis=0;
   if(!Number.isFinite(dt)||dt<=0)return;
