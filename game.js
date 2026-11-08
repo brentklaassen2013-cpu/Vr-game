@@ -17002,9 +17002,14 @@ function updateJoystickMovement(scene,dt){
     if(!xrGrabControllerLive(hand,ctrl))return null;
     const axes=ctrl.inputSource?.gamepad?.axes;
     if(!axes||axes.length<2)return null;
-    const pair=axes.length>=4?[axes[2],axes[3]]:[axes[0],axes[1]];
-    if(!pair.every(Number.isFinite))return null;
-    return pair.map(v=>Math.max(-1,Math.min(1,v)));
+    // WebXR layouts differ: the active thumbstick can occupy either axis pair.
+    const a=axes[0],b=axes[1],c=axes[2],d=axes[3];
+    const first=Number.isFinite(a)&&Number.isFinite(b);
+    const second=axes.length>=4&&Number.isFinite(c)&&Number.isFinite(d);
+    if(!first&&!second)return null;
+    const useSecond=second&&(!first||Math.hypot(c,d)>Math.hypot(a,b));
+    const x=useSecond?c:a,y=useSecond?d:b;
+    return [Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
   };
   const leftAxes=readLiveStick('left',G.left);
   if(leftAxes){G.joystick.x=leftAxes[0];G.joystick.y=leftAxes[1];}
