@@ -12467,9 +12467,9 @@ for(const x of [2.27,2.83]){const candle=hubOwnedCall(()=>B.MeshBuilder.CreateCy
   }
 
   const mapDef=CATALOG.maps.find(x=>x.id===G.meta.selectedMap)||CATALOG.maps[0],bat=selectedBatDef(),skin=selectedSkinDef();
-  const playPanel=hubOwnedCall(consolePanel,'playConsole','PLAY',new B.Vector3(-3.75,2.15,-4.30));
-  hubOwnedCall(physicalButton,'survivalBtn','SURVIVAL',playPanel,0,.28,'#d45c38',{interact:'mode',mode:'SURVIVAL'},1.25,.48);
-  hubOwnedCall(physicalButton,'levelsBtn','LEVELS',playPanel,0,-.34,'#4d82c4',{interact:'mode',mode:'LEVELS'},1.25,.48);
+  const playPanel=hubOwnedCall(consolePanel,'playConsole','AIM + RIGHT TRIGGER',new B.Vector3(-3.75,2.15,-4.30));
+  hubOwnedCall(physicalButton,'survivalBtn','START SURVIVAL',playPanel,0,.28,'#d45c38',{interact:'mode',mode:'SURVIVAL'},1.75,.48);
+  hubOwnedCall(physicalButton,'levelsBtn','START LEVELS',playPanel,0,-.34,'#4d82c4',{interact:'mode',mode:'LEVELS'},1.75,.48);
 
   const mapPanel=hubOwnedCall(consolePanel,'mapConsole','MAP SELECT',new B.Vector3(-1.25,2.15,-4.30),2.35,2.55);
   hubOwnedCall(selectedReadout,mapPanel,mapDef.name,-.16,1.92);
@@ -17073,8 +17073,34 @@ function updateJoystickMovement(scene,dt){
       const ox=cam.position.x,oz=cam.position.z;
       // CR4.9.559: failed/quarantined camera commits must never produce
       // fake locomotion, footsteps or progress from partial setter writes.
-      const advanced=sweepPlayerHorizontal(cam,d.x,d.z,.30);
-      const moved=advanced?Math.hypot(cam.position.x-ox,cam.position.z-oz):0;
+      // WebXR tracking overwrites the headset camera pose every frame.
+      // Apply joystick displacement to a persistent parent transform.
+      let moved=0;
+      try{
+        let rig=G.questLocomotionRig;
+        if(!rig||rig.isDisposed?.()||cam.parent!==rig){
+          if(!cam.parent){
+            rig=new B.TransformNode('questLocomotionRig',scene);
+            cam.parent=rig;
+            G.questLocomotionRig=rig;
+          }else rig=null;
+        }
+        if(rig&&cam.parent===rig){
+          const world=cam.getAbsolutePosition();
+          const nx=world.x+d.x,nz=world.z+d.z;
+          const within=G.state!=='shift'||(Math.abs(nx)<6.6&&Math.abs(nz)<6.6);
+          if(within&&!isBlockedXZ(nx,nz,.30)){
+            rig.position.x+=d.x;rig.position.z+=d.z;
+            moved=Math.hypot(d.x,d.z);
+          }else{
+            if((G.state!=='shift'||Math.abs(nx)<6.6)&&!isBlockedXZ(nx,world.z,.30)){rig.position.x+=d.x;moved=Math.abs(d.x);}
+            if((G.state!=='shift'||Math.abs(nz)<6.6)&&!isBlockedXZ(world.x,nz,.30)){rig.position.z+=d.z;moved=Math.hypot(moved,d.z);}
+          }
+        }else{
+          const advanced=sweepPlayerHorizontal(cam,d.x,d.z,.30);
+          moved=advanced?Math.hypot(cam.position.x-ox,cam.position.z-oz):0;
+        }
+      }catch{moved=0;}
       G.vrMoveMagnitude=Math.min(1,moved/Math.max(.0001,speed*step));
       // Animate and play footsteps only when the player actually moves.
       if(moved>.0001){
@@ -19308,7 +19334,7 @@ async function setupXR(scene){
       try{observeXR(controllerToken,ctrl.onMeshLoadedObservable,m=>m.setEnabled(false));if(ctrl.mesh)ctrl.mesh.setEnabled(false);}catch{}
       G.handState.set(handed,{ctrl,grabbing:null,prevPos:null,prevBat:null}); if(handed==='right'){G.right=ctrl;attachBatToController(ctrl);} if(handed==='left')G.left=ctrl; buildHandVisual(scene,handed,ctrl); refreshPlayerCosmetics();
       const grip=mc.getComponent('xr-standard-squeeze'); if(grip){ observeXR(controllerToken,grip.onButtonStateChangedObservable,()=>{ if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(grip.changes.pressed){ if(grip.pressed)tryGrab(scene,handed,ctrl); else releaseGrab(handed,ctrl); } }); }
-      const trig=mc.getComponent('xr-standard-trigger'); if(trig){ observeXR(controllerToken,trig.onButtonStateChangedObservable,()=>{if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(trig.changes.pressed&&trig.pressed){if(G.state==='hub')startShift(scene,handed==='left'?'SURVIVAL':'LEVELS');else triggerInteract(scene,ctrl);}}); }
+      const trig=mc.getComponent('xr-standard-trigger'); if(trig){ observeXR(controllerToken,trig.onButtonStateChangedObservable,()=>{if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(trig.changes.pressed&&trig.pressed)triggerInteract(scene,ctrl);}); }
       // CR4.9.601: thumbstick movement, sprint and prop reset require a
       // currently connected native XR input source, not only a stale controller token.
       const stick=mc.getComponent('xr-standard-thumbstick'); if(stick){
@@ -22666,7 +22692,7 @@ window.addEventListener('keydown',e=>{
 
 window.addEventListener('resize',()=>engine.resize());
 engine.runRenderLoop(()=>scene.render());
-ui.status.textContent='Quest: linker trigger = START SURVIVAL; rechter trigger = START LEVELS. Linker joystick = lopen. Desktop: 1 = SURVIVAL, Enter = LEVELS.';
+ui.status.textContent='Quest: wijs met je rechtercontroller naar START SURVIVAL of START LEVELS op de muur en druk de rechtertrigger in. Linkerjoystick = lopen.';
 // Screenshot collector for an external *real-browser* critic runner.
 // Deliberately stages scenes inside the existing game rather than creating mockup images.
 const qaLiveNpc=n=>!!(n&&!n.dead&&n.root&&!n.root.isDisposed?.()&&n.root.position&&Number.isFinite(n.root.position.x)&&Number.isFinite(n.root.position.y)&&Number.isFinite(n.root.position.z));
