@@ -17093,12 +17093,18 @@ function updateJoystickMovement(scene,dt){
           const world=cam.getAbsolutePosition();
           const nx=world.x+d.x,nz=world.z+d.z;
           const within=G.state!=='shift'||(Math.abs(nx)<6.6&&Math.abs(nz)<6.6);
+          // Convert world-space movement to the XR rig parent's coordinates.
+          const moveRig=(wx,wz)=>{
+            let local=new B.Vector3(wx,0,wz);
+            if(rig.parent){const inv=rig.parent.getWorldMatrix().clone().invert();local=B.Vector3.TransformNormal(local,inv);}
+            if(!Number.isFinite(local.x)||!Number.isFinite(local.z))return false;
+            rig.position.x+=local.x;rig.position.z+=local.z;return true;
+          };
           if(within&&!isBlockedXZ(nx,nz,.30)){
-            rig.position.x+=d.x;rig.position.z+=d.z;
-            moved=Math.hypot(d.x,d.z);
+            if(moveRig(d.x,d.z))moved=Math.hypot(d.x,d.z);
           }else{
-            if((G.state!=='shift'||Math.abs(nx)<6.6)&&!isBlockedXZ(nx,world.z,.30)){rig.position.x+=d.x;moved=Math.abs(d.x);}
-            if((G.state!=='shift'||Math.abs(nz)<6.6)&&!isBlockedXZ(world.x,nz,.30)){rig.position.z+=d.z;moved=Math.hypot(moved,d.z);}
+            if((G.state!=='shift'||Math.abs(nx)<6.6)&&!isBlockedXZ(nx,world.z,.30)){if(moveRig(d.x,0))moved=Math.abs(d.x);}
+            if((G.state!=='shift'||Math.abs(nz)<6.6)&&!isBlockedXZ(world.x,nz,.30)){if(moveRig(0,d.z))moved=Math.hypot(moved,d.z);}
           }
         }else{
           const advanced=sweepPlayerHorizontal(cam,d.x,d.z,.30);
@@ -19343,7 +19349,7 @@ async function setupXR(scene){
       try{observeXR(controllerToken,ctrl.onMeshLoadedObservable,m=>m.setEnabled(false));if(ctrl.mesh)ctrl.mesh.setEnabled(false);}catch{}
       G.handState.set(handed,{ctrl,grabbing:null,prevPos:null,prevBat:null}); if(handed==='right'){G.right=ctrl;attachBatToController(ctrl);} if(handed==='left')G.left=ctrl; buildHandVisual(scene,handed,ctrl); refreshPlayerCosmetics();
       const grip=mc.getComponent('xr-standard-squeeze'); if(grip){ observeXR(controllerToken,grip.onButtonStateChangedObservable,()=>{ if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(grip.changes.pressed){ if(grip.pressed)tryGrab(scene,handed,ctrl); else releaseGrab(handed,ctrl); } }); }
-      const trig=mc.getComponent('xr-standard-trigger'); if(trig){ observeXR(controllerToken,trig.onButtonStateChangedObservable,()=>{if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(trig.changes.pressed&&trig.pressed)triggerInteract(scene,ctrl);}); }
+      const trig=mc.getComponent('xr-standard-trigger'); if(trig){ observeXR(controllerToken,trig.onButtonStateChangedObservable,()=>{if(controllerEpoch!==xrInputEpoch||controllerTokens.get(ctrl)!==controllerToken||!xr.baseExperience.sessionManager.inXRSession||G.handState.get(handed)?.ctrl!==ctrl)return; if(handed==='right'&&trig.changes.pressed&&trig.pressed)triggerInteract(scene,ctrl);}); }
       // CR4.9.601: thumbstick movement, sprint and prop reset require a
       // currently connected native XR input source, not only a stale controller token.
       const stick=mc.getComponent('xr-standard-thumbstick'); if(stick){
