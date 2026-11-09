@@ -17098,7 +17098,17 @@ function updateJoystickMovement(scene,dt){
             let local=new B.Vector3(wx,0,wz);
             if(rig.parent){const inv=rig.parent.getWorldMatrix().clone().invert();local=B.Vector3.TransformNormal(local,inv);}
             if(!Number.isFinite(local.x)||!Number.isFinite(local.z))return false;
-            rig.position.x+=local.x;rig.position.z+=local.z;return true;
+            // Commit both coordinates only after validating the entire displacement.
+            // A rejected transform must not leave a half-applied XR movement.
+            const px=rig.position.x,pz=rig.position.z;
+            const tx=px+local.x,tz=pz+local.z;
+            if(!Number.isFinite(tx)||!Number.isFinite(tz))return false;
+            try{
+              rig.position.x=tx;rig.position.z=tz;
+              if(rig.position.x===tx&&rig.position.z===tz)return true;
+            }catch{}
+            try{rig.position.x=px;rig.position.z=pz;}catch{}
+            return false;
           };
           if(within&&!isBlockedXZ(nx,nz,.30)){
             if(moveRig(d.x,d.z))moved=Math.hypot(d.x,d.z);
@@ -17107,8 +17117,8 @@ function updateJoystickMovement(scene,dt){
             if((G.state!=='shift'||Math.abs(nz)<6.6)&&!isBlockedXZ(world.x,nz,.30)){if(moveRig(0,d.z))moved=Math.hypot(moved,d.z);}
           }
         }else{
-          const advanced=sweepPlayerHorizontal(cam,d.x,d.z,.30);
-          moved=advanced?Math.hypot(cam.position.x-ox,cam.position.z-oz):0;
+          // Never write directly to a WebXR tracked camera: tracking owns its pose.
+          moved=0;
         }
       }catch{moved=0;}
       G.vrMoveMagnitude=Math.min(1,moved/Math.max(.0001,speed*step));
