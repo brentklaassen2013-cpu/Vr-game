@@ -17114,7 +17114,11 @@ function updateJoystickMovement(scene,dt){
             if(moveRig(d.x,d.z))moved=Math.hypot(d.x,d.z);
           }else{
             if((G.state!=='shift'||Math.abs(nx)<6.6)&&!isBlockedXZ(nx,world.z,.30)){if(moveRig(d.x,0))moved=Math.abs(d.x);}
-            if((G.state!=='shift'||Math.abs(nz)<6.6)&&!isBlockedXZ(world.x,nz,.30)){if(moveRig(0,d.z))moved=Math.hypot(moved,d.z);}
+            const afterX=cam.getAbsolutePosition();
+            const slideZ=afterX.z+d.z;
+            if((G.state!=='shift'||Math.abs(slideZ)<6.6)&&!isBlockedXZ(afterX.x,slideZ,.30)){
+              if(moveRig(0,d.z))moved=Math.hypot(moved,d.z);
+            }
           }
         }else{
           // Never write directly to a WebXR tracked camera: tracking owns its pose.
