@@ -17031,6 +17031,7 @@ function updateJoystickMovement(scene,dt){
     try{
       const manager=G.xr?.baseExperience?.sessionManager,session=manager?.session;
       if(!manager?.inXRSession||!session?.inputSources)return null;
+      let fallback=null;
       for(const source of session.inputSources){
         if(source?.handedness!==hand)continue;
         const axes=source.gamepad?.axes;
@@ -17038,8 +17039,12 @@ function updateJoystickMovement(scene,dt){
         const offset=axes.length>=4?2:0,x=axes[offset],y=axes[offset+1];
         if(!Number.isFinite(x)||!Number.isFinite(y))continue;
         if(manager.session!==session||!manager.inXRSession)return null;
-        return [Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
+        const sample=[Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
+        // A duplicate dormant input source must not hide an active Quest stick.
+        if(Math.hypot(sample[0],sample[1])>.025)return sample;
+        if(!fallback)fallback=sample;
       }
+      return fallback;
     }catch{}
     return null;
   };
