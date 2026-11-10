@@ -17048,10 +17048,18 @@ function updateJoystickMovement(scene,dt){
     }catch{}
     return null;
   };
-  const leftAxes=readLiveStick('left',G.left)||nativeStick('left');
+  // Prefer an active native XR stick when Babylon reports a dormant duplicate.
+  // Both samples are drawn from the current XRSession; no cached input survives.
+  const chooseStick=(hand,ctrl)=>{
+    const live=readLiveStick(hand,ctrl);
+    if(live&&Math.hypot(live[0],live[1])>.025)return live;
+    const native=nativeStick(hand);
+    return native&&Math.hypot(native[0],native[1])>.025?native:(live||native);
+  };
+  const leftAxes=chooseStick('left',G.left);
   if(leftAxes){G.joystick.x=leftAxes[0];G.joystick.y=leftAxes[1];}
   else{try{G.joystick?.set?.(0,0);}catch{} G.vrSprint=false;}
-  const rightAxes=readLiveStick('right',G.right)||nativeStick('right');
+  const rightAxes=chooseStick('right',G.right);
   if(rightAxes)G.turnAxis=rightAxes[0];
   else G.turnAxis=0;
   if(!Number.isFinite(dt)||dt<=0)return;
