@@ -17041,8 +17041,9 @@ function updateJoystickMovement(scene,dt){
         if(manager.session!==session||!manager.inXRSession)return null;
         const sample=[Math.max(-1,Math.min(1,x)),Math.max(-1,Math.min(1,y))];
         // A duplicate dormant input source must not hide an active Quest stick.
-        if(Math.hypot(sample[0],sample[1])>.025)return sample;
-        if(!fallback)fallback=sample;
+        // Pick the strongest live source: a noisy duplicate must not mask
+        // the actual Quest thumbstick, regardless of input-source order.
+        if(!fallback||Math.hypot(sample[0],sample[1])>Math.hypot(fallback[0],fallback[1]))fallback=sample;
       }
       return fallback;
     }catch{}
@@ -17052,9 +17053,11 @@ function updateJoystickMovement(scene,dt){
   // Both samples are drawn from the current XRSession; no cached input survives.
   const chooseStick=(hand,ctrl)=>{
     const live=readLiveStick(hand,ctrl);
-    if(live&&Math.hypot(live[0],live[1])>.025)return live;
     const native=nativeStick(hand);
-    return native&&Math.hypot(native[0],native[1])>.025?native:(live||native);
+    // The Babylon wrapper can bind a dormant duplicate of the same hand.
+    // Prefer whichever current-session sample has greater stick travel.
+    if(live&&native)return Math.hypot(native[0],native[1])>Math.hypot(live[0],live[1])?native:live;
+    return live||native;
   };
   const leftAxes=chooseStick('left',G.left);
   if(leftAxes){G.joystick.x=leftAxes[0];G.joystick.y=leftAxes[1];}
