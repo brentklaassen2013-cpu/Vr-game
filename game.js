@@ -17061,7 +17061,10 @@ function updateJoystickMovement(scene,dt){
   };
   const leftAxes=chooseStick('left',G.left);
   if(leftAxes){G.joystick.x=leftAxes[0];G.joystick.y=leftAxes[1];}
-  else{try{G.joystick?.set?.(0,0);}catch{} G.vrSprint=false;}
+  else{ // Clear stale motion even when the joystick is a plain object without set().
+    if(G.joystick){try{G.joystick.x=0;G.joystick.y=0;}catch{}}
+    G.vrSprint=false;
+  }
   const rightAxes=chooseStick('right',G.right);
   if(rightAxes)G.turnAxis=rightAxes[0];
   else G.turnAxis=0;
